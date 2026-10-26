@@ -5017,6 +5017,39 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('tcal-baro-off')).toBeDisabled()
   })
 
+  test('Tuning ▸ Pilot ▸ Alt Hold shows the altitude controller and checks its gains against the hover throttle', async ({ page }) => {
+    // The field case: a quad hovering at low throttle with accel gains set for
+    // a heavier one bounced in AltHold, and the gains were nowhere in Tuning.
+    // ArduPilot's rule (initial tuning guide): accel P = hover, I = 2 x hover
+    // on 4.6 (PSC_ACCZ_*), a tenth of that on 4.7 (PSC_D_ACC_*).
+    await page.goto(`/?demoParamOverrides=${encodeURIComponent('MOT_THST_HOVER:0.2,PSC_ACCZ_P:1,PSC_ACCZ_I:2,MOT_HOVER_LEARN:0')}`)
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-rates').click()
+    const altHold = page.locator('details.bf-gui-box', { hasText: 'Alt Hold' })
+    await altHold.locator('summary.bf-gui-box__titlebar').click()
+
+    const controller = page.getByTestId('althold-controller')
+    await expect(controller).toBeVisible()
+    await expect(controller).toContainText('MOT_THST_HOVER')
+    await expect(controller).toContainText('PSC_ACCZ_P')
+    // P 1.0 and I 2.0 against the rule for hover 0.2 (P 0.2, I 0.4): 5x each.
+    await expect(page.getByTestId('althold-gain-check')).toHaveAttribute('data-tone', 'danger')
+    await expect(page.getByTestId('althold-gain-verdict')).toHaveText('Far too high for this hover throttle. Expect AltHold to bounce.')
+    await expect(page.getByTestId('althold-gain-suggested')).toContainText('PSC_ACCZ_P 0.2')
+    await expect(page.getByTestId('althold-gain-suggested')).toContainText('You have 1 and 2')
+    await expect(page.getByTestId('althold-gain-check')).toContainText('Hover learning is off')
+    await expect(page.getByTestId('althold-test-flight')).toBeVisible()
+
+    // Staging the rule's values makes them drafts, and the check re-reads them.
+    await page.getByTestId('althold-gain-stage').click()
+    await expect(page.locator('body')).toContainText('2 staged changes')
+    await expect(page.getByTestId('althold-gain-check')).toHaveAttribute('data-tone', 'success')
+    await expect(page.getByTestId('althold-gain-stage')).toHaveCount(0)
+  })
+
   test('Calibration: autotune is a flight you come back from', async ({ page }) => {
     // Autotune runs in the air and saves on disarm, so the configurator cannot
     // watch it. It remembers the gains before the flight and compares after —

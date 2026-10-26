@@ -103,6 +103,8 @@ export interface TuningCopterSectionProps {
    *  notch fields, rendered with the manual grid rather than before it. */
   filterBankSlot?: ReactNode
   notchHelpSlot?: ReactNode
+  /** Pilot ▸ Alt Hold: the altitude controller's gains and the hover-throttle check. */
+  altHoldControllerSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
   isExpertMode: boolean
@@ -118,6 +120,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     filterBankSlot,
     notchHelpSlot,
     isExpertMode,
+    altHoldControllerSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -291,6 +294,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         ) : (
                           <p className="bf-note">No altitude-hold pilot parameters reported by this firmware.</p>
                         )}
+                        {altHoldControllerSlot}
                       </div>
                     </details>
 

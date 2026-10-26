@@ -63,6 +63,19 @@ the token lives only until the tab closes.
 Uploads carry the log's descriptive name, the flight date, and an optional note,
 so the archive stays readable without opening anything.
 
+Reading a log straight off the vehicle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every card that takes a ``.bin`` (**Log Tuning**, **Hover throttle from a log**,
+**Baro thrust calibration (VALT)**) has **Pick from vehicle** beside its file
+chooser. It lists the logs still on the aircraft and reads the one you choose
+straight off it; no download, then upload.
+
+The list is read once and shared by every card. A reconnect — often a new
+flight — clears it and reads it again once parameters have synced, so the
+newest log is there without a trip to the Logs tab. **Refresh** beside the
+dropdown re-reads it at any time.
+
 The baro thrust calibration can use it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
