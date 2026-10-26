@@ -133,6 +133,7 @@ import {
 } from './status-formatters'
 import {
   formatParameterDisplayValue,
+  formatParameterValue,
   normalizeBitmaskValue
 } from './parameter-format'
 import {
@@ -273,6 +274,7 @@ import type { TcalWrite } from './view-models/tcal-plan'
 import { altHoldGainCheck } from './view-models/althold-gain-check'
 import { AltHoldGainCheckView } from './views/AltHoldGainCheck'
 import { FeelGrid, PilotFeelView, type PilotFeelValue } from './views/PilotFeel'
+import { PidGainsView } from './views/PidGains'
 import {
   EXPO_CHOICES,
   PILOT_FEEL_DISPLAY,
@@ -6162,6 +6164,48 @@ export function App() {
       </div>
     ) : null
 
+  // Tuning ▸ PID Gains (views/PidGains): Roll | Pitch | Yaw grid, same value
+  // shape and draft path as the Pilot cards.
+  const pidAxis = (ids: [string, string, string], name: string): [PilotFeelValue | undefined, PilotFeelValue | undefined, PilotFeelValue | undefined] => [
+    pilotFeelValue([ids[0]], `Roll ${name}`),
+    pilotFeelValue([ids[1]], `Pitch ${name}`),
+    pilotFeelValue([ids[2]], `Yaw ${name}`)
+  ]
+  const pidTerm = (suffix: string, name: string) =>
+    pidAxis([`ATC_RAT_RLL_${suffix}`, `ATC_RAT_PIT_${suffix}`, `ATC_RAT_YAW_${suffix}`], name)
+  const pidGainsSlot = (
+    <PidGainsView
+      linked={tuningRollPitchLinked}
+      onLinkedChange={tuningWorkbench.setTuningRollPitchLinked}
+      rows={{
+        angleP: pidAxis(['ATC_ANG_RLL_P', 'ATC_ANG_PIT_P', 'ATC_ANG_YAW_P'], 'angle P'),
+        p: pidTerm('P', 'rate P'),
+        i: pidTerm('I', 'rate I'),
+        d: pidTerm('D', 'rate D'),
+        ff: pidTerm('FF', 'feedforward')
+      }}
+      more={{
+        imax: pidTerm('IMAX', 'I max'),
+        dff: pidTerm('D_FF', 'D feedforward'),
+        pdmax: pidTerm('PDMX', 'P + D max'),
+        smax: pidTerm('SMAX', 'slew max')
+      }}
+      scale={{
+        values: [
+          { id: 'pi', label: 'P & I', value: tuningMasterPiGain, min: 0.7, max: 1.3, onChange: setTuningMasterPiGain },
+          { id: 'd', label: 'D', value: tuningMasterDGain, min: 0.7, max: 1.3, onChange: setTuningMasterDGain },
+          { id: 'ff', label: 'Feedforward', value: tuningMasterFeedforwardGain, min: 0.7, max: 1.3, onChange: setTuningMasterFeedforwardGain },
+          { id: 'pitch-ratio', label: 'Pitch vs roll', value: tuningMasterPitchRatio, min: 0.85, max: 1.15, onChange: setTuningMasterPitchRatio },
+          { id: 'filter', label: 'Filter frequencies', value: tuningMasterFilterStrength, min: 0.8, max: 1.2, onChange: setTuningMasterFilterStrength }
+        ],
+        preview: tuningMasterPreviewEntries.map((entry) => `${entry.label} ${formatParameterValue(entry.nextValue, entry.definition?.unit)}`),
+        canStage: !tuningMasterDefaultsActive && tuningMasterPreviewEntries.length > 0,
+        isNeutral: tuningMasterDefaultsActive,
+        onReset: handleResetTuningMasterSliders,
+        onStage: handleStageTuningMasterAdjustments
+      }}
+    />
+  )
   const responseChoices = RESPONSE_TC_CHOICES
   const rateResponseChoices: readonly NamedValue[] = [{ value: 0, label: 'Off' }, ...RESPONSE_TC_CHOICES]
   const pilotFeelSlot = (
@@ -10519,6 +10563,7 @@ export function App() {
           }
           altHoldControllerSlot={altHoldControllerSlot}
           pilotFeelSlot={pilotFeelSlot}
+          pidGainsSlot={pidGainsSlot}
           filterNotchSlot={
             <>
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as

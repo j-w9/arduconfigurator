@@ -11,6 +11,12 @@ describe('altHoldGainCheck', () => {
     expect(check?.notes).toEqual([])
   })
 
+  it('4.7 at the default hover 0.35: P 0.035, I 0.07', () => {
+    const check = altHoldGainCheck({ hover: 0.35, hoverLearn: 2, accP: 0.035, accI: 0.07, scheme: '4.7' })
+    expect(check?.recommendedP).toBe(0.035)
+    expect(check?.recommendedI).toBe(0.07)
+  })
+
   it('4.6: the old names are ten times the scale', () => {
     const check = altHoldGainCheck({ hover: 0.35, hoverLearn: 2, accP: 0.35, accI: 0.7, scheme: '4.6' })
     expect(check?.recommendedP).toBe(0.35)

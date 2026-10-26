@@ -25028,3 +25028,30 @@ button.plot-side-list__name {
 }
 .pilot-feel-chart__swatch--rp { background: var(--feel-rp); }
 .pilot-feel-chart__swatch--y { background: var(--feel-y); }
+
+/* Tuning ▸ PID Gains (views/PidGains.tsx). */
+.pid-gains__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.pid-scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+.pid-scale__item {
+  display: grid;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.pid-scale__item input {
+  width: 72px;
+}

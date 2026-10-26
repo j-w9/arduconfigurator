@@ -6202,8 +6202,8 @@ test.describe('Tuning ▸ PID Gains', () => {
     await openView(page, 'tuning')
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
 
-    // Linked is the default state, so the button is already disabled here.
-    await expect(page.getByTestId('tuning-roll-pitch-link-button')).toBeDisabled()
+    // Linked is the default state.
+    await expect(page.getByTestId('tuning-roll-pitch-link-toggle')).toBeChecked()
     await page.getByTestId('tuning-input-ATC_ANG_RLL_P').fill('7.5')
     await expect(page.getByTestId('tuning-input-ATC_ANG_PIT_P')).toHaveValue('7.5')
   })
@@ -6220,7 +6220,7 @@ test.describe('Tuning profile round-trip', () => {
 
     // Stage a distinct PID edit (demo default ATC_RAT_RLL_P is 0.1).
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
-    await page.getByTestId('tuning-roll-pitch-unlink-button').click()
+    await page.getByTestId('tuning-roll-pitch-link-toggle').uncheck()
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.137')
 
     // Capture the *staged* tune into a profile (exercises useTuningProfileSource's

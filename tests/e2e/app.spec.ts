@@ -519,21 +519,21 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('tuning-task-nav')).toBeVisible()
     await expect(page.getByTestId('tuning-tab-rates')).toBeVisible()
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
-    await expect(page.getByText('Axis controller gains', { exact: true })).toBeVisible()
-    await expect(page.getByTestId('tuning-roll-pitch-link-button')).toBeVisible()
+    await expect(page.getByTestId('pid-gains-grid')).toBeVisible()
+    await expect(page.getByTestId('tuning-roll-pitch-link-toggle')).toBeChecked()
 
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.12')
     await expect(page.getByTestId('tuning-input-ATC_RAT_PIT_P')).toHaveValue('0.12')
 
-    await page.getByTestId('tuning-roll-pitch-unlink-button').click()
+    await page.getByTestId('tuning-roll-pitch-link-toggle').uncheck()
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.14')
     await expect(page.getByTestId('tuning-input-ATC_RAT_PIT_P')).toHaveValue('0.12')
 
     await page.getByTestId('tuning-toggle-advanced-button').click()
-    await expect(page.getByText('Roll D Feedforward', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ATC_RAT_RLL_D_FF')).toBeVisible()
 
-    await page.getByTestId('tuning-master-pi-range').focus()
-    await page.getByTestId('tuning-master-pi-range').press('ArrowRight')
+    await page.getByTestId('pid-gains-scale').locator('summary').click()
+    await page.getByTestId('tuning-master-pi-range').fill('1.05')
     await expect(page.getByTestId('tuning-stage-master-adjustments-button')).toBeEnabled()
     await page.getByTestId('tuning-stage-master-adjustments-button').click()
     // The master sliders scale the live PID gains and stage the result as a

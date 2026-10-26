@@ -107,6 +107,8 @@ export interface TuningCopterSectionProps {
   altHoldControllerSlot?: ReactNode
   /** Pilot: the Angle / Acro / limits stick-feel cards, in place of the slider boxes. */
   pilotFeelSlot?: ReactNode
+  /** PID Gains: the Roll | Pitch | Yaw grid, in place of the slider cards. */
+  pidGainsSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
   isExpertMode: boolean
@@ -124,6 +126,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     isExpertMode,
     altHoldControllerSlot,
     pilotFeelSlot,
+    pidGainsSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -328,7 +331,10 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   </div>
                 ) : null}
 
-                {activeTuningTaskId === 'pid-gains' ? (
+                {activeTuningTaskId === 'pid-gains' && pidGainsSlot ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack">{pidGainsSlot}</div>
+                ) : null}
+                {activeTuningTaskId === 'pid-gains' && !pidGainsSlot ? (
                   <div className="tuning-task-panel tuning-task-panel--stack">
                     <section className="bf-gui-box">
                       <div className="bf-gui-box__titlebar">
