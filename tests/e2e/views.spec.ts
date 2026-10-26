@@ -5039,7 +5039,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('althold-gain-stage')).toHaveCount(0)
   })
 
-  test('Tuning ▸ Pilot: stick feel as number boxes with units, the firmware\'s named values as chips, and stick curves', async ({ page }) => {
+  test('Tuning ▸ Pilot: stick feel as grids of number boxes with units, ArduPilot\'s named values, and the Acro stick curves', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -5047,28 +5047,38 @@ test.describe('ArduPlane demo', () => {
     await openView(page, 'tuning')
     await page.getByTestId('tuning-tab-rates').click()
 
-    const angle = page.getByTestId('pilot-feel-angle')
-    await expect(angle).toBeVisible()
+    // Angle modes: roll/pitch and yaw side by side.
+    const angle = page.getByTestId('pilot-feel-angle-grid')
+    await expect(angle).toContainText('Roll / pitch')
+    await expect(angle).toContainText('Yaw')
     // ATC_INPUT_TC 0.15 is the firmware's "Medium"; x3 is the time to full lean.
-    await expect(page.getByTestId('pilot-feel-ATC_INPUT_TC-choice-0.15')).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in about 0.45 s.')
-    // A chip stages its value; the box shows it and the readout follows.
-    await page.getByTestId('pilot-feel-ATC_INPUT_TC-choice-0.1').click()
+    const response = page.getByTestId('pilot-feel-ATC_INPUT_TC-choice')
+    await expect(response).toHaveValue('0.15')
+    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in ≈ 0.45 s')
+    // A named value stages it; the box shows it and the readout follows.
+    await response.selectOption('0.1')
     await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toHaveValue('0.1')
-    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in about 0.30 s.')
-    // Any value can still be typed; no chip claims it.
+    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in ≈ 0.30 s')
+    // Any value can still be typed; the dropdown then reads Custom.
     await page.getByTestId('tuning-input-ATC_INPUT_TC').fill('0.12')
-    await expect(page.getByTestId('pilot-feel-ATC_INPUT_TC').locator('[aria-pressed="true"]')).toHaveCount(0)
+    await expect(response).toHaveValue('')
+    await expect(response.locator('option:checked')).toHaveText('Custom')
 
-    // Acro: both stick curves; full roll rate from rate / accel limit.
-    await expect(page.getByTestId('pilot-feel-acro-chart')).toContainText('Roll/pitch 360 °/s')
-    await expect(page.getByTestId('pilot-feel-roll-time')).toHaveText('Full roll rate in 0.26 s.')
-
-    // The pre-4.7 accel limits are centidegrees: shown and edited in deg/s².
+    // Acro: both curves, accel limit in the grid, full rate per column.
+    await expect(page.getByTestId('pilot-feel-acro-chart-readout')).toContainText('Roll / pitch 360 °/s')
+    await expect(page.getByTestId('pilot-feel-roll-time')).toHaveText('Full rate in 0.26 s')
+    // Roll and pitch accel match on the demo: one box, written to both.
     await expect(page.getByTestId('tuning-input-ATC_ACCEL_R_MAX')).toHaveValue('1409')
+    await expect(page.getByTestId('tuning-input-ATC_ACCEL_P_MAX')).toHaveCount(0)
+    // The pre-4.7 limits are centidegrees: shown and edited in deg/s².
     await page.getByTestId('tuning-input-ATC_ACCEL_Y_MAX').fill('400')
-    await expect(page.locator('body')).toContainText('staged')
-    await expect(page.getByTestId('pilot-feel-yaw-time')).toHaveText('Full yaw rate in 0.45 s.')
+    await expect(page.getByTestId('pilot-feel-yaw-time')).toHaveText('Full rate in 0.45 s')
+
+    // Alt Hold and Loiter: metres, not centimetres; zero's meaning named.
+    await page.getByTestId('pilot-feel-loiter').locator('summary.bf-gui-box__titlebar').click()
+    await expect(page.getByTestId('tuning-input-LOIT_SPEED')).toHaveValue('12.5')
+    await expect(page.getByTestId('pilot-feel-LOIT_ANG_MAX-choice')).toHaveValue('0')
+    await expect(page.getByTestId('pilot-feel-LOIT_ANG_MAX-choice').locator('option:checked')).toHaveText('Auto (⅔ of max lean)')
   })
 
   test('Calibration: autotune is a flight you come back from', async ({ page }) => {

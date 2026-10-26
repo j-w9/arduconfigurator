@@ -79,3 +79,65 @@ export function yawRateOutrunsAccel(pilotYawRate: number | undefined, yawAccel: 
 export function formatSeconds(seconds: number): string {
   return seconds < 1 ? `${seconds.toFixed(2)} s` : `${seconds.toFixed(1)} s`
 }
+
+/**
+ * Display units for the Pilot cards. Older firmware stores several of these in
+ * centi-units (cm, cm/s, centidegrees/s²); they show and edit in metres and
+ * degrees, and write back x100. The 4.6+/4.7 SI renames are already in the
+ * shown units (scale 1).
+ */
+export const PILOT_FEEL_DISPLAY: Readonly<Record<string, { unit: string; scale: number }>> = {
+  ATC_ACCEL_R_MAX: { unit: 'deg/s²', scale: 100 },
+  ATC_ACCEL_P_MAX: { unit: 'deg/s²', scale: 100 },
+  ATC_ACCEL_Y_MAX: { unit: 'deg/s²', scale: 100 },
+  ATC_ACC_R_MAX: { unit: 'deg/s²', scale: 1 },
+  ATC_ACC_P_MAX: { unit: 'deg/s²', scale: 1 },
+  ATC_ACC_Y_MAX: { unit: 'deg/s²', scale: 1 },
+  PILOT_SPEED_UP: { unit: 'm/s', scale: 100 },
+  PILOT_SPEED_DN: { unit: 'm/s', scale: 100 },
+  PILOT_SPD_UP: { unit: 'm/s', scale: 1 },
+  PILOT_SPD_DN: { unit: 'm/s', scale: 1 },
+  PILOT_ACCEL_Z: { unit: 'm/s²', scale: 100 },
+  PILOT_ACC_Z: { unit: 'm/s²', scale: 1 },
+  PILOT_TKOFF_ALT: { unit: 'm', scale: 100 },
+  PILOT_TKO_ALT_M: { unit: 'm', scale: 1 },
+  LOIT_SPEED: { unit: 'm/s', scale: 100 },
+  LOIT_SPEED_MS: { unit: 'm/s', scale: 1 },
+  LOIT_ACC_MAX: { unit: 'm/s²', scale: 100 },
+  LOIT_ACC_MAX_M: { unit: 'm/s²', scale: 1 },
+  LOIT_BRK_ACCEL: { unit: 'm/s²', scale: 100 },
+  LOIT_BRK_ACC_M: { unit: 'm/s²', scale: 1 },
+  LOIT_BRK_JERK: { unit: 'm/s³', scale: 100 },
+  LOIT_BRK_JRK_M: { unit: 'm/s³', scale: 1 }
+}
+
+/** A raw parameter value in display units. */
+export function toDisplay(paramId: string, raw: number): number {
+  const scale = paramId === 'ANGLE_MAX' ? 100 : PILOT_FEEL_DISPLAY[paramId]?.scale ?? 1
+  return Number((raw / scale).toFixed(4))
+}
+
+/** Display text back to the raw value text the draft path takes. */
+export function fromDisplayText(paramId: string, text: string): string {
+  const scale = PILOT_FEEL_DISPLAY[paramId]?.scale ?? 1
+  if (scale === 1 || text.trim() === '') return text
+  const n = Number(text)
+  return Number.isFinite(n) ? String(Math.round(n * scale * 100) / 100) : text
+}
+
+/** Values where zero means something other than zero (the params' own descriptions). */
+export const ZERO_MEANS: Readonly<Record<string, string>> = {
+  PILOT_SPEED_DN: 'Same as climb',
+  PILOT_SPD_DN: 'Same as climb',
+  PILOT_THR_FILT: 'Off',
+  LOIT_ANG_MAX: 'Auto (⅔ of max lean)',
+  ACRO_RP_RATE_TC: 'Off',
+  ACRO_Y_RATE_TC: 'Off',
+  PILOT_Y_RATE_TC: 'Off'
+}
+
+/** True when a shown value differs from the firmware default (both in display units). */
+export function isChangedFromDefault(current: number | undefined, defaultValue: number | undefined): boolean {
+  if (current === undefined || defaultValue === undefined) return false
+  return Math.abs(current - defaultValue) > 1e-6 * Math.max(1, Math.abs(defaultValue))
+}

@@ -30,9 +30,6 @@ export const TUNING_PILOT_ALTHOLD_PARAM_IDS = [
   'PILOT_TKOFF_ALT',
   'PILOT_TKO_ALT_M'
 ] as const
-// Loiter (position-hold) pilot feel — max speed, acceleration, lean angle, and
-// braking. 4.6+ SI renames: LOIT_SPEED -> LOIT_SPEED_MS, LOIT_ACC_MAX ->
-// LOIT_ACC_MAX_M, LOIT_BRK_ACCEL -> LOIT_BRK_ACC_M, LOIT_BRK_JERK -> LOIT_BRK_JRK_M.
 // The altitude controller AltHold flies with (AC_PosControl's vertical
 // position -> velocity -> acceleration chain), next to the hover throttle its
 // accel gains are scaled by. 4.7 names first; 4.6 FCs stream PSC_ACCZ_* (ten
@@ -50,6 +47,9 @@ export const TUNING_ALTHOLD_CONTROLLER_PARAM_IDS = [
   'PSC_ACCZ_P',
   'PSC_ACCZ_I'
 ] as const
+// Loiter (position-hold) pilot feel — max speed, acceleration, lean angle, and
+// braking. 4.6+ SI renames: LOIT_SPEED -> LOIT_SPEED_MS, LOIT_ACC_MAX ->
+// LOIT_ACC_MAX_M, LOIT_BRK_ACCEL -> LOIT_BRK_ACC_M, LOIT_BRK_JERK -> LOIT_BRK_JRK_M.
 export const TUNING_PILOT_LOITER_PARAM_IDS = [
   'LOIT_SPEED',
   'LOIT_SPEED_MS',

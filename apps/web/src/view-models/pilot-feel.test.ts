@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { accelDegS2, inputExpo, matchingChoice, RESPONSE_TC_CHOICES, secondsToRate, stickCurve, yawRateOutrunsAccel } from './pilot-feel'
+import { accelDegS2, fromDisplayText, isChangedFromDefault, toDisplay, inputExpo, matchingChoice, RESPONSE_TC_CHOICES, secondsToRate, stickCurve, yawRateOutrunsAccel } from './pilot-feel'
 
 describe('pilot feel', () => {
   it('input_expo matches AP_Math: full stick is full rate, expo softens the centre', () => {
@@ -32,5 +32,23 @@ describe('pilot feel', () => {
   it('names a value only when it sits on a choice', () => {
     expect(matchingChoice(RESPONSE_TC_CHOICES, 0.15)?.label).toBe('Medium')
     expect(matchingChoice(RESPONSE_TC_CHOICES, 0.17)).toBeUndefined()
+  })
+
+  it('display units: centi-unit params show in m and deg and write back x100', () => {
+    expect(toDisplay('LOIT_SPEED', 1250)).toBe(12.5)
+    expect(toDisplay('ATC_ACCEL_R_MAX', 140900)).toBe(1409)
+    expect(toDisplay('ANGLE_MAX', 4500)).toBe(45)
+    expect(toDisplay('LOIT_SPEED_MS', 12.5)).toBe(12.5)
+    expect(fromDisplayText('LOIT_SPEED', '12.5')).toBe('1250')
+    expect(fromDisplayText('ATC_ACCEL_Y_MAX', '400')).toBe('40000')
+    expect(fromDisplayText('LOIT_SPEED_MS', '12.5')).toBe('12.5')
+    expect(fromDisplayText('LOIT_SPEED', '')).toBe('')
+  })
+
+  it('changed from default only when there is a default and the value differs', () => {
+    expect(isChangedFromDefault(0.15, 0.15)).toBe(false)
+    expect(isChangedFromDefault(0.1, 0.15)).toBe(true)
+    expect(isChangedFromDefault(0.1, undefined)).toBe(false)
+    expect(isChangedFromDefault(0.15000000596, 0.15)).toBe(false)
   })
 })

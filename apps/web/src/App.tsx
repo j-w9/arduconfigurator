@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
@@ -272,7 +272,16 @@ import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './vie
 import type { TcalWrite } from './view-models/tcal-plan'
 import { altHoldGainCheck } from './view-models/althold-gain-check'
 import { AltHoldGainCheckView } from './views/AltHoldGainCheck'
-import { PilotFeelView, type PilotFeelValue } from './views/PilotFeel'
+import { FeelGrid, PilotFeelView, type PilotFeelValue } from './views/PilotFeel'
+import {
+  EXPO_CHOICES,
+  PILOT_FEEL_DISPLAY,
+  RESPONSE_TC_CHOICES,
+  ZERO_MEANS,
+  fromDisplayText,
+  toDisplay,
+  type NamedValue
+} from './view-models/pilot-feel'
 import { dronecanNodeStack } from './view-models/dronecan-node-stack'
 import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
@@ -4125,7 +4134,8 @@ export function App() {
       // meant the Default column read "—" on every row until the operator
       // happened to open one — a column that looks broken rather than one that
       // is loading. It is a single 15 KB MAVFTP read, once per build.
-      (activeViewId !== 'parameters' && selectedParameterId === undefined) ||
+      // The Tuning ▸ Pilot cards mark values changed from the default too.
+      (activeViewId !== 'parameters' && activeViewId !== 'tuning' && selectedParameterId === undefined) ||
       parameterDefaults !== null ||
       autoFetchedDefaultsRef.current ||
       fetchDefaultsBusy ||
@@ -5993,55 +6003,63 @@ export function App() {
 
   const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
   // Tuning ▸ Pilot: the stick-feel cards (views/PilotFeel). Each value is the
-  // tuning draft path's own text (ANGLE_MAX already in degrees); the pre-4.7
-  // ATC_ACCEL_*_MAX limits are centidegrees and show as deg/s².
-  const pilotFeelValue = (paramIds: readonly string[], label: string, unit?: string): PilotFeelValue | undefined => {
-    const parameter = paramIds
+  // tuning draft path's own text (ANGLE_MAX already in degrees), shown in the
+  // units of pilot-feel's PILOT_FEEL_DISPLAY (centi-unit params in m and deg),
+  // with the firmware default when the FC reported one (param.pck).
+  const pilotFeelParameter = (paramIds: readonly string[]): ParameterState | undefined =>
+    paramIds
       .map((paramId) => snapshot.parameters.find((candidate) => candidate.id === paramId))
       .find((candidate): candidate is ParameterState => candidate !== undefined)
+  const pilotFeelFor = (
+    parameter: ParameterState | undefined,
+    label: string,
+    options: { unit?: string; choices?: readonly NamedValue[]; tag?: string; alsoStage?: ParameterState } = {}
+  ): PilotFeelValue | undefined => {
     if (!parameter) return undefined
-    const scale = parameter.id.startsWith('ATC_ACCEL_') ? 100 : 1
+    const display = PILOT_FEEL_DISPLAY[parameter.id]
     const raw = tuningInputValue(parameter, editedValues)
-    const text = scale === 1 || raw.trim() === '' ? raw : String(Number((Number(raw) / scale).toFixed(2)))
+    const text = display && display.scale !== 1 && raw.trim() !== '' ? String(toDisplay(parameter.id, Number(raw))) : raw
     const { min, max } = tuningControlBounds(parameter)
+    const scale = display?.scale ?? 1
+    const zero = ZERO_MEANS[parameter.id]
+    const choices = options.choices ?? (zero ? [{ value: 0, label: zero }] : undefined)
+    const rawDefault = parameterDefaults?.get(parameter.id)
     return {
       paramId: parameter.id,
       label,
+      tag: options.tag,
       description: parameter.definition?.description,
-      unit,
+      unit: options.unit ?? display?.unit,
       text,
+      defaultValue: rawDefault === undefined ? undefined : toDisplay(parameter.id, rawDefault),
+      choices,
       draftStatus: parameterDraftById.get(parameter.id)?.status,
-      min: min === undefined ? undefined : min / scale,
-      max: max === undefined ? undefined : max / scale,
-      onChange: (next) =>
-        handleStageTuningParameterValue(parameter, scale === 1 || next.trim() === '' ? next : String(Math.round(Number(next) * scale)))
+      min: parameter.id === 'ANGLE_MAX' || min === undefined ? min : min / scale,
+      max: parameter.id === 'ANGLE_MAX' || max === undefined ? max : max / scale,
+      onChange: (next) => {
+        handleStageTuningParameterValue(parameter, fromDisplayText(parameter.id, next))
+        if (options.alsoStage) handleStageTuningParameterValue(options.alsoStage, fromDisplayText(options.alsoStage.id, next))
+      }
     }
   }
-  const pilotFeelSlot = (
-    <PilotFeelView
-      angle={{
-        lean: pilotFeelValue(['ATC_ANGLE_MAX', 'ANGLE_MAX'], 'Max lean', 'deg'),
-        inputTc: pilotFeelValue(['ATC_INPUT_TC'], 'Response', 's'),
-        yawRate: pilotFeelValue(['PILOT_Y_RATE'], 'Yaw rate', 'deg/s'),
-        yawExpo: pilotFeelValue(['PILOT_Y_EXPO'], 'Yaw expo'),
-        yawRateTc: pilotFeelValue(['PILOT_Y_RATE_TC'], 'Yaw response', 's')
-      }}
-      acro={{
-        rpRate: pilotFeelValue(['ACRO_RP_RATE'], 'Roll/pitch rate', 'deg/s'),
-        rpExpo: pilotFeelValue(['ACRO_RP_EXPO'], 'Roll/pitch expo'),
-        rpRateTc: pilotFeelValue(['ACRO_RP_RATE_TC'], 'Roll/pitch response', 's'),
-        yRate: pilotFeelValue(['ACRO_Y_RATE'], 'Yaw rate', 'deg/s'),
-        yExpo: pilotFeelValue(['ACRO_Y_EXPO'], 'Yaw expo'),
-        yRateTc: pilotFeelValue(['ACRO_Y_RATE_TC'], 'Yaw response', 's')
-      }}
-      limits={{
-        roll: pilotFeelValue(['ATC_ACC_R_MAX', 'ATC_ACCEL_R_MAX'], 'Roll', 'deg/s²'),
-        pitch: pilotFeelValue(['ATC_ACC_P_MAX', 'ATC_ACCEL_P_MAX'], 'Pitch', 'deg/s²'),
-        yaw: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw', 'deg/s²')
-      }}
-    />
-  )
-
+  const pilotFeelValue = (
+    paramIds: readonly string[],
+    label: string,
+    options: { unit?: string; choices?: readonly NamedValue[] } = {}
+  ): PilotFeelValue | undefined => pilotFeelFor(pilotFeelParameter(paramIds), label, options)
+  // Roll and pitch accel limits share a box while they match (AutoTune sets
+  // them separately, so they often differ); then they split into two.
+  const rollAccelParameter = pilotFeelParameter(['ATC_ACC_R_MAX', 'ATC_ACCEL_R_MAX'])
+  const pitchAccelParameter = pilotFeelParameter(['ATC_ACC_P_MAX', 'ATC_ACCEL_P_MAX'])
+  const rollAccelText = rollAccelParameter ? tuningInputValue(rollAccelParameter, editedValues) : undefined
+  const pitchAccelText = pitchAccelParameter ? tuningInputValue(pitchAccelParameter, editedValues) : undefined
+  const rpAccel: PilotFeelValue[] =
+    rollAccelParameter && pitchAccelParameter && rollAccelText === pitchAccelText
+      ? [pilotFeelFor(rollAccelParameter, 'Roll / pitch accel limit', { alsoStage: pitchAccelParameter })!]
+      : [
+          pilotFeelFor(rollAccelParameter, 'Roll accel limit', { tag: 'Roll' }),
+          pilotFeelFor(pitchAccelParameter, 'Pitch accel limit', { tag: 'Pitch' })
+        ].filter((value): value is PilotFeelValue => value !== undefined)
   // Tuning ▸ Pilot ▸ Alt Hold: the altitude controller AltHold flies with, and
   // its accel gains checked against ArduPilot's hover-throttle rule. Values are
   // draft-aware so staging a new hover throttle re-checks the gains at once.
@@ -6075,11 +6093,38 @@ export function App() {
         <p className="althold-gain-check__text">
           Holds altitude in AltHold, Loiter and Auto. Set the hover throttle first; the accel gains depend on it.
         </p>
-        <div className="tuning-control-grid">
-          {altHoldControllerParameters.map((parameter) => (
-            <Fragment key={parameter.id}>{renderMetadataParameterField(parameter)}</Fragment>
-          ))}
-        </div>
+        <FeelGrid
+          testId="althold-controller-hover"
+          columns={['']}
+          rows={[
+            { label: 'Hover throttle', cells: [pilotFeelValue(['MOT_THST_HOVER'], 'Hover throttle')] },
+            {
+              label: 'Hover learning',
+              cells: [
+                pilotFeelValue(['MOT_HOVER_LEARN'], 'Hover learning', {
+                  choices: [
+                    { value: 0, label: 'Disabled' },
+                    { value: 1, label: 'Learn' },
+                    { value: 2, label: 'Learn and save' }
+                  ]
+                })
+              ]
+            }
+          ]}
+        />
+        <FeelGrid
+          testId="althold-controller-gains"
+          columns={['P', 'I']}
+          rows={[
+            { label: 'Position', cells: [pilotFeelValue(['PSC_D_POS_P', 'PSC_POSZ_P'], 'Position P'), undefined] },
+            {
+              label: 'Velocity',
+              cells: [pilotFeelValue(['PSC_D_VEL_P', 'PSC_VELZ_P'], 'Velocity P'), pilotFeelValue(['PSC_D_VEL_I', 'PSC_VELZ_I'], 'Velocity I')]
+            },
+            { label: 'Accel', cells: [pilotFeelValue([altHoldPId], 'Accel P'), pilotFeelValue([altHoldIId], 'Accel I')] },
+            { label: 'Accel I max', cells: [undefined, pilotFeelValue(['PSC_D_ACC_IMAX', 'PSC_ACCZ_IMAX'], 'Accel I max')] }
+          ]}
+        />
         {/* The AltHold test flight (ArduPilot's initial tuning guide, and the
             usual community procedure): learn the hover, then set the accel
             gains from it; an up-down oscillation after that is the outer
@@ -6116,6 +6161,47 @@ export function App() {
         ) : null}
       </div>
     ) : null
+
+  const responseChoices = RESPONSE_TC_CHOICES
+  const rateResponseChoices: readonly NamedValue[] = [{ value: 0, label: 'Off' }, ...RESPONSE_TC_CHOICES]
+  const pilotFeelSlot = (
+    <PilotFeelView
+      angle={{
+        lean: pilotFeelValue(['ATC_ANGLE_MAX', 'ANGLE_MAX'], 'Max lean', { unit: 'deg' }),
+        inputTc: pilotFeelValue(['ATC_INPUT_TC'], 'Roll / pitch response', { unit: 's', choices: responseChoices }),
+        yawRate: pilotFeelValue(['PILOT_Y_RATE'], 'Yaw rate', { unit: 'deg/s' }),
+        yawExpo: pilotFeelValue(['PILOT_Y_EXPO'], 'Yaw expo', { choices: EXPO_CHOICES }),
+        yawRateTc: pilotFeelValue(['PILOT_Y_RATE_TC'], 'Yaw response', { unit: 's', choices: rateResponseChoices })
+      }}
+      acro={{
+        rpRate: pilotFeelValue(['ACRO_RP_RATE'], 'Acro roll / pitch rate', { unit: 'deg/s' }),
+        rpExpo: pilotFeelValue(['ACRO_RP_EXPO'], 'Acro roll / pitch expo', { choices: EXPO_CHOICES }),
+        rpRateTc: pilotFeelValue(['ACRO_RP_RATE_TC'], 'Acro roll / pitch response', { unit: 's', choices: rateResponseChoices }),
+        yRate: pilotFeelValue(['ACRO_Y_RATE'], 'Acro yaw rate', { unit: 'deg/s' }),
+        yExpo: pilotFeelValue(['ACRO_Y_EXPO'], 'Acro yaw expo', { choices: EXPO_CHOICES }),
+        yRateTc: pilotFeelValue(['ACRO_Y_RATE_TC'], 'Acro yaw response', { unit: 's', choices: rateResponseChoices }),
+        rpAccel,
+        yAccel: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw accel limit')
+      }}
+      altHold={{
+        climb: pilotFeelValue(['PILOT_SPD_UP', 'PILOT_SPEED_UP'], 'Max climb speed'),
+        descent: pilotFeelValue(['PILOT_SPD_DN', 'PILOT_SPEED_DN'], 'Max descent speed'),
+        accel: pilotFeelValue(['PILOT_ACC_Z', 'PILOT_ACCEL_Z'], 'Vertical accel'),
+        deadzone: pilotFeelValue(['THR_DZ'], 'Throttle deadzone', { unit: 'PWM' }),
+        throttleFilter: pilotFeelValue(['PILOT_THR_FILT'], 'Throttle filter', { unit: 'Hz' }),
+        takeoffAlt: pilotFeelValue(['PILOT_TKO_ALT_M', 'PILOT_TKOFF_ALT'], 'Takeoff altitude')
+      }}
+      loiter={{
+        speed: pilotFeelValue(['LOIT_SPEED_MS', 'LOIT_SPEED'], 'Loiter max speed'),
+        accel: pilotFeelValue(['LOIT_ACC_MAX_M', 'LOIT_ACC_MAX'], 'Loiter accel'),
+        maxLean: pilotFeelValue(['LOIT_ANG_MAX'], 'Loiter max lean', { unit: 'deg' }),
+        brakeAccel: pilotFeelValue(['LOIT_BRK_ACC_M', 'LOIT_BRK_ACCEL'], 'Loiter braking accel'),
+        brakeJerk: pilotFeelValue(['LOIT_BRK_JRK_M', 'LOIT_BRK_JERK'], 'Loiter braking jerk'),
+        brakeDelay: pilotFeelValue(['LOIT_BRK_DELAY'], 'Loiter brake delay', { unit: 's' })
+      }}
+      altHoldControllerSlot={altHoldControllerSlot}
+    />
+  )
 
   const currentMotorVerificationOutput =
     motorVerification.currentOutputChannel !== undefined

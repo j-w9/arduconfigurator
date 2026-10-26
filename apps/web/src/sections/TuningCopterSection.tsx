@@ -281,9 +281,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                       </div>
                     </details>
 
-                      </>
-                    )}
-
                     <details className="bf-gui-box">
                       <summary className="bf-gui-box__titlebar">
                         <strong>Alt Hold</strong>
@@ -326,6 +323,8 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         )}
                       </div>
                     </details>
+                      </>
+                    )}
                   </div>
                 ) : null}
 
