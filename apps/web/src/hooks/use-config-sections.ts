@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { firmwareVersionAtLeast, type ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
 import type { ConfigCategoryId, ConfigSection } from '../views/Config'
+import { fastRatePidOptions } from '../view-models/fast-rate-pid-options'
 
 // Categories that render on the PERIPHERALS tab instead of Config. Both tabs
 // are ConfigView instances over this one section list; membership here is what
@@ -80,6 +81,13 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // actually being present so those FCs don't render an empty "(not reported)"
   // Fast loop rate card.
   const hasFastRate = configParametersById.has('FSTRATE_ENABLE')
+  const gyroRateIndex = configParametersById.get('INS_GYRO_RATE')?.value
+  const loopRateHz = configParametersById.get('SCHED_LOOP_RATE')?.value
+  const fastRateDivisor = configParametersById.get('FSTRATE_DIV')?.value
+  const fastRateOptions = useMemo(
+    () => fastRatePidOptions({ gyroRateIndex, loopRateHz, currentDivisor: fastRateDivisor }),
+    [gyroRateIndex, loopRateHz, fastRateDivisor]
+  )
   // Compass section — gate on COMPASS_USE (present whenever a compass subsystem
   // is compiled in). Extra compasses / the disable mask only render when the FC
   // actually reports them, so a single-compass board stays uncluttered.
@@ -203,7 +211,13 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
             description: 'Separate fast-rate PID thread (FSTRATE_*). Enables a higher-rate PID loop divided down from the gyro rate. Reboot required.',
             fields: [
               { paramId: 'FSTRATE_ENABLE', label: 'Enable fast rate', digits: 0 },
-              { paramId: 'FSTRATE_DIV', label: 'Fast rate divisor', digits: 0 }
+              // Offered as the PID loop rate it gives (gyro rate ÷ FSTRATE_DIV).
+              {
+                paramId: 'FSTRATE_DIV',
+                label: 'PID loop rate',
+                digits: 0,
+                ...(fastRateOptions ? { options: fastRateOptions, layout: 'chips' as const } : {})
+              }
             ]
           }
         ]
@@ -311,6 +325,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   ] as readonly ConfigSection[]).map(categorize), [
     activeVehicle,
     hasFastRate,
+    fastRateOptions,
     hasFrame,
     // hasCompass and configParametersById were MISSING here, and it was a real
     // bug, not a tidy-up: the compass card is gated on hasCompass and its extra

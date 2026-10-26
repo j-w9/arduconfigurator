@@ -57,6 +57,12 @@ export interface ConfigSectionField {
   editor?: 'checkbox' | 'imu-mask'
   /** Force an enum's editor: a dropdown even when its options would fit as chips. */
   layout?: 'select' | 'chips'
+  /**
+   * Named values computed from other params, in place of the metadata's own
+   * (FSTRATE_DIV offered as the PID loop rates the gyro rate allows). The
+   * editor also takes `label` as its caption.
+   */
+  options?: ReadonlyArray<{ value: number; label: string; description?: string }>
 }
 
 /** Config category ids — the top tab groups. */
@@ -291,7 +297,7 @@ export function ConfigView(props: ConfigViewProps) {
     // A parameter the catalog has no entry for (BRD_BOOT_DELAY) titled itself
     // with its raw id and had no "i". The section's own label and unit stand
     // in, so it reads like its neighbours and the "i" still names the id.
-    const parameter =
+    let parameter =
       reported && !reported.definition
         ? {
             ...reported,
@@ -326,8 +332,11 @@ export function ConfigView(props: ConfigViewProps) {
         </div>
       )
     }
-    const options = parameter.definition?.options ?? []
+    const options = field.options ?? parameter.definition?.options ?? []
     const hasOptions = options.length > 0
+    if (field.options && parameter.definition) {
+      parameter = { ...parameter, definition: { ...parameter.definition, label: field.label, options: [...field.options] } }
+    }
     const editor =
       field.editor === 'imu-mask' ? (
         <ImuMaskField
