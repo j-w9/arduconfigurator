@@ -273,44 +273,51 @@ the drift you'd otherwise see as the board heats up after power-on. It lives on
 **Calibration → Sensors**, is **not** gated behind Expert mode, and appears only
 on firmware that exposes the ``INS_TCALn_*`` parameters.
 
-ArduPilot learns the fit **online**: you enable "learn", boot the board cold, and
-let it warm through its temperature range — the firmware computes and saves the
-coefficients at the top temperature on its own.
+ArduPilot learns the fit **online**, from the moment learning is switched on
+(``AP_InertialSensor_tempcal.cpp``):
+
+- it starts **straight away**, from whatever temperature the board is at — so
+  start cold;
+- it finishes at the **target** temperature, once the board has risen at least
+  **10 °C**; or, if the board never gets there, **10 minutes after the
+  temperature stops rising** (again only after a 10 °C rise);
+- it saves itself: each IMU's state flips to *on* and ``TMIN`` / ``TMAX`` become
+  the range it really covered. A fit that fails turns thermal calibration off.
 
 .. warning::
 
-   Do this on the bench with **props removed**. The board must sit still and
-   simply warm up; you are not flying during the learn.
+   Do this on the bench with **props removed**, disarmed. The board sits still
+   and warms up; you are not flying during the learn.
 
-Steps:
+The card is the three steps, in order:
 
-#. **Start cold.** Power the board off and let it cool to ambient. A genuinely
-   cold board matters — the wider the temperature swing between cold boot and
-   warm, the better the fit.
-#. In **Calibration → Sensors → Thermal calibration (TCAL)**, set the
-   **Target** temperature. This is the one input that matters: the firmware ends
-   the learn when the IMU reaches it, and the firmware default of **70 °C** is
-   out of reach for most airframes — a board left on the default learns forever
-   and saves nothing. Pick a temperature this board actually reaches on the
-   bench; the live IMU temperature on the card tells you what that is.
+#. **Start cold.** Let the board cool to room temperature, then power it up and
+   start straight away. The card shows the IMU temperature now.
+#. **Pick a target** the board reaches on the bench, at least 10 °C above where
+   it is. A target closer than that is refused, with the reason. A target the
+   board will not reach (the firmware default is 70 °C) is allowed with a note,
+   because the learn also ends when warming stalls.
+#. **Start learning.** Tick **Learn the barometer in the same session** to start
+   the baro learn with it.
 
-   **Start** is offered too, but the firmware overwrites it with wherever the
-   board actually began when it saves, so treat it as a floor for validity
-   rather than a promise about the run. The two must be at least **10 °C** apart
-   or the fit is never accepted, and the card will not stage a narrower range.
-#. Click **Prepare thermal calibration**. This stages the temperatures and
-   ``INS_TCALn_ENABLE = 2`` (learn) for each IMU; **Apply** it in the draft bar.
-#. **Reboot the board cold**, props off, and leave it powered and still. It
-   self-heats through the range.
-#. At the top temperature the fit is computed and saved automatically, and each
-   IMU's enable flips back to ``1`` (enabled). **Reboot once more** to use it.
+Start writes straight to the flight controller, verified, in this order: each
+IMU's ``INS_TCALn_TMAX``, then each ``INS_TCALn_ENABLE = 2``, then
+``TCAL_ENABLED = 2`` if the barometer is ticked. There is no draft to apply, and
+the order matters: ``INS_TCALn_ENABLE`` hides the rest of its group while it is
+off, so a board with thermal calibration off does not even report ``TMAX``, and
+the learn takes its target the moment the enable becomes 2. ``TMIN`` is not
+written; the learn overwrites it.
 
-The card shows each IMU's current state (disabled / enabled / learning) and its
-``TMIN → TMAX`` range, and warns if the target you have chosen is one the board
-is unlikely to reach. When the flight controller streams IMU temperature (from
-``SCALED_IMU``), the card also shows the live temperature and warm-up progress
-toward ``TMAX``; the firmware completes and saves the fit on its own once it
-reaches the target, so you don't need to watch it.
+While it learns, the card shows the board temperature against the target and the
+vehicle's latest ``TCAL[n]`` message. Nothing needs pressing. To stop early:
+
+- **Stop learning, keep values** — ``ENABLE = 1``: use what it has saved. The
+  learn saves a partial fit every 15 s once the board has risen 10 °C; before
+  that there is nothing new to keep.
+- **Stop and turn off** — ``ENABLE = 0``: no thermal correction.
+
+A calibrated board also offers **Turn thermal cal off**, and **Learn again**
+starts a fresh run from cold.
 
 Barometer temperature calibration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -326,15 +333,17 @@ still, warming up.
 #. Start cold, props off, on the bench. The vehicle must stay **disarmed and
    completely still** — the firmware restarts the learn the moment the IMUs
    report movement.
-#. Click **Prepare baro calibration** and **Apply**. That stages
-   ``TCAL_ENABLED = 2`` (learn *and* use) — one parameter.
+#. Click **Start baro learning** (or tick the barometer box when starting the
+   IMU learn). That writes ``TCAL_ENABLED = 2`` (learn *and* use) — one
+   parameter.
 #. Leave it powered and untouched while it self-heats. Nothing is collected
    below **25 °C**, and it needs at least **7 °C** of rise before it fits.
 #. The fit saves itself into ``TCAL_BARO_EXP``, with the range it covered in
    ``TCAL_TEMP_MIN`` / ``TCAL_TEMP_MAX``. All three are read-only — the learn
    writes them.
 #. Leave it learning to keep refining, or press **Stop learning, keep values**
-   to pin what it has (``TCAL_ENABLED = 1``, use the learned values).
+   to pin what it has (``TCAL_ENABLED = 1``, use the learned values). **Turn
+   off** sets ``TCAL_ENABLED = 0``.
 
 The correction applies to the **first barometer** only.
 
@@ -366,7 +375,9 @@ Flight 1 — hover throttle
 
 ``MOT_THST_HOVER`` is the controller's **vertical feedforward**: the throttle it
 expects to need to hold altitude. Nothing that holds altitude behaves properly
-until it is right.
+until it is right. Once it is, set the vertical accel gains from it: **Tuning →
+Pilot → Alt Hold** checks them against ArduPilot's rule (see
+:ref:`tuning-althold-controller`).
 
 The firmware learns it in the air whenever ``MOT_HOVER_LEARN`` is 2 (its
 default), but only while every gate is open. ``Copter::update_throttle_hover``

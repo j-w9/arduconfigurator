@@ -56,6 +56,9 @@ controllers:
 - ``THR_DZ`` — throttle deadzone around the hover point.
 - ``PILOT_TKOFF_ALT`` (4.6+ ``PILOT_TKO_ALT_M``) — auto-takeoff target altitude.
 
+Below the stick feel, the same card carries the **altitude controller** that
+delivers it — see :ref:`tuning-althold-controller`.
+
 **Loiter** — position-hold feel:
 
 - ``LOIT_SPEED`` — maximum horizontal speed.
@@ -66,6 +69,68 @@ controllers:
 
 The view drops any parameter the connected firmware does not stream, so only the
 form your firmware version uses is shown.
+
+.. _tuning-althold-controller:
+
+Altitude controller (Alt Hold)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The stick-feel settings say what climb rate the stick asks for; the altitude
+controller (``AC_PosControl``) is what holds it: position error → climb rate →
+vertical acceleration → throttle, starting from the hover throttle. Its gains
+sit under the stick feel on the **Alt Hold** card:
+
+- ``MOT_THST_HOVER`` / ``MOT_HOVER_LEARN`` — the hover throttle and whether it
+  is learned.
+- ``PSC_D_POS_P`` and ``PSC_D_VEL_P`` / ``PSC_D_VEL_I`` — the outer loops.
+- ``PSC_D_ACC_P`` / ``PSC_D_ACC_I`` / ``PSC_D_ACC_IMAX`` — the vertical
+  acceleration loop. On 4.6 these are ``PSC_ACCZ_*`` at **ten times** the scale
+  (``AC_PosControl.cpp``: *"If upgrading from 4.6 this is _ACCZ_P * 0.1"*).
+
+**The accel gains follow the hover throttle.** The same gain does more on a quad
+that hovers at low throttle, because each bit of throttle is more thrust.
+ArduPilot's rule, from its initial tuning guide (*Test AltHold*): once the hover
+throttle is known,
+
+- 4.7: ``PSC_D_ACC_P`` = 0.1 × ``MOT_THST_HOVER``, ``PSC_D_ACC_I`` = 0.2 ×
+- 4.6: ``PSC_ACCZ_P`` = ``MOT_THST_HOVER``, ``PSC_ACCZ_I`` = 2 ×
+
+The card checks the gains against that rule and says how far off they are —
+*"P is 5.0× and I is 5.0× the rule for this hover throttle: far too high —
+expect a fast vertical bounce in AltHold"* — with a button that stages the
+rule's values. It re-checks against drafts, so staging a new hover throttle
+re-checks the gains at once. It also says when hover learning is off, when ``I``
+is out of proportion to ``P`` (the usual ratio is 2 : 1), and when the hover
+throttle is at its floor.
+
+.. important::
+
+   ``MOT_THST_HOVER`` cannot go below **0.125** (``AP_MOTORS_THST_HOVER_MIN``).
+   A quad that really hovers lower — a log shows it, as ``CTUN.ThO`` — is
+   overpowered for the controller, and the right gains are lower still than the
+   rule gives for 0.125. The gentler fix is the airframe: lower-pitch props,
+   lower KV or fewer cells bring the hover up.
+
+**AltHold test flight** (on the card, folded):
+
+#. Set ``MOT_HOVER_LEARN`` to 2 (learn and save).
+#. Take off in Stabilize to about 5 m, switch to AltHold, and hover for 30 s
+   with the throttle stick **centred**.
+#. Land and disarm. ``MOT_THST_HOVER`` now holds the learned hover.
+#. Stage the accel gains from it.
+#. If AltHold still oscillates up and down, halve ``PSC_D_POS_P`` and
+   ``PSC_D_VEL_P``.
+
+Hover learning only runs while the climb rate asked for is **exactly zero**
+(``Copter::update_throttle_hover``): stick centred, level, not climbing or
+sinking fast. A quad that bounces never meets that, so its ``MOT_THST_HOVER``
+never moves — set it by hand (or from a log) first. And a stick held below the
+deadzone keeps lowering the target altitude: a quad that cannot descend fast
+enough ends up metres above a target that keeps running away.
+
+The fast-rate thread (``FSTRATE_ENABLE``) does not speed this controller up: it
+runs the roll, pitch and yaw rate loops; the altitude controller runs in the main
+loop at ``SCHED_LOOP_RATE``.
 
 Attitude controllers (PID gains)
 --------------------------------
@@ -195,6 +260,9 @@ surface writes to a flight controller. They are yours to set.
 Each parameter gets its real editor, not a number box: ``INS_HNTCH_MODE`` is a
 named list, ``INS_HNTCH_OPTS`` and ``INS_HNTCH_HMNCS`` are per-bit toggles, and
 everything else is a number with the units and range the firmware declares.
+That includes the **attenuation**, ``INS_HNTCH_ATT`` / ``INS_HNTC2_ATT``: how
+deep the notch cuts, 5 to 50 dB, default 40. Above about 40 dB it is a hard notch
+rather than a modest cut (``HarmonicNotchFilter.cpp``).
 Every field carries the usual **"i"** bubble naming the raw parameter, with a
 link to its page in the :doc:`parameter reference <parameters>`.
 

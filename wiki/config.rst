@@ -25,7 +25,17 @@ one area at a time instead of a wall of cards:
 - **Power** — battery monitor, capacity, and the arming thresholds that depend
   on them, with live voltage and current.
 - **System** — MAVLink identity, logging, and the **system rates** (main loop
-  frequency, gyro rate, fast-sample mask) plus **active IMU** selection.
+  frequency, gyro rate, fast-sample mask), the **fast loop rate** (on Copter
+  builds with the fast-rate thread), plus **active IMU** selection.
+
+The **fast loop rate** card runs the rate (PID) controller in its own thread at
+gyro rate ÷ ``FSTRATE_DIV`` (``ArduCopter/rate_thread.cpp``). It offers the
+**PID loop rate** rather than the divisor: at a 4 kHz gyro, 4, 2 or 1 kHz.
+Picking one writes the divisor. The choices follow ``INS_GYRO_RATE`` halving
+down to 1 kHz, within the firmware's cap of gyro rate ÷ main loop rate; a divisor
+already set outside that list stays selectable, shown as its rate. It is the
+roll, pitch and yaw rate loops that speed up: the altitude and position
+controllers still run in the main loop at ``SCHED_LOOP_RATE``.
 
 .. note::
 
