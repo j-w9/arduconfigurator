@@ -5037,7 +5037,9 @@ test.describe('ArduPlane demo', () => {
     await expect(controller).toContainText('PSC_ACCZ_P')
     // P 1.0 and I 2.0 against the rule for hover 0.2 (P 0.2, I 0.4): 5x each.
     await expect(page.getByTestId('althold-gain-check')).toHaveAttribute('data-tone', 'danger')
-    await expect(page.getByTestId('althold-gain-verdict')).toContainText('P is 5.0× and I is 5.0×')
+    await expect(page.getByTestId('althold-gain-verdict')).toHaveText('Far too high for this hover throttle. Expect AltHold to bounce.')
+    await expect(page.getByTestId('althold-gain-suggested')).toContainText('PSC_ACCZ_P 0.2')
+    await expect(page.getByTestId('althold-gain-suggested')).toContainText('You have 1 and 2')
     await expect(page.getByTestId('althold-gain-check')).toContainText('Hover learning is off')
     await expect(page.getByTestId('althold-test-flight')).toBeVisible()
 

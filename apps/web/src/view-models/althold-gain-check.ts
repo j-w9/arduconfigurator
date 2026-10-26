@@ -34,11 +34,11 @@ export interface AltHoldGainCheck {
   notes: string[]
 }
 
-function ratioVerdict(ratio: number): { tone: AltHoldGainTone; word: string } {
-  if (ratio > 3) return { tone: 'danger', word: 'far too high — expect a fast vertical bounce in AltHold' }
-  if (ratio > 1.5) return { tone: 'warning', word: 'high — may bounce' }
-  if (ratio < 0.4) return { tone: 'warning', word: 'low — altitude hold may feel soft or sag' }
-  return { tone: 'success', word: 'in line with ArduPilot’s rule' }
+function ratioVerdict(ratio: number): { tone: AltHoldGainTone; text: string } {
+  if (ratio > 3) return { tone: 'danger', text: 'Far too high for this hover throttle. Expect AltHold to bounce.' }
+  if (ratio > 1.5) return { tone: 'warning', text: 'High for this hover throttle. AltHold may bounce.' }
+  if (ratio < 0.4) return { tone: 'warning', text: 'Low for this hover throttle. AltHold may feel soft.' }
+  return { tone: 'success', text: 'Right for this hover throttle.' }
 }
 
 function round3(value: number): number {
@@ -54,18 +54,18 @@ export function altHoldGainCheck(input: AltHoldGainInput): AltHoldGainCheck | un
   const pRatio = accP / recommendedP
   const iRatio = recommendedI > 0 ? accI / recommendedI : 1
   const worst = Math.max(pRatio, iRatio) > 1 ? Math.max(pRatio, iRatio) : Math.min(pRatio, iRatio)
-  const { tone, word } = ratioVerdict(worst)
+  const { tone, text } = ratioVerdict(worst)
   const notes: string[] = []
   if (hover <= THST_HOVER_FLOOR + 1e-6) {
     notes.push(
-      `Hover throttle is at its floor (${THST_HOVER_FLOOR}). If this quad really hovers lower — a flight log shows it — it is overpowered for the controller, and the right gains are lower still.`
+      `Hover throttle is at its minimum (${THST_HOVER_FLOOR}). If the quad hovers lower than that, it is overpowered and needs lower gains still.`
     )
   }
   if (input.hoverLearn === 0) {
-    notes.push('Hover learning is off, so the hover value is only as good as whoever set it.')
+    notes.push('Hover learning is off.')
   }
   if (iRatio > 2 * pRatio && iRatio > 1.5) {
-    notes.push('I is far out of proportion to P; the usual ratio is I = 2 × P.')
+    notes.push('I is usually 2 × P.')
   }
   return {
     recommendedP,
@@ -73,7 +73,7 @@ export function altHoldGainCheck(input: AltHoldGainInput): AltHoldGainCheck | un
     pRatio,
     iRatio,
     tone,
-    verdict: `P is ${pRatio.toFixed(1)}× and I is ${iRatio.toFixed(1)}× the rule for this hover throttle: ${word}.`,
+    verdict: text,
     notes
   }
 }

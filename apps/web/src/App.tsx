@@ -6022,8 +6022,7 @@ export function App() {
           </div>
         </div>
         <p className="althold-gain-check__text">
-          What holds the height you asked for: position → climb rate → vertical acceleration, with the hover throttle as
-          its starting point.
+          Holds altitude in AltHold, Loiter and Auto. Set the hover throttle first; the accel gains depend on it.
         </p>
         <div className="tuning-control-grid">
           {altHoldControllerParameters.map((parameter) => (
@@ -6056,6 +6055,7 @@ export function App() {
             pParamId={altHoldPId}
             iParamId={altHoldIId}
             hover={altHoldHover}
+            current={{ p: altHoldValue(altHoldPId) ?? 0, i: altHoldValue(altHoldIId) ?? 0 }}
             canStage={snapshot.connection.kind === 'connected'}
             onStage={() => {
               setDraft(altHoldPId, String(altHoldCheck.recommendedP))

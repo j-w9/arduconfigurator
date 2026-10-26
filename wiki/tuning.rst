@@ -95,10 +95,9 @@ throttle is known,
 - 4.7: ``PSC_D_ACC_P`` = 0.1 × ``MOT_THST_HOVER``, ``PSC_D_ACC_I`` = 0.2 ×
 - 4.6: ``PSC_ACCZ_P`` = ``MOT_THST_HOVER``, ``PSC_ACCZ_I`` = 2 ×
 
-The card checks the gains against that rule and says how far off they are —
-*"P is 5.0× and I is 5.0× the rule for this hover throttle: far too high —
-expect a fast vertical bounce in AltHold"* — with a button that stages the
-rule's values. It re-checks against drafts, so staging a new hover throttle
+The card checks the gains against that rule — *"Far too high for this hover
+throttle. Expect AltHold to bounce."* — shows the suggested values next to
+yours, and **Use suggested gains** stages them. It re-checks against drafts, so staging a new hover throttle
 re-checks the gains at once. It also says when hover learning is off, when ``I``
 is out of proportion to ``P`` (the usual ratio is 2 : 1), and when the hover
 throttle is at its floor.

@@ -28,12 +28,12 @@ describe('altHoldGainCheck', () => {
   it('flags a hover value at the 0.125 floor', () => {
     const check = altHoldGainCheck({ hover: 0.125, hoverLearn: 2, accP: 0.015, accI: 0.03, scheme: '4.7' })
     expect(check?.tone).toBe('success')
-    expect(check?.notes.join(' ')).toContain('floor')
+    expect(check?.notes.join(' ')).toContain('minimum')
   })
 
   it('flags I out of proportion to P', () => {
     const check = altHoldGainCheck({ hover: 0.2, hoverLearn: 2, accP: 0.02, accI: 0.4, scheme: '4.7' })
-    expect(check?.notes.join(' ')).toContain('I = 2 × P')
+    expect(check?.notes.join(' ')).toContain('I is usually 2 × P')
   })
 
   it('nothing to say without the params', () => {

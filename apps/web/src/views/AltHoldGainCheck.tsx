@@ -12,11 +12,13 @@ export interface AltHoldGainCheckViewProps {
   pParamId: string
   iParamId: string
   hover: number
+  /** The gains in use (live or drafted), as shown. */
+  current: { p: number; i: number }
   canStage: boolean
   onStage: () => void
 }
 
-export function AltHoldGainCheckView({ check, pParamId, iParamId, hover, canStage, onStage }: AltHoldGainCheckViewProps): ReactElement {
+export function AltHoldGainCheckView({ check, pParamId, iParamId, hover, current, canStage, onStage }: AltHoldGainCheckViewProps): ReactElement {
   const alreadyThere = Math.abs(check.pRatio - 1) < 0.02 && Math.abs(check.iRatio - 1) < 0.02
   return (
     <div className="althold-gain-check" data-testid="althold-gain-check" data-tone={check.tone}>
@@ -24,10 +26,9 @@ export function AltHoldGainCheckView({ check, pParamId, iParamId, hover, canStag
         <StatusBadge tone={check.tone}>{check.tone === 'success' ? 'ok' : check.tone === 'warning' ? 'check' : 'too hot'}</StatusBadge>
         <span data-testid="althold-gain-verdict">{check.verdict}</span>
       </div>
-      <p className="althold-gain-check__text">
-        ArduPilot&apos;s rule for hover throttle {hover.toFixed(3)}: <code>{pParamId}</code> {check.recommendedP},{' '}
-        <code>{iParamId}</code> {check.recommendedI}. The same gain does more on a quad that hovers at low throttle,
-        so the gains follow the hover value.
+      <p className="althold-gain-check__text" data-testid="althold-gain-suggested">
+        Suggested for hover {hover.toFixed(3)}: <code>{pParamId}</code> {check.recommendedP}, <code>{iParamId}</code>{' '}
+        {check.recommendedI}.{alreadyThere ? null : <> You have {current.p} and {current.i}.</>}
       </p>
       {check.notes.map((note) => (
         <p key={note} className="althold-gain-check__text" data-testid="althold-gain-note">
@@ -36,7 +37,7 @@ export function AltHoldGainCheckView({ check, pParamId, iParamId, hover, canStag
       ))}
       {alreadyThere ? null : (
         <button type="button" className="althold-gain-check__stage" style={buttonStyle()} disabled={!canStage} data-testid="althold-gain-stage" onClick={onStage}>
-          Stage {pParamId} {check.recommendedP} and {iParamId} {check.recommendedI}
+          Use suggested gains
         </button>
       )}
     </div>
