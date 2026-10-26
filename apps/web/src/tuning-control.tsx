@@ -172,6 +172,9 @@ export function TuningControl(props: TuningControlProps): ReactElement {
     }
   }
 
+  // ANGLE_MAX is stored in centidegrees but edited here in degrees.
+  const unit = parameter.id === 'ANGLE_MAX' ? 'deg' : parameter.definition?.unit
+
   return (
     <article className={`tuning-control tuning-control--${draftStatus ?? 'unchanged'}`}>
       <div className="tuning-control__header">
@@ -220,6 +223,11 @@ export function TuningControl(props: TuningControlProps): ReactElement {
           value={numberFieldValue}
           onChange={(event) => onStage(parameter, event.target.value)}
         />
+        {unit ? (
+          <span className="tuning-control__unit" data-testid={`tuning-unit-${parameter.id}`}>
+            {unit}
+          </span>
+        ) : null}
         <small>
           {draftStatus === 'staged' ? `Current ${currentValue}` : draftReason ?? `Current ${currentValue}`}
         </small>

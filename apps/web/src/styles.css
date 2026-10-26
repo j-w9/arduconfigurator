@@ -24807,3 +24807,17 @@ button.plot-side-list__name {
 .althold-controller__title {
   margin-top: var(--space-3);
 }
+
+/* Tuning sliders: the unit right after the value box. */
+.tuning-control__unit {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.tuning-control .tuning-control__footer {
+  justify-content: flex-start;
+  align-items: center;
+}
+.tuning-control .tuning-control__footer small {
+  margin-left: auto;
+}

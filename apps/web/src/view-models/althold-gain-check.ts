@@ -38,6 +38,7 @@ function ratioVerdict(ratio: number): { tone: AltHoldGainTone; text: string } {
   if (ratio > 3) return { tone: 'danger', text: 'Far too high for this hover throttle. Expect AltHold to bounce.' }
   if (ratio > 1.5) return { tone: 'warning', text: 'High for this hover throttle. AltHold may bounce.' }
   if (ratio < 0.4) return { tone: 'warning', text: 'Low for this hover throttle. AltHold may feel soft.' }
+  if (ratio > 1.1 || ratio < 0.9) return { tone: 'success', text: 'Close to the suggested gains for this hover throttle.' }
   return { tone: 'success', text: 'Right for this hover throttle.' }
 }
 
