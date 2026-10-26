@@ -25060,7 +25060,7 @@ button.plot-side-list__name {
   flex-wrap: nowrap;
 }
 .feel-input--bits .scoped-option-chips {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .feel-input__choice--only {
@@ -25075,4 +25075,34 @@ button.plot-side-list__name {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+.initial-tune__group th {
+  padding-top: var(--space-2);
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.initial-tune__id {
+  margin-left: 8px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-dim);
+}
+.initial-tune__unit {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.tuning-profile-save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.tuning-profile-save input[type='text'] {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.tuning-profile-save--extra {
+  margin-top: var(--space-2);
 }

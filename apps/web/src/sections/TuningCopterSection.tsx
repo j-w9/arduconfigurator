@@ -759,76 +759,37 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                       </div>
                     ) : null}
 
-                    <section className="bf-gui-box">
+                    <section className="bf-gui-box pilot-feel-card" data-testid="tuning-profile-save">
                       <div className="bf-gui-box__titlebar">
-                        <strong>Tuning Profiles</strong>
+                        <strong>Save current tune</strong>
+                        <small className="pilot-feel-card__modes">
+                          {savedTuningProfiles.length > 0 ? `${savedTuningProfiles.length} saved` : 'none saved yet'}
+                        </small>
                       </div>
                       <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <strong>Save known-good tunes</strong>
-                            <p>Capture the live or staged tune into a reusable local profile, then restage it later through the same verified review path.</p>
-                          </div>
-                          <StatusBadge tone={savedTuningProfiles.length > 0 ? 'success' : 'neutral'}>
-                            {savedTuningProfiles.length > 0 ? `${savedTuningProfiles.length} saved` : 'empty'}
-                          </StatusBadge>
-                        </div>
-
-                        <div className="snapshots-form-grid">
-                          <label className="snapshots-field">
-                            <span>Profile Label</span>
-                            <input
-                              data-testid="tuning-profile-label-input"
-                              type="text"
-                              value={tuningProfileLabelInput}
-                              onChange={(event) => setTuningProfileLabelInput(event.target.value)}
-                              placeholder="5-inch baseline"
-                            />
-                            <small>Short, build-specific name for the saved tune.</small>
-                          </label>
-
-                          <label className="snapshots-field">
-                            <span>Source</span>
-                            <select
-                              data-testid="tuning-profile-source-select"
-                              value={tuningProfileSourceInput}
-                              onChange={(event) => setTuningProfileSourceInput(event.target.value as TuningProfileSourceMode)}
-                            >
-                              <option value="staged">Current staged tune</option>
-                              <option value="live">Current live controller tune</option>
-                            </select>
-                            <small>
-                              {tuningProfileSourceUsesStaged
-                                ? 'Captures the current staged tuning drafts on top of the live baseline.'
-                                : 'Captures the controller’s currently synced live tuning values.'}
-                            </small>
-                          </label>
-
-                          <label className="snapshots-field snapshots-field--wide">
-                            <span>Note</span>
-                            <textarea
-                              data-testid="tuning-profile-note-input"
-                              value={tuningProfileNoteInput}
-                              onChange={(event) => setTuningProfileNoteInput(event.target.value)}
-                              placeholder="Quiet freestyle tune for ducted builds, captured after the first clean hover pass."
-                            />
-                            <small>Keep notes concise so the saved profile remains easy to scan in the browser library.</small>
-                          </label>
-
-                          <label className="snapshots-setting-row snapshots-field--wide">
-                            <input
-                              type="checkbox"
-                              checked={tuningProfileProtectedInput}
-                              onChange={(event) => setTuningProfileProtectedInput(event.target.checked)}
-                            />
-                            <span>
-                              <strong>Protect this profile from deletion</strong>
-                              <small>Use protection for known-good baselines you do not want removed accidentally from the local browser library.</small>
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="switch-exercise-controls">
+                        <div className="tuning-profile-save">
+                          <input
+                            data-testid="tuning-profile-label-input"
+                            type="text"
+                            aria-label="Profile name"
+                            value={tuningProfileLabelInput}
+                            onChange={(event) => setTuningProfileLabelInput(event.target.value)}
+                            placeholder="Name, e.g. 5-inch baseline"
+                          />
+                          <select
+                            data-testid="tuning-profile-source-select"
+                            aria-label="What to save"
+                            value={tuningProfileSourceInput}
+                            onChange={(event) => setTuningProfileSourceInput(event.target.value as TuningProfileSourceMode)}
+                            title={
+                              tuningProfileSourceUsesStaged
+                                ? 'The live tune with your staged drafts on top.'
+                                : 'The tune on the vehicle now.'
+                            }
+                          >
+                            <option value="staged">Live + staged changes</option>
+                            <option value="live">Live tune only</option>
+                          </select>
                           <button
                             type="button"
                             data-testid="create-tuning-profile-button"
@@ -836,8 +797,26 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                             onClick={handleCreateTuningProfile}
                             disabled={!canCreateTuningProfile}
                           >
-                            Create Tuning Profile
+                            Save
                           </button>
+                        </div>
+                        <div className="tuning-profile-save tuning-profile-save--extra">
+                          <input
+                            data-testid="tuning-profile-note-input"
+                            type="text"
+                            aria-label="Note"
+                            value={tuningProfileNoteInput}
+                            onChange={(event) => setTuningProfileNoteInput(event.target.value)}
+                            placeholder="Note (optional)"
+                          />
+                          <label className="pid-gains__link">
+                            <input
+                              type="checkbox"
+                              checked={tuningProfileProtectedInput}
+                              onChange={(event) => setTuningProfileProtectedInput(event.target.checked)}
+                            />{' '}
+                            Protect from deletion
+                          </label>
                         </div>
                       </div>
                     </section>

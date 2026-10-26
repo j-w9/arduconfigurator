@@ -10742,6 +10742,16 @@ export function App() {
                it has no write path of its own. */
             <InitialTuneView
               isExpertMode={isExpertMode}
+              describe={(paramId) => {
+                const definition =
+                  metadataCatalog.parameters[paramId] ?? snapshot.parameters.find((parameter) => parameter.id === paramId)?.definition
+                const display = PILOT_FEEL_DISPLAY[paramId]
+                return {
+                  label: definition?.label ?? paramId,
+                  unit: paramId === 'ANGLE_MAX' ? 'deg' : display?.unit ?? definition?.unit,
+                  display: (raw) => toDisplay(paramId, raw)
+                }
+              }}
               liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
               stagedIds={new Set(parameterDraftById.keys())}
               onStage={handleStageInitialTuneParameters}
