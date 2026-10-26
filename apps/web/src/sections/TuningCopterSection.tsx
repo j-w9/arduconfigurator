@@ -105,6 +105,8 @@ export interface TuningCopterSectionProps {
   notchHelpSlot?: ReactNode
   /** Pilot ▸ Alt Hold: the altitude controller's gains and the hover-throttle check. */
   altHoldControllerSlot?: ReactNode
+  /** Pilot: the Angle / Acro / limits stick-feel cards, in place of the slider boxes. */
+  pilotFeelSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
   isExpertMode: boolean
@@ -121,6 +123,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     notchHelpSlot,
     isExpertMode,
     altHoldControllerSlot,
+    pilotFeelSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -223,6 +226,8 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
           <>
                 {activeTuningTaskId === 'rates' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack">
+                    {pilotFeelSlot ?? (
+                      <>
                     <details className="bf-gui-box">
                       <summary className="bf-gui-box__titlebar">
                         <strong>Attitude (Acro)</strong>
@@ -275,6 +280,9 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         </div>
                       </div>
                     </details>
+
+                      </>
+                    )}
 
                     <details className="bf-gui-box">
                       <summary className="bf-gui-box__titlebar">

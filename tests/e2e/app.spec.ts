@@ -97,7 +97,6 @@ async function applySingleTuningChange(page: Page, value: string): Promise<void>
   await page.getByTestId('tuning-tab-rates').click()
   // The Pilot mode sections are collapsible and default collapsed — expand
   // Angle to reach its ATC_INPUT_TC control.
-  await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
   await page.getByTestId('tuning-input-ATC_INPUT_TC').fill(value)
   await page.getByTestId('tuning-input-ATC_INPUT_TC').blur()
   // Editing stages in place; the write is the draft bar's "Write all" (the
@@ -567,7 +566,6 @@ test.describe('browser configurator regression flows', () => {
 
     // Default landing task is rates (Pilot); its mode sections are collapsible
     // and default collapsed — expand Angle to reach the flight-feel input.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible()
 
@@ -1042,8 +1040,7 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText(/Saved snapshot "Provisioning baseline" with \d+ parameters\./)).toBeVisible()
 
     await openView(page, 'tuning')
-    // Pilot mode sections default collapsed — expand Angle to reach ATC_INPUT_TC.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
+    // Pilot mode sections default collapsed — ATC_INPUT_TC is on the Angle modes card.
     await page.getByTestId('tuning-input-ATC_INPUT_TC').fill('0.2')
 
     await openView(page, 'snapshots')

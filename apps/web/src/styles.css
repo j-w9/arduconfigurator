@@ -24821,3 +24821,132 @@ button.plot-side-list__name {
 .tuning-control .tuning-control__footer small {
   margin-left: auto;
 }
+
+/* Tuning ▸ Pilot: stick-feel cards (views/PilotFeel.tsx). Curve colours pass
+   the dataviz palette checks (lightness band, CVD separation) per theme. */
+:root {
+  --feel-rp: #c08a00;
+  --feel-y: #5b8fe8;
+}
+:root[data-theme='light'] {
+  --feel-rp: #b57f00;
+  --feel-y: #2f6fdc;
+}
+.pilot-feel {
+  display: grid;
+  gap: var(--space-3);
+}
+.pilot-feel-card .bf-gui-box__titlebar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.pilot-feel-card__modes {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.pilot-feel-card__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: var(--space-3);
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .pilot-feel-card__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pilot-feel-card__fields {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.pilot-feel-card__fields--row {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.pilot-feel-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.pilot-feel-field__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.pilot-feel-field__entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pilot-feel-field__entry input {
+  width: 110px;
+}
+.pilot-feel-field--staged .pilot-feel-field__entry input {
+  border-color: var(--accent);
+}
+.pilot-feel-field--invalid .pilot-feel-field__entry input {
+  border-color: var(--danger, #e5484d);
+}
+.pilot-feel-readout {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.pilot-feel-readout--warning {
+  color: var(--warning, #f5a623);
+}
+.pilot-feel-chart {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.pilot-feel-chart svg {
+  width: 100%;
+  height: auto;
+  background: var(--chart-bg);
+  border: 1px solid var(--chart-border);
+  border-radius: 6px;
+}
+.pilot-feel-chart__grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+.pilot-feel-chart__tick {
+  fill: var(--chart-dim-text);
+  font-size: 9px;
+}
+.pilot-feel-chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.pilot-feel-chart__line--rp { stroke: var(--feel-rp); }
+.pilot-feel-chart__line--y { stroke: var(--feel-y); }
+.pilot-feel-chart__cross {
+  stroke: var(--chart-dim-text);
+  stroke-dasharray: 3 3;
+}
+.pilot-feel-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.pilot-feel-chart__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pilot-feel-chart__swatch {
+  width: 10px;
+  height: 2px;
+  display: inline-block;
+}
+.pilot-feel-chart__swatch--rp { background: var(--feel-rp); }
+.pilot-feel-chart__swatch--y { background: var(--feel-y); }

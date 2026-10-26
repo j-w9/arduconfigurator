@@ -272,6 +272,7 @@ import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './vie
 import type { TcalWrite } from './view-models/tcal-plan'
 import { altHoldGainCheck } from './view-models/althold-gain-check'
 import { AltHoldGainCheckView } from './views/AltHoldGainCheck'
+import { PilotFeelView, type PilotFeelValue } from './views/PilotFeel'
 import { dronecanNodeStack } from './view-models/dronecan-node-stack'
 import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
@@ -5991,6 +5992,56 @@ export function App() {
   }
 
   const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
+  // Tuning ▸ Pilot: the stick-feel cards (views/PilotFeel). Each value is the
+  // tuning draft path's own text (ANGLE_MAX already in degrees); the pre-4.7
+  // ATC_ACCEL_*_MAX limits are centidegrees and show as deg/s².
+  const pilotFeelValue = (paramIds: readonly string[], label: string, unit?: string): PilotFeelValue | undefined => {
+    const parameter = paramIds
+      .map((paramId) => snapshot.parameters.find((candidate) => candidate.id === paramId))
+      .find((candidate): candidate is ParameterState => candidate !== undefined)
+    if (!parameter) return undefined
+    const scale = parameter.id.startsWith('ATC_ACCEL_') ? 100 : 1
+    const raw = tuningInputValue(parameter, editedValues)
+    const text = scale === 1 || raw.trim() === '' ? raw : String(Number((Number(raw) / scale).toFixed(2)))
+    const { min, max } = tuningControlBounds(parameter)
+    return {
+      paramId: parameter.id,
+      label,
+      description: parameter.definition?.description,
+      unit,
+      text,
+      draftStatus: parameterDraftById.get(parameter.id)?.status,
+      min: min === undefined ? undefined : min / scale,
+      max: max === undefined ? undefined : max / scale,
+      onChange: (next) =>
+        handleStageTuningParameterValue(parameter, scale === 1 || next.trim() === '' ? next : String(Math.round(Number(next) * scale)))
+    }
+  }
+  const pilotFeelSlot = (
+    <PilotFeelView
+      angle={{
+        lean: pilotFeelValue(['ATC_ANGLE_MAX', 'ANGLE_MAX'], 'Max lean', 'deg'),
+        inputTc: pilotFeelValue(['ATC_INPUT_TC'], 'Response', 's'),
+        yawRate: pilotFeelValue(['PILOT_Y_RATE'], 'Yaw rate', 'deg/s'),
+        yawExpo: pilotFeelValue(['PILOT_Y_EXPO'], 'Yaw expo'),
+        yawRateTc: pilotFeelValue(['PILOT_Y_RATE_TC'], 'Yaw response', 's')
+      }}
+      acro={{
+        rpRate: pilotFeelValue(['ACRO_RP_RATE'], 'Roll/pitch rate', 'deg/s'),
+        rpExpo: pilotFeelValue(['ACRO_RP_EXPO'], 'Roll/pitch expo'),
+        rpRateTc: pilotFeelValue(['ACRO_RP_RATE_TC'], 'Roll/pitch response', 's'),
+        yRate: pilotFeelValue(['ACRO_Y_RATE'], 'Yaw rate', 'deg/s'),
+        yExpo: pilotFeelValue(['ACRO_Y_EXPO'], 'Yaw expo'),
+        yRateTc: pilotFeelValue(['ACRO_Y_RATE_TC'], 'Yaw response', 's')
+      }}
+      limits={{
+        roll: pilotFeelValue(['ATC_ACC_R_MAX', 'ATC_ACCEL_R_MAX'], 'Roll', 'deg/s²'),
+        pitch: pilotFeelValue(['ATC_ACC_P_MAX', 'ATC_ACCEL_P_MAX'], 'Pitch', 'deg/s²'),
+        yaw: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw', 'deg/s²')
+      }}
+    />
+  )
+
   // Tuning ▸ Pilot ▸ Alt Hold: the altitude controller AltHold flies with, and
   // its accel gains checked against ArduPilot's hover-throttle rule. Values are
   // draft-aware so staging a new hover throttle re-checks the gains at once.
@@ -10381,6 +10432,7 @@ export function App() {
             ) : undefined
           }
           altHoldControllerSlot={altHoldControllerSlot}
+          pilotFeelSlot={pilotFeelSlot}
           filterNotchSlot={
             <>
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as

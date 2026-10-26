@@ -1528,7 +1528,6 @@ test.describe('Tuning tab', () => {
     // collapsible Angle section (default collapsed) — expand it first. The demo
     // seeds ATC_INPUT_TC as the float32-widened 0.15000000596046448 (what a real
     // FC reports); the number field must show it rounded, not all the digits.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible({ timeout: 10000 })
     await expect(input).toHaveValue('0.15')
@@ -1543,13 +1542,11 @@ test.describe('Tuning tab', () => {
     await connectViaHeader(page)
     await openView(page, 'tuning')
 
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     // Lean angle resolves to whichever param the FC streams (ANGLE_MAX <= 4.6,
     // ATC_ANGLE_MAX 4.7+); the demo Copter streams ANGLE_MAX.
     await expect(page.getByTestId('tuning-input-ANGLE_MAX')).toBeVisible({ timeout: 10000 })
     await expect(page.getByTestId('tuning-input-PILOT_Y_RATE')).toBeVisible()
     await expect(page.getByTestId('tuning-input-PILOT_Y_EXPO')).toBeVisible()
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Acro' }).click()
     await expect(page.getByTestId('tuning-input-ACRO_RP_RATE')).toBeVisible()
     await expect(page.getByTestId('tuning-input-ACRO_Y_RATE')).toBeVisible()
     await expect(page.getByTestId('tuning-input-ACRO_RP_EXPO')).toBeVisible()
@@ -1560,45 +1557,39 @@ test.describe('Tuning tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'tuning')
-
-    // Pilot modes are collapsible and default collapsed — expand Angle first.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
-    const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
+    // The Pilot stick feel is number boxes now; the sliders that remain are the
+    // filter frequencies.
+    await page.getByTestId('tuning-tab-filters').click()
+    const input = page.getByTestId('tuning-input-INS_GYRO_FILTER')
     await expect(input).toBeVisible({ timeout: 10000 })
-    // Scope to the ATC_INPUT_TC control's own slider (not `.first()` — the
-    // Pilot section order isn't guaranteed, and a collapsed section's sliders
-    // are still in the DOM). Dragging it (input events, no pointer-up) must
-    // update the value live but NOT commit a staged draft yet — committing on
-    // every drag tick is what made the slider stutter and "jump to staged".
+    // Dragging (input events, no pointer-up) must update the value live but
+    // NOT commit a staged draft yet — committing on every drag tick is what
+    // made the slider stutter and "jump to staged".
     const slider = page
-      .locator('.tuning-control', { has: page.getByTestId('tuning-input-ATC_INPUT_TC') })
+      .locator('.tuning-control', { has: page.getByTestId('tuning-input-INS_GYRO_FILTER') })
       .locator('.tuning-control__range')
-    await slider.fill('0.3')
-    await expect(input).toHaveValue('0.3')
-    // Mid-drag (before release) nothing is staged.
+    await slider.fill('60')
+    await expect(input).toHaveValue('60')
     await expect(page.locator('.tuning-control--staged')).toHaveCount(0)
   })
 
-  test('Pilot mode sections are collapsible and default collapsed', async ({ page }) => {
+  test('Alt Hold and Loiter stay collapsible and default collapsed; the stick-feel cards are open', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'tuning')
 
-    // The Pilot tab opens as a compact list of collapsible mode pills; their
-    // controls stay hidden until the operator expands a mode.
-    const angleSummary = page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' })
-    await expect(angleSummary).toBeVisible()
-    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeHidden()
-
-    await angleSummary.click()
-    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible({ timeout: 10000 })
+    const altHoldSummary = page.locator('details.bf-gui-box > summary').filter({ hasText: 'Alt Hold' })
+    await expect(altHoldSummary).toBeVisible()
+    await expect(page.getByTestId('tuning-input-PILOT_SPEED_UP')).toBeHidden()
+    await altHoldSummary.click()
+    await expect(page.getByTestId('tuning-input-PILOT_SPEED_UP')).toBeVisible()
   })
 
   test('the curated control info bubble reveals the raw param name and a wiki link', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'tuning')
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
 
     // The card only ever shows the friendly label ("Stick feel smoothing"), so
     // the bubble is the operator's ONLY route from that label to ATC_INPUT_TC.
@@ -1644,7 +1635,6 @@ test.describe('Tuning tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'tuning')
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
 
     const info = page.getByTestId('tuning-info-ATC_INPUT_TC')
     await expect(info).toBeVisible({ timeout: 10000 })
@@ -4778,7 +4768,6 @@ test.describe('ArduPlane demo', () => {
     // The large Copter tuning workbench is the default ('rates'/Pilot) tab — its
     // ATC_INPUT_TC control is a signature workbench field and must still be
     // present. It lives under the collapsible Angle section (default collapsed).
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible({ timeout: 10000 })
 
     // AutoTune now lives in its own task tab; open it to reveal the surface.
@@ -5048,6 +5037,38 @@ test.describe('ArduPlane demo', () => {
     await expect(page.locator('body')).toContainText('2 staged changes')
     await expect(page.getByTestId('althold-gain-check')).toHaveAttribute('data-tone', 'success')
     await expect(page.getByTestId('althold-gain-stage')).toHaveCount(0)
+  })
+
+  test('Tuning ▸ Pilot: stick feel as number boxes with units, the firmware\'s named values as chips, and stick curves', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-rates').click()
+
+    const angle = page.getByTestId('pilot-feel-angle')
+    await expect(angle).toBeVisible()
+    // ATC_INPUT_TC 0.15 is the firmware's "Medium"; x3 is the time to full lean.
+    await expect(page.getByTestId('pilot-feel-ATC_INPUT_TC-choice-0.15')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in about 0.45 s.')
+    // A chip stages its value; the box shows it and the readout follows.
+    await page.getByTestId('pilot-feel-ATC_INPUT_TC-choice-0.1').click()
+    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toHaveValue('0.1')
+    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in about 0.30 s.')
+    // Any value can still be typed; no chip claims it.
+    await page.getByTestId('tuning-input-ATC_INPUT_TC').fill('0.12')
+    await expect(page.getByTestId('pilot-feel-ATC_INPUT_TC').locator('[aria-pressed="true"]')).toHaveCount(0)
+
+    // Acro: both stick curves; full roll rate from rate / accel limit.
+    await expect(page.getByTestId('pilot-feel-acro-chart')).toContainText('Roll/pitch 360 °/s')
+    await expect(page.getByTestId('pilot-feel-roll-time')).toHaveText('Full roll rate in 0.26 s.')
+
+    // The pre-4.7 accel limits are centidegrees: shown and edited in deg/s².
+    await expect(page.getByTestId('tuning-input-ATC_ACCEL_R_MAX')).toHaveValue('1409')
+    await page.getByTestId('tuning-input-ATC_ACCEL_Y_MAX').fill('400')
+    await expect(page.locator('body')).toContainText('staged')
+    await expect(page.getByTestId('pilot-feel-yaw-time')).toHaveText('Full yaw rate in 0.45 s.')
   })
 
   test('Calibration: autotune is a flight you come back from', async ({ page }) => {
