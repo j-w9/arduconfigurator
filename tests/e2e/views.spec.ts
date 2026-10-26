@@ -1553,26 +1553,6 @@ test.describe('Tuning tab', () => {
     await expect(page.getByTestId('tuning-input-ACRO_Y_EXPO')).toBeVisible()
   })
 
-  test('the slider tracks live while dragging and only stages on release', async ({ page }) => {
-    await page.goto('/')
-    await connectViaHeader(page)
-    await openView(page, 'tuning')
-    // The Pilot stick feel is number boxes now; the sliders that remain are the
-    // filter frequencies.
-    await page.getByTestId('tuning-tab-filters').click()
-    const input = page.getByTestId('tuning-input-INS_GYRO_FILTER')
-    await expect(input).toBeVisible({ timeout: 10000 })
-    // Dragging (input events, no pointer-up) must update the value live but
-    // NOT commit a staged draft yet — committing on every drag tick is what
-    // made the slider stutter and "jump to staged".
-    const slider = page
-      .locator('.tuning-control', { has: page.getByTestId('tuning-input-INS_GYRO_FILTER') })
-      .locator('.tuning-control__range')
-    await slider.fill('60')
-    await expect(input).toHaveValue('60')
-    await expect(page.locator('.tuning-control--staged')).toHaveCount(0)
-  })
-
   test('Alt Hold and Loiter stay collapsible and default collapsed; the stick-feel cards are open', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
@@ -8608,7 +8588,7 @@ test.describe('Tuning ▸ Filters', () => {
   test('sensor parameters joined the rate filters', async ({ page }) => {
     await openFilters(page)
     await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
-    await expect(page.getByTestId('tuning-filter-group-roll')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-axes')).toContainText('Roll')
   })
 
   test('the notches are their own task, not the tail of the filter page', async ({ page }) => {

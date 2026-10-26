@@ -111,6 +111,8 @@ export interface TuningCopterSectionProps {
   pidGainsSlot?: ReactNode
   /** Notches: Notch 1 | Notch 2 grid and the filter bank, in place of the cards. */
   notchesSlot?: ReactNode
+  /** Filters: the manual sensor + Roll | Pitch | Yaw filter grids. */
+  filterManualSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
   isExpertMode: boolean
@@ -130,6 +132,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     pilotFeelSlot,
     pidGainsSlot,
     notchesSlot,
+    filterManualSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -621,7 +624,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           * gate. */}
                         {filterNotchSlot}
 
-                        {isExpertMode ? (
+                        {isExpertMode ? (filterManualSlot ?? (
                           <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
                             <div className="tuning-filter-manual__header">
                               <strong>Manual override</strong>
@@ -661,7 +664,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                               ))}
                             </div>
                           </div>
-                        ) : null}
+                        )) : null}
                       </div>
                     </section>
                   </div>

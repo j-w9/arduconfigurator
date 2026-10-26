@@ -6310,6 +6310,36 @@ export function App() {
       }
     />
   )
+  // Tuning ▸ Filters, the manual part: sensor filters, then the rate-loop
+  // filters as a Roll | Pitch | Yaw grid (all Hz).
+  const filterAxis = (suffix: 'FLTT' | 'FLTE' | 'FLTD', name: string) =>
+    (['RLL', 'PIT', 'YAW'] as const).map((axis) =>
+      pilotFeelValue([`ATC_RAT_${axis}_${suffix}`], `${axis === 'RLL' ? 'Roll' : axis === 'PIT' ? 'Pitch' : 'Yaw'} ${name}`, { unit: 'Hz' })
+    )
+  const filterManualSlot = (
+    <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
+      <div className="tuning-filter-manual__header">
+        <strong>Manual</strong>
+      </div>
+      <FeelGrid
+        testId="tuning-filter-group-sensor"
+        columns={['']}
+        rows={[
+          { label: 'Gyro filter', cells: [pilotFeelValue(['INS_GYRO_FILTER'], 'Gyro filter', { unit: 'Hz' })] },
+          { label: 'Accel filter', cells: [pilotFeelValue(['INS_ACCEL_FILTER'], 'Accel filter', { unit: 'Hz' })] }
+        ]}
+      />
+      <FeelGrid
+        testId="tuning-filter-axes"
+        columns={['Roll', 'Pitch', 'Yaw']}
+        rows={[
+          { label: 'Target filter', cells: filterAxis('FLTT', 'target filter') },
+          { label: 'Error filter', cells: filterAxis('FLTE', 'error filter') },
+          { label: 'D filter', cells: filterAxis('FLTD', 'D filter') }
+        ]}
+      />
+    </div>
+  )
   const responseChoices = RESPONSE_TC_CHOICES
   const rateResponseChoices: readonly NamedValue[] = [{ value: 0, label: 'Off' }, ...RESPONSE_TC_CHOICES]
   const pilotFeelSlot = (
@@ -10669,6 +10699,7 @@ export function App() {
           pilotFeelSlot={pilotFeelSlot}
           pidGainsSlot={pidGainsSlot}
           notchesSlot={notchesSlot}
+          filterManualSlot={filterManualSlot}
           filterNotchSlot={
             <>
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as
