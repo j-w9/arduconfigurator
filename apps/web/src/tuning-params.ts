@@ -94,6 +94,7 @@ export const TUNING_FILTER_PARAM_IDS = [
   'INS_HNTCH_REF',
   'INS_HNTCH_FREQ',
   'INS_HNTCH_BW',
+  'INS_HNTCH_ATT',
   'INS_HNTCH_HMNCS',
   'INS_HNTCH_OPTS',
   'INS_HNTCH_FM_RAT',
@@ -102,6 +103,7 @@ export const TUNING_FILTER_PARAM_IDS = [
   'INS_HNTC2_REF',
   'INS_HNTC2_FREQ',
   'INS_HNTC2_BW',
+  'INS_HNTC2_ATT',
   'INS_HNTC2_HMNCS',
   'INS_HNTC2_OPTS',
   'INS_HNTC2_FM_RAT',
@@ -186,6 +188,7 @@ export const TUNING_NOTCH_AXIS_GROUPS = [
       'INS_HNTCH_REF',
       'INS_HNTCH_FREQ',
       'INS_HNTCH_BW',
+      'INS_HNTCH_ATT',
       'INS_HNTCH_HMNCS',
       'INS_HNTCH_OPTS',
       'INS_HNTCH_FM_RAT'
@@ -205,6 +208,7 @@ export const TUNING_NOTCH_AXIS_GROUPS = [
       'INS_HNTC2_REF',
       'INS_HNTC2_FREQ',
       'INS_HNTC2_BW',
+      'INS_HNTC2_ATT',
       'INS_HNTC2_HMNCS',
       'INS_HNTC2_OPTS',
       'INS_HNTC2_FM_RAT'

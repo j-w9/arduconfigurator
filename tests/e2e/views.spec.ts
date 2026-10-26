@@ -8566,6 +8566,20 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('tuning-filter-group-notch2')).toHaveClass(/tuning-axis-card--wide/)
   })
 
+  test('each harmonic notch shows its attenuation (INS_HNTCH_ATT / INS_HNTC2_ATT), in dB', async ({ page }) => {
+    // How deep the notch cuts was never on the card: a field report had to go
+    // to raw Parameters for it. Both notches carry it beside bandwidth.
+    await openNotches(page)
+    for (const [group, id] of [
+      ['notch', 'INS_HNTCH_ATT'],
+      ['notch2', 'INS_HNTC2_ATT']
+    ]) {
+      const card = page.getByTestId(`tuning-filter-group-${group}`)
+      await expect(card, id).toContainText(group === 'notch' ? 'Notch attenuation' : 'Notch attenuation 2')
+      await expect(card.locator(`[data-testid$="-${id}"]`).first(), id).toBeVisible()
+    }
+  })
+
   test('every parameter carries an info dot', async ({ page }) => {
     // Two renderers feed this grid -- the Tuning slider for the frequencies,
     // the shared metadata editor for the enums, bitmasks, and ratios -- and

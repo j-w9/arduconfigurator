@@ -3741,6 +3741,19 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       // AP_Float; same reasoning as the centre frequency.
       step: 1
     },
+    // libraries/Filter/HarmonicNotchFilter.cpp @Param: ATT — AP_Float, dB, 5..50,
+    // default 40. How deep the notch cuts, which the card never showed.
+    INS_HNTCH_ATT: {
+      id: 'INS_HNTCH_ATT',
+      label: 'Notch attenuation',
+      description:
+        'How deep the notch cuts the motor noise, in dB. Above about 40 dB it is a hard notch rather than a modest attenuation; lower values cut less but add less phase lag.',
+      category: 'tuning',
+      unit: 'dB',
+      minimum: 5,
+      maximum: 50,
+      step: 1
+    },
     INS_HNTCH_HMNCS: {
       id: 'INS_HNTCH_HMNCS',
       label: 'Notch harmonics',
@@ -3866,6 +3879,19 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       minimum: 5,
       maximum: 250,
       // AP_Float; same reasoning as the centre frequency.
+      step: 1
+    },
+    // libraries/Filter/HarmonicNotchFilter.cpp @Param: ATT — AP_Float, dB, 5..50,
+    // default 40. How deep the notch cuts, which the card never showed.
+    INS_HNTC2_ATT: {
+      id: 'INS_HNTC2_ATT',
+      label: 'Notch attenuation 2',
+      description:
+        'How deep the notch cuts the motor noise, in dB. Above about 40 dB it is a hard notch rather than a modest attenuation; lower values cut less but add less phase lag.',
+      category: 'tuning',
+      unit: 'dB',
+      minimum: 5,
+      maximum: 50,
       step: 1
     },
     INS_HNTC2_HMNCS: {
