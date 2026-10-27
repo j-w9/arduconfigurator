@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -223,14 +223,7 @@ import {
   buildPresetAutoBackupNote,
   deriveProvisioningOverlayParametersFromDrafts,
 } from './library-helpers'
-import {
-  tuningInputValue,
-  applyTuningEditedValue,
-  tuningNumericValue,
-  tuningControlBounds,
-  formatTuningDisplayValue,
-  TuningControl
-} from './tuning-control'
+import { tuningInputValue, applyTuningEditedValue, tuningControlBounds } from './tuning-control'
 import {
   missionTitleForView
 } from './setup-format-helpers'
@@ -363,10 +356,8 @@ import { TuningCopterSection } from './sections/TuningCopterSection'
 import { BetaflightConnect } from './views/BetaflightConnect'
 import { useBetaflightMsp } from './hooks/use-betaflight-msp'
 import { InitialTuneView } from './views/InitialTune'
-import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { FiltersFromGyro } from './views/FiltersFromGyro'
-import { buildFilterBank, buildFilterIndexOptions, filterSlotParamIds } from './view-models/filter-bank'
-import { FilterBankPanel } from './views/FilterBankPanel'
+import { buildFilterBank, buildFilterIndexOptions } from './view-models/filter-bank'
 import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
@@ -3246,14 +3237,7 @@ export function App() {
     flightFeelParameters,
     tuningAccelerationParameters,
     acroTuningParameters,
-    altHoldPilotParameters,
-    loiterPilotParameters,
-    tuningAdvancedPidParameters,
-    tuningFilterParameters,
-    tuningPidAxisGroups,
-    tuningFilterAxisGroups,
-    tuningNotchAxisGroups,
-    tuningAdvancedPidAxisGroups
+    tuningFilterParameters
   } = useTuningCatalog(snapshot)
   const outputReviewParameters = useMemo(
     () =>
@@ -5906,45 +5890,8 @@ export function App() {
   const activeTuningTask = tuningTaskCards.find((task) => task.id === activeTuningTaskId) ?? tuningTaskCards[0]
   const effectiveTuningTaskId = activeTuningTask?.id ?? activeTuningTaskId
 
-  const renderTuningControl = (parameter: ParameterState): ReactElement => {
-    const draft = parameterDraftById.get(parameter.id)
-    const { min, max, step } = tuningControlBounds(parameter)
-    const inputValue = tuningInputValue(parameter, editedValues)
-    const numericValue = tuningNumericValue(parameter, editedValues)
-    const currentValue = formatTuningDisplayValue(parameter, parameter.value)
-    const stagedValue = formatTuningDisplayValue(parameter, draft?.nextValue ?? parameter.value)
 
-    return (
-      <TuningControl
-        key={parameter.id}
-        parameter={parameter}
-        draftStatus={draft?.status}
-        draftReason={draft?.reason}
-        min={min}
-        max={max}
-        step={step}
-        inputValue={inputValue}
-        numericValue={numericValue}
-        currentValue={currentValue}
-        stagedValue={stagedValue}
-        label={parameter.definition?.label ?? parameter.id}
-        description={parameter.definition?.description}
-        onStage={handleStageTuningParameterValue}
-      />
-    )
-  }
 
-  /**
-   * Filter Editor control: the Tuning slider where a slider makes sense, the
-   * generic metadata editor where it does not.
-   *
-   * TuningControl is always a slider + number, which is right for a filter
-   * frequency and wrong for INS_HNTCH_MODE (an enum) or INS_HNTCH_OPTS (a
-   * bitmask) -- dragging a slider through mode values, or through a bitmask,
-   * produces states nobody meant to ask for. Those two fall through to the
-   * shared metadata renderer, which gives a named list and per-bit toggles.
-   * Both paths carry the same "i" bubble and wiki link.
-   */
   // The FILTn filter bank the rate loops point into. Derived from live values,
   // so a slot configured on the vehicle shows up here without anything being
   // hard-coded about how many exist.
@@ -5975,16 +5922,6 @@ export function App() {
       }))
   }, [filterBank, snapshot.parameters, metadataCatalog])
 
-  /** Every FILTn slot the vehicle reports, as parameter rows to render. */
-  const filterBankGroups = useMemo(() => {
-    const byId = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
-    return filterBank.slots.map((slot) => ({
-      slot,
-      parameters: filterSlotParamIds(slot.index)
-        .map((id) => byId.get(id))
-        .filter((parameter): parameter is ParameterState => parameter !== undefined)
-    }))
-  }, [filterBank, snapshot.parameters])
 
   // Live values for the filter helpers below the Filters grid. One map, built
   // once per parameter change, rather than one per helper per render.
@@ -5993,16 +5930,7 @@ export function App() {
     [snapshot.parameters]
   )
 
-  const renderFilterControl = (parameter: ParameterState): ReactNode => {
-    const definition = parameter.definition
-    const isChoice = definition?.bitmask === true || (definition?.options?.length ?? 0) > 0
-    // INS_HNTCH_REF and INS_HNTCH_FM_RAT are AP_Float ratios in 0..1, not
-    // frequencies: the values that matter are a measured hover thrust or
-    // exactly 1, and neither is something you find by dragging. They get the
-    // typed number field; the Hz filters keep the slider.
-    const isRatio = parameter.id === 'INS_HNTCH_REF' || parameter.id === 'INS_HNTCH_FM_RAT'
-    return isChoice || isRatio ? renderMetadataParameterField(parameter) : renderTuningControl(parameter)
-  }
+
 
   const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
   // Tuning ▸ Pilot: the stick-feel cards (views/PilotFeel). Each value is the
@@ -10639,19 +10567,7 @@ export function App() {
             activeTuningTaskId: effectiveTuningTaskId,
             activeTuningTask,
             tuningTaskCards,
-            flightFeelParameters,
-            acroTuningParameters,
-            tuningAccelerationParameters,
-            altHoldPilotParameters,
-            loiterPilotParameters,
-            tuningPidAxisGroups,
-            tuningAdvancedPidParameters,
-            tuningAdvancedPidAxisGroups,
             tuningFilterParameters,
-            tuningFilterAxisGroups,
-            tuningNotchAxisGroups,
-            tuningMasterPreviewEntries,
-            tuningMasterDefaultsActive,
             tuningProfileSourceUsesStaged,
             canCreateTuningProfile,
             savedTuningProfiles,
@@ -10662,39 +10578,20 @@ export function App() {
             selectedTuningProfileDiffGroups,
             selectedTuningProfileChangedEntries,
             selectedTuningProfileInvalidEntries,
-            tuningRateStagedDrafts,
-            tuningRateInvalidDrafts,
-            tuningPidStagedDrafts,
-            tuningPidInvalidDrafts,
             tuningFilterStagedDrafts,
             tuningFilterInvalidDrafts,
             tuningProfileNotice,
             tuningProfileStorageNotice
           }}
           handlers={{
-            handleStageTuningMasterAdjustments,
-            handleResetTuningMasterSliders,
             handleStageSelectedTuningProfile,
             handleCreateTuningProfile,
             handleDeleteSelectedTuningProfile,
             handleToggleSelectedTuningProfileProtection,
             setSelectedTuningProfileId,
-            renderTuningControl,
-          renderFilterControl,
             formatCategoryLabel
           }}
           isExpertMode={isExpertMode}
-          filterBankSlot={
-            filterBank.supported ? (
-              <FilterBankPanel
-                bank={filterBank}
-                groups={filterBankGroups}
-                indexParameters={filterIndexParameters ?? []}
-                renderField={renderMetadataParameterField}
-              />
-            ) : undefined
-          }
-          altHoldControllerSlot={altHoldControllerSlot}
           pilotFeelSlot={pilotFeelSlot}
           pidGainsSlot={pidGainsSlot}
           notchesSlot={notchesSlot}
@@ -10724,17 +10621,6 @@ export function App() {
                 disabled={busyAction !== undefined}
               />
             </>
-          }
-          /* The notch SUGGESTIONS (bandwidth from base frequency, a reference
-             that actually tracks) travel with the notch fields they fill in,
-             not with the gyro-cutoff panel they used to sit under. */
-          notchHelpSlot={
-            <FilterNotchHelp
-              liveValues={filterLiveValues}
-              editedValues={editedValues}
-              onSetDraft={setDraft}
-              disabled={busyAction !== undefined}
-            />
           }
           initialTuneSlot={
             /* Starting-point tuning. Reads live values to show what each

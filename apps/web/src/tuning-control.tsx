@@ -1,15 +1,9 @@
-// Curated-tuning control (slider + number field) and its value helpers,
-// extracted from App.tsx as part of its decomposition. The slider holds its
-// value locally while dragging and commits the staged draft only on release.
+// Value helpers for the Tuning views' typed fields (ANGLE_MAX shown in
+// degrees, edited back to centidegrees; bounds; rounding for display).
 
-import { useState } from 'react'
-import type { ReactElement } from 'react'
+import type { ParameterState } from '@arduconfig/ardupilot-core'
 
-import type { ParameterDraftStatus, ParameterState } from '@arduconfig/ardupilot-core'
-import { StatusBadge } from '@arduconfig/ui-kit'
-
-import { formatNumericDisplayValue, formatParameterDisplayValue, formatAngleMaxDegrees } from './parameter-format'
-import { ParamInfoBubble } from './views/ParamInfoBubble'
+import { formatNumericDisplayValue } from './parameter-format'
 
 export function tuningInputValue(parameter: ParameterState, editedValues: Record<string, string>): string {
   const rawValue = editedValues[parameter.id]
@@ -58,17 +52,6 @@ export function applyTuningEditedValue(
   }
 }
 
-export function tuningNumericValue(parameter: ParameterState, editedValues: Record<string, string>): number {
-  const normalizedInputValue = tuningInputValue(parameter, editedValues)
-  const parsed = Number(normalizedInputValue)
-
-  if (Number.isFinite(parsed)) {
-    return parsed
-  }
-
-  return parameter.id === 'ANGLE_MAX' ? Math.round(parameter.value / 100) : parameter.value
-}
-
 export function tuningControlBounds(parameter: ParameterState): { min?: number; max?: number; step?: number } {
   if (parameter.id === 'ANGLE_MAX') {
     return {
@@ -83,14 +66,6 @@ export function tuningControlBounds(parameter: ParameterState): { min?: number; 
     max: parameter.definition?.maximum,
     step: parameter.definition?.step ?? 0.01
   }
-}
-
-export function formatTuningDisplayValue(parameter: ParameterState, value: number | undefined): string {
-  if (parameter.id === 'ANGLE_MAX') {
-    return formatAngleMaxDegrees(value)
-  }
-
-  return formatParameterDisplayValue(parameter, value)
 }
 
 export function clampNumericValue(value: number, minimum?: number, maximum?: number): number {
@@ -115,123 +90,4 @@ export function normalizeTuningNumericValue(parameter: ParameterState, value: nu
   const rounded = Math.round(clamped / step) * step
   const precision = Math.max(0, Math.ceil(Math.log10(1 / step)))
   return Number(rounded.toFixed(Math.min(precision, 6)))
-}
-
-export interface TuningControlProps {
-  parameter: ParameterState
-  draftStatus: ParameterDraftStatus | undefined
-  draftReason: string | undefined
-  min?: number
-  max?: number
-  step?: number
-  inputValue: string
-  numericValue: number
-  currentValue: string
-  stagedValue: string
-  label: string
-  /** Plain-text ArduPilot description, surfaced via the per-box "i" info bubble. */
-  description?: string
-  onStage: (parameter: ParameterState, nextValue: string) => void
-}
-
-/**
- * A single curated-tuning control (slider + number field). The slider holds
- * its value locally while you drag it and only commits to the staged-draft
- * store on release (pointer up / blur / key up). Committing on every drag
- * tick re-staged the draft and re-rendered the whole configurator each tick,
- * which made the slider stutter and snap to "staged" before you could finish
- * the drag. The number field commits per change (typing is discrete, not a
- * hot-path drag).
- */
-export function TuningControl(props: TuningControlProps): ReactElement {
-  const {
-    parameter,
-    draftStatus,
-    draftReason,
-    min,
-    max,
-    step,
-    inputValue,
-    numericValue,
-    currentValue,
-    stagedValue,
-    label,
-    description,
-    onStage
-  } = props
-
-  const [dragValue, setDragValue] = useState<string | null>(null)
-  const isDragging = dragValue !== null
-  const rangeValue = isDragging ? Number(dragValue) : numericValue
-  const numberFieldValue = isDragging ? dragValue : inputValue
-
-  const commit = (): void => {
-    if (dragValue !== null) {
-      onStage(parameter, dragValue)
-      setDragValue(null)
-    }
-  }
-
-  // ANGLE_MAX is stored in centidegrees but edited here in degrees.
-  const unit = parameter.id === 'ANGLE_MAX' ? 'deg' : parameter.definition?.unit
-
-  return (
-    <article className={`tuning-control tuning-control--${draftStatus ?? 'unchanged'}`}>
-      <div className="tuning-control__header">
-        <div>
-          <span>{label}</span>
-          <strong>{stagedValue}</strong>
-        </div>
-        {draftStatus === 'staged' ? <StatusBadge tone="warning">staged</StatusBadge> : null}
-        {draftStatus === 'invalid' ? <StatusBadge tone="danger">invalid</StatusBadge> : null}
-        {/* Shared per-field "i" affordance (Config / Networking use the same
-            component). Unconditional: a curated tuning card shows ONLY the
-            friendly label ("Stick Feel Smoothing"), so the bubble is the only
-            place the operator can learn the parameter is ATC_INPUT_TC — that
-            has to work whether or not the metadata carries a description. */}
-        <ParamInfoBubble
-          paramId={parameter.id}
-          label={label}
-          description={description}
-          testId={`tuning-info-${parameter.id}`}
-        />
-      </div>
-
-      <input
-        className="tuning-control__range"
-        aria-label={`${label} slider`}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={rangeValue}
-        onChange={(event) => setDragValue(event.target.value)}
-        onPointerUp={commit}
-        onPointerCancel={commit}
-        onKeyUp={commit}
-        onBlur={commit}
-      />
-
-      <div className="tuning-control__footer">
-        <input
-          data-testid={`tuning-input-${parameter.id}`}
-          aria-label={`${label} value`}
-          type="number"
-          min={min}
-          max={max}
-          step={step}
-          value={numberFieldValue}
-          onChange={(event) => onStage(parameter, event.target.value)}
-        />
-        {unit ? (
-          <span className="tuning-control__unit" data-testid={`tuning-unit-${parameter.id}`}>
-            {unit}
-          </span>
-        ) : null}
-        <small>
-          {draftStatus === 'staged' ? `Current ${currentValue}` : draftReason ?? `Current ${currentValue}`}
-        </small>
-      </div>
-    </article>
-  )
 }
