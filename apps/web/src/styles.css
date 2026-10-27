@@ -25084,9 +25084,21 @@ button.plot-side-list__name {
   font-weight: 600;
 }
 .initial-tune__id {
-  margin-left: 8px;
+  display: block;
   font-size: var(--text-xs, 11px);
   color: var(--text-dim);
+}
+/* The name column wraps (the raw id sits under the name) so a phone keeps the
+   numbers on screen instead of pushing the page sideways. */
+.initial-tune__table td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .initial-tune__table {
+    font-size: var(--text-sm);
+    min-width: 0;
+  }
 }
 .initial-tune__unit {
   color: var(--text-muted);
