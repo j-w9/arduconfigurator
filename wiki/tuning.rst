@@ -13,59 +13,96 @@ The tab shows **five tasks** by default — **Pilot**, **Filters**, **Autotune**
 feel, handle noise, let the vehicle find its gains, apply, and get a starting
 point for a new airframe.
 
-**Expert mode** adds four more: **PID Gains** (27 raw P/I/D/FF controls),
+**Expert mode** adds four more: **PID Gains** (the attitude gains, axis by axis),
 **Notches** (the two harmonic notches and the ``FILTn`` bank), **Profiles** (a
 local library of saved tunes) and **Log Tuning** (post-flight log analysis).
 They are tools for someone who already has a tune rather than steps toward
 getting one.
 
-The workspace is full-width — each task fills it — and every control carries an
-**"i" info bubble** with the parameter's plain-text description, its label, and
-its unit, so guidance is one hover away rather than a wall of text on the page.
+Every task is laid out the same way: **grids, with the settings down the side
+and the axes across** (Roll / pitch | Yaw, Notch 1 | Notch 2, Climb | Descent).
+Each value is a typed box with its unit — you can always enter any value — with
+ArduPilot's own named values (*Medium*, *Crisp*, *Low* expo…) as a dropdown
+beside it where the firmware defines them. Older firmware that stores a value in
+centi-units (cm/s, centidegrees/s²) is shown and edited in m and degrees and
+written back in the firmware's units.
+
+A small **dot** beside a value means it differs from the firmware default;
+clicking it stages the default. The defaults come from the vehicle itself
+(``@PARAM/param.pck`` with defaults, ArduPilot 4.5+), so older firmware shows
+no dots. Every value also carries an **"i"** bubble with the parameter's name,
+description and a link to its reference page.
+
+.. admonition:: Example — the default dot
+
+   ``ATC_INPUT_TC`` defaults to 0.15 (*Medium*). Pick *Crisp* and a dot appears
+   beside the box; hover it for *Changed from the default (0.15). Click to
+   reset.* Clicking stages 0.15 again.
 
 Pilot
 -----
 
-The **Pilot** task groups everything that shapes how manual flight *feels* but
-is **not** a PID gain — stick response, limits, and the pilot-facing speeds of
-the assisted modes. It is organised into four cards.
+The **Pilot** task holds everything that shapes how manual flight *feels* but
+is **not** a PID gain. ArduPilot models each stick as a *command model* — a
+maximum rate, an expo and a response time (``AC_CommandModel``; copter docs,
+*Input shaping*) — and the cards follow that.
 
-**Angle** — self-levelling (Stabilize/AltHold) feel:
+**Angle modes** (Stabilize, AltHold, Loiter) — Roll / pitch | Yaw:
 
-- ``ATC_INPUT_TC`` — stick input smoothing / time constant.
-- ``ATC_ANGLE_MAX`` (or the legacy ``ANGLE_MAX`` in centidegrees) — maximum lean
-  angle.
-- ``PILOT_Y_RATE`` / ``PILOT_Y_EXPO`` — yaw authority and centre softening.
+- **Max** — ``ATC_ANGLE_MAX`` (legacy ``ANGLE_MAX``) lean, and ``PILOT_Y_RATE``
+  yaw rate.
+- **Expo** — ``PILOT_Y_EXPO``.
+- **Response** — ``ATC_INPUT_TC`` and ``PILOT_Y_RATE_TC``: *Very soft* (0.5) to
+  *Very crisp* (0.05). Under the column: full lean in about 3 × the time
+  constant, and the time to full yaw rate, with a warning when the yaw rate
+  outruns ArduPilot's rule of about half the yaw accel limit.
 
-**Attitude (Acro)** — the acro-style rate shaping that sits above the rate
-controllers:
+**Acro** — Roll / pitch | Yaw: **Rate** (``ACRO_RP_RATE`` / ``ACRO_Y_RATE``),
+**Expo**, **Response** (``ACRO_*_RATE_TC``, 0 = off) and **Accel limit**
+(``ATC_ACC_*_MAX``, older ``ATC_ACCEL_*_MAX`` shown in deg/s²; roll and pitch share
+one box while they match). Under each column: the time to full rate (rate ÷
+accel limit), and below the grid a **stick curve** of both axes — stick
+position against rotation rate, using ArduPilot's own expo formula. The accel
+limits come from AutoTune: lower them to soften the feel, don't raise them past
+it.
 
-- ``ACRO_RP_RATE`` / ``ACRO_Y_RATE`` — maximum roll/pitch and yaw rotation rates.
-- ``ACRO_RP_EXPO`` / ``ACRO_Y_EXPO`` — expo, which softens the centre without
-  reducing full-stick authority.
-- ``ATC_ACCEL_R_MAX`` / ``ATC_ACCEL_P_MAX`` / ``ATC_ACCEL_Y_MAX`` (4.5+ uses the
-  degrees-based ``ATC_ACC_*_MAX``) — angular-acceleration limits that bound how
-  aggressively the controller chases a commanded rate.
+.. admonition:: Example — reading the Acro grid
 
-**Alt Hold** — the vertical-speed feel of the assisted modes:
+   With ``ACRO_RP_RATE`` **360** °/s, ``ACRO_RP_EXPO`` **0.3** (*Medium*) and a
+   roll accel limit of **1409** °/s²:
 
-- ``PILOT_SPEED_UP`` / ``PILOT_SPEED_DN`` (4.6+ uses the SI ``PILOT_SPD_UP`` /
-  ``PILOT_SPD_DN``) — commanded climb and descent speed.
-- ``PILOT_ACCEL_Z`` (4.6+ ``PILOT_ACC_Z``) — vertical acceleration.
-- ``PILOT_THR_FILT`` — throttle input filtering.
-- ``THR_DZ`` — throttle deadzone around the hover point.
-- ``PILOT_TKOFF_ALT`` (4.6+ ``PILOT_TKO_ALT_M``) — auto-takeoff target altitude.
+   - Full stick asks for 360 °/s. Half stick asks for
+     360 × (1 − 0.3) × 0.5 ÷ (1 − 0.3 × 0.5) ≈ **148 °/s**, not 180 — that is
+     what expo does, and the curve under the grid shows it (hover over it to
+     read any stick position).
+   - **Full rate in 0.26 s** is 360 ÷ 1409: the accel limit, not the rate,
+     decides how quickly the quad gets there.
+   - Typing **0.35** for expo is fine; the dropdown just reads *Custom*.
 
-Below the stick feel, the same card carries the **altitude controller** that
-delivers it — see :ref:`tuning-althold-controller`.
+.. admonition:: Example — the yaw rule
 
-**Loiter** — position-hold feel:
+   ArduPilot suggests ``PILOT_Y_RATE`` ≈ half the yaw accel limit, so full yaw
+   rate arrives in about half a second. With a yaw accel limit of **293** °/s²:
 
-- ``LOIT_SPEED`` — maximum horizontal speed.
-- ``LOIT_ACC_MAX`` — maximum acceleration.
-- ``LOIT_ANG_MAX`` — maximum lean angle in Loiter.
-- ``LOIT_BRK_ACCEL`` / ``LOIT_BRK_DELAY`` / ``LOIT_BRK_JERK`` — the braking
-  response when the sticks return to centre (and their 4.6+ SI renames).
+   - ``PILOT_Y_RATE`` **180** → full rate in 0.61 s. No warning.
+   - ``PILOT_Y_RATE`` **360** → full rate in 1.2 s, and the card warns:
+     *limited by yaw accel. Try ≤ 147 °/s.*
+
+**Alt Hold** (folded) — Climb | Descent max speed (``PILOT_SPD_UP`` /
+``PILOT_SPD_DN``; *Same as climb* = 0), vertical accel for both, then throttle
+deadzone, throttle filter (*Off* = 0) and takeoff altitude — and below them the
+**altitude controller** (see :ref:`tuning-althold-controller`).
+
+**Loiter** (folded) — Moving | Braking: accel, max speed, max lean (*Auto* = 0,
+two thirds of the angle limit), braking jerk and delay.
+
+.. admonition:: Example — units on older firmware
+
+   ArduCopter 4.5 stores ``LOIT_SPEED`` in cm/s. A vehicle reporting **1250**
+   shows **12.5 m/s**; typing **10** writes **1000**. Likewise
+   ``ATC_ACCEL_R_MAX`` **140900** (centidegrees/s²) shows as **1409 °/s²**.
+   On 4.6+ the SI-named parameters (``LOIT_SPEED_MS``, ``ATC_ACC_R_MAX``) are
+   already in those units and are written as typed.
 
 The view drops any parameter the connected firmware does not stream, so only the
 form your firmware version uses is shown.
@@ -110,6 +147,20 @@ throttle is at its floor.
    rule gives for 0.125. The gentler fix is the airframe: lower-pitch props,
    lower KV or fewer cells bring the hover up.
 
+.. admonition:: Example — the gain check
+
+   - **Default build, 4.7:** hover 0.35 → suggested ``PSC_D_ACC_P`` **0.035**,
+     ``PSC_D_ACC_I`` **0.07**. (On 4.6, ``PSC_ACCZ_P`` 0.35 and ``PSC_ACCZ_I``
+     0.7 — the same gains at ten times the scale.)
+   - **A light, powerful quad that bounces:** hover 0.20, ``PSC_D_ACC_P`` 0.10,
+     ``PSC_D_ACC_I`` 0.20. Suggested 0.02 / 0.04, so both are five times the
+     rule: *Far too high for this hover throttle. Expect AltHold to bounce.*
+     **Use suggested gains** stages 0.02 / 0.04.
+   - **Hover at the floor:** with ``MOT_THST_HOVER`` at 0.125 the card adds that
+     the quad may really hover lower — a log will show it — and then wants lower
+     gains still. In the field case behind this card the log showed 0.05; gains
+     of 0.015 / 0.03 stopped a 5 Hz bounce.
+
 **AltHold test flight** (on the card, folded):
 
 #. Set ``MOT_HOVER_LEARN`` to 2 (learn and save).
@@ -144,15 +195,21 @@ Each axis card lists its angle P first, in the order the signal travels:
 - ``ATC_ANG_PIT_P`` / ``ATC_RAT_PIT_P`` / ``ATC_RAT_PIT_I`` / ``ATC_RAT_PIT_D`` / ``ATC_RAT_PIT_FF``
 - ``ATC_ANG_YAW_P`` / ``ATC_RAT_YAW_P`` / ``ATC_RAT_YAW_I`` / ``ATC_RAT_YAW_D`` / ``ATC_RAT_YAW_FF``
 
-A **roll/pitch link** keeps the two axes coupled while you rough in a baseline —
-angle P included — to be unlinked only if the airframe needs a deliberate
-asymmetry. **Grouped
-master sliders** scale P+I, D, feedforward, the pitch ratio, and filter
-frequency together, previewing exactly which parameters will move before you
-stage the whole set at once. Deeper controller terms — D-term feedforward
-(``ATC_RAT_*_D_FF``), integrator clamps (``ATC_RAT_*_IMAX``), PD ceilings
-(``ATC_RAT_*_PDMX``), and slew limits (``ATC_RAT_*_SMAX``) — stay behind an
-*Advanced terms* foldout so the baseline pass stays clean.
+The grid is Roll | Pitch | Yaw across, Angle P, Rate P, I, D and Feedforward
+down. **Link roll & pitch** (on by default) keeps the two axes coupled while you
+rough in a baseline — angle P included — to be unticked only if the airframe
+needs a deliberate asymmetry. **More rate-loop terms** folds the rarer ones: I
+max (``ATC_RAT_*_IMAX``), D feedforward (``_D_FF``), P + D max (``_PDMX``) and
+slew max (``_SMAX``). **Scale the whole tune** (folded) multiplies P & I, D,
+feedforward, pitch against roll, and the filter frequencies, shows which values
+would change, and stages them in one go.
+
+.. admonition:: Example — scaling the tune
+
+   Roll and pitch rate P 0.10, I 0.135; yaw P 0.18, I 0.018. Set **P & I** to
+   **1.1** and the preview reads *Roll P 0.11 · Roll I 0.149 · Pitch P 0.11 ·
+   Pitch I 0.149 · Yaw P 0.198 · Yaw I 0.02*. **Stage scaled values** stages all
+   six; untick nothing and nothing else moves.
 
 .. note::
 
@@ -184,11 +241,13 @@ The ratios are ArduPilot's own:
   roll and pitch and INS_GYRO_FILTER/4 on yaw"*. Yaw is filtered harder because
   D is the most active term, passes the most noise, and is the one that heats
   motors.
-- ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_PIT_FLTT`` / ``ATC_RAT_YAW_FLTT`` — a fixed
-  **30 Hz**, whatever the cutoff. These filter the pilot's *demand* rather than
-  a measured signal, so they need not track the sensor: 30 Hz sits well above
-  stick bandwidth. ArduPilot's own pages say gyro ÷ 2 here — this is a
-  deliberate departure, and like every row it is editable before staging.
+- ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_PIT_FLTT`` — a fixed **50 Hz**, and
+  ``ATC_RAT_YAW_FLTT`` a fixed **30 Hz**, whatever the cutoff. These filter the
+  pilot's *demand* rather than a measured signal, so they need not track the
+  sensor. Roll and pitch carry the stick demand the pilot actually flies, so
+  they sit higher; on yaw the extra smoothing costs nothing anyone can feel.
+  ArduPilot's own pages say gyro ÷ 2 here — this is a deliberate departure, and
+  like every row it is editable before staging.
 - ``ATC_RAT_YAW_FLTE`` — a fixed 2 Hz, from *Setting the Aircraft Up for
   Tuning*.
 - The cutoff itself is offered as three starting points by prop size — **90 Hz
@@ -207,11 +266,30 @@ no business being staged to a flight controller.
 A D-term filter edited above **0.75 × the gyro cutoff** is called out inline —
 ArduPilot documents that as not recommended.
 
-Manual override (Expert)
-~~~~~~~~~~~~~~~~~~~~~~~~
+.. admonition:: Example — a 40 Hz gyro cutoff
 
-Expert mode adds the raw grid back below the derived panel, under **Manual
-override**: every smoothing parameter as its own field, grouped by axis.
+   Enter **40** and the panel proposes:
+
+   ================================  ==========  ===================
+   Parameter                         Proposed    Rule
+   ================================  ==========  ===================
+   ``INS_GYRO_FILTER``               40 Hz       the cutoff you typed
+   ``ATC_RAT_RLL_FLTD`` / ``PIT``    20 Hz       gyro ÷ 2
+   ``ATC_RAT_YAW_FLTD``              10 Hz       gyro ÷ 4
+   ``ATC_RAT_RLL_FLTT`` / ``PIT``    50 Hz       fixed
+   ``ATC_RAT_YAW_FLTT``              30 Hz       fixed
+   ``ATC_RAT_YAW_FLTE``              2 Hz        fixed
+   ================================  ==========  ===================
+
+   Change roll D to **35** before staging and it is flagged: 35 is above
+   0.75 × 40 = 30 Hz.
+
+Manual
+~~~~~~
+
+Below the derived panel, **Manual** lists every smoothing parameter: the gyro
+and accel filters, then a Roll | Pitch | Yaw grid of target, error and D filters,
+all in Hz.
 
 Use it when you want a value the derived panel does not set, or one that
 deliberately departs from ArduPilot's ratios. A handful of parameters live only
@@ -232,8 +310,11 @@ Notches (Expert)
 ----------------
 
 The two **harmonic notches** and the ``FILTn`` filter bank live on their own
-**Notches** task, alongside the notch suggestions that fill them in. It is
-Expert-only, as the raw notch fields always were.
+**Notches** task. It is Expert-only, as the raw notch fields always were. The
+notches sit side by side — Notch 1 | Notch 2, the same settings down — and the
+filter bank has its slots across (FILT1 | FILT2 | FILT3: type, frequency, Q,
+attenuation), with a Roll | Pitch | Yaw grid choosing which slot each axis's
+target and error filter uses.
 
 A notch removes a narrow band — motor noise and its harmonics — without the
 latency a lower low-pass cutoff costs. ArduPilot carries **two independent
@@ -268,8 +349,9 @@ link to its page in the :doc:`parameter reference <parameters>`.
 Two suggestions, both documented
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The only arithmetic on the page. Each is a button that fills a field you can
-then edit or ignore:
+The only arithmetic on the page. Each is a link beside its field, shown only
+when it differs from what is set; it fills the field, which you can then edit or
+ignore:
 
 - **Bandwidth** — ``INS_HNTCH_BW`` at half the centre frequency. ArduPilot's
   parameter documentation: *"This is typically set to half the base
@@ -285,6 +367,16 @@ then edit or ignore:
    A ``INS_HNTCH_REF`` of zero *"disables dynamic updates"*. An enabled notch
    with the reference still at zero looks configured and tracks nothing — the
    editor warns when it sees that combination.
+
+.. admonition:: Example — the two suggestions
+
+   - **Throttle mode**, frequency **100** Hz, bandwidth still 40 → beside
+     bandwidth: *Use 50 (half the frequency)*. At 80 Hz with bandwidth 40 there
+     is nothing to suggest, so nothing shows.
+   - **ESC telemetry mode** → beside reference: *Use 1*. No bandwidth
+     suggestion: the frequency is measured, and ArduPilot gives no ratio.
+   - **Enabled, reference 0** → under that notch's column: *Reference 0 turns
+     tracking off.*
 
 Half-the-centre is the **throttle-mode** rule, where the frequency is inferred
 from throttle position and the notch has to be wide enough to cover the error.
@@ -339,10 +431,12 @@ configure the run before you take off — it does not tune on the bench:
 - ``AUTOTUNE_AGGR`` — tuning aggressiveness; higher values chase a tighter,
   more responsive tune.
 - ``AUTOTUNE_MIN_D`` — a floor on the discovered D term.
-- ``AUTOTUNE_GMBK`` — gimbal/gain-backoff behaviour for the run.
+- ``AUTOTUNE_GMBK`` — gain margin backoff applied after tuning.
 
-Set these here, stage and write them like any other change, then switch to the
-AutoTune flight mode in the air and let it fly the test motions.
+Set these here — they stage like every other setting and are written from the
+draft bar — then switch to the AutoTune flight mode in the air and let it fly
+the test motions. (The :ref:`autotune-flight` card on Calibration → Flight is the
+before-and-after bookkeeping for that flight.)
 
 .. warning::
 
@@ -358,7 +452,8 @@ theory, see the ArduPilot `Autotune
 Profiles
 --------
 
-The **Profiles** task captures the current live or staged tune into a reusable,
+The **Profiles** task saves the current tune — live only, or live with your
+staged changes on top — from one row (name, what to save, **Save**) into a
 locally stored tuning profile. A saved profile can be diffed against the live
 controller later and restaged through the same review flow, which makes it easy
 to keep a small library of known-good tunes for similar builds. Protect a
@@ -387,7 +482,9 @@ Initial Tune
 **Initial Tune** works out a starting point for a *new* airframe from three
 facts about it — prop diameter, battery cell count, and cell chemistry — and
 stages the parameters that follow from them. It is where a fresh build begins,
-before there is anything worth autotuning.
+before there is anything worth autotuning. The preview lists each change by name
+(raw id beside it) in the same units as the Pilot task, grouped Stick feel,
+Filters, Motors, Battery, and Failsafes & fence.
 
 It uses the same formulas as Mission Planner's *Initial Parameters* screen, so
 the numbers agree with what that tool would have given you — with two
@@ -427,6 +524,28 @@ battery-failsafe actions plus a 120 m / 150 m fence.
    ``ATC_RAT_*_P/I/D`` are left exactly as they are. This gets an airframe to a
    first hover that is safe to fly; **Autotune** and **Log Tuning** do the
    actual tuning from there.
+
+.. admonition:: Example — a 9-inch quad on 4S LiPo
+
+   Prop **9**, cells **4**, **LiPo**, against the demo vehicle's values (nine of
+   the fourteen rows):
+
+   ==================  =========================  ========  ========
+   Group               Setting                    Now       New
+   ==================  =========================  ========  ========
+   Stick feel          Roll / pitch accel limit   1409      1259 °/s²
+   Stick feel          Yaw accel limit            293       279 °/s²
+   Stick feel          Acro yaw rate              240       139.5 °/s
+   Filters             Gyro filter                40        46 Hz
+   Filters             Roll / pitch D filter      35        23 Hz
+   Filters             Yaw D filter               0         11.5 Hz
+   Motors              Hover throttle             0.35      0.2
+   Battery             Arm voltage                13.8      14.7 V
+   Battery             Critical voltage           13.8      14 V
+   ==================  =========================  ========  ========
+
+   **Stage 14 changes** puts them in the draft bar; nothing is written until
+   **Write all**.
 
 The table lists only the values that would change, each showing what the
 vehicle has now next to what it would become, with the reasoning on hover. A
