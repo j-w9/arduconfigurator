@@ -2,23 +2,23 @@ Networking
 ==========
 
 The **Networking** tab configures IP networking on flight controllers that
-support it — static/DHCP addressing over Ethernet or PPP, and MAVLink/telemetry
+support it: static/DHCP addressing over Ethernet or PPP, and MAVLink/telemetry
 served over UDP/TCP network endpoints. It also covers configuring **DroneNet**
 peripherals over DroneCAN.
 
 Where it is
 -----------
 
-Networking is an **Expert-mode** surface, and it only appears when the connected
-flight controller actually reports networking parameters (the ``NET_*`` family).
-Most flight controllers have no Ethernet or PPP hardware, so the tab is hidden on
-them — switch on Expert mode (top-right) and, if the board supports networking,
-the **Networking** tab appears in the sidebar.
+Networking is Expert-only and appears only when the flight controller reports
+networking parameters (the ``NET_*`` family). Most boards have no Ethernet or
+PPP hardware, so the tab is hidden on them. Switch on Expert mode (top-right)
+and, if the board supports networking, the **Networking** tab appears in the
+sidebar.
 
 The tab has two sub-tabs:
 
-- **IP setup** — the flight controller's own networking (below).
-- **DroneNet** — a DroneCAN peripheral's networking (further below).
+- **IP setup**: the flight controller's own networking (below).
+- **DroneNet**: a DroneCAN peripheral's networking (further below).
 
 .. note::
 
@@ -29,16 +29,16 @@ The tab has two sub-tabs:
 IP configuration
 ----------------
 
-- **Networking** (``NET_ENABLE``) — master switch for the onboard IP stack.
-- **DHCP client** (``NET_DHCP``) — request an address automatically, or disable
+- **Networking** (``NET_ENABLE``): master switch for the onboard IP stack.
+- **DHCP client** (``NET_DHCP``): request an address automatically, or disable
   it to use the static address below.
-- **Static IP / Gateway / Subnet mask** — the board's address on the LAN. The
+- **Static IP / Gateway / Subnet mask**: the board's address on the LAN. The
   subnet mask is entered as a **prefix length** (24 = ``255.255.255.0``), not a
   dotted quad.
-- **MAC address** — leave the default unless your network requires a specific
+- **MAC address**: leave the default unless your network requires a specific
   MAC.
 
-Most of these take effect only after a **reboot**; the tab flags the pending
+Most of these take effect only after a **reboot**. The tab flags the pending
 reboot when you apply them.
 
 PPP (no native Ethernet)
@@ -55,20 +55,20 @@ Network endpoints
 Each endpoint turns a network socket into a serial stream carrying a protocol
 (usually MAVLink): choose a **type** (UDP/TCP, client or server), a **protocol**,
 and the **IP/port**. A UDP-client endpoint pointed at ``…​.255`` broadcasts on
-the subnet — a common way to make telemetry discoverable on the LAN.
+the subnet. This is a common way to make telemetry discoverable on the LAN.
 
 DroneNet peripherals
 --------------------
 
 A **DroneNet** node (for example an AP_Periph Ethernet-switch peripheral) provides
 a network on the CAN bus side of the vehicle. Open the **DroneNet** sub-tab and the
-configurator **auto-connects over the CAN bus** to look for peripherals — no manual
-"Start" needed. Discovered nodes are listed; expand one and edit its network
-(``NET_*``) parameters, then **Apply & Save** to write them to the node over
-DroneCAN and persist them to its flash. You never have to leave for the CAN tab.
+configurator **auto-connects over the CAN bus** to look for peripherals. You do not
+need to press "Start". Discovered nodes are listed. Expand one, edit its network
+(``NET_*``) parameters, then press **Apply & Save** to write them to the node over
+DroneCAN and save them to its flash. You do not need to open the CAN tab.
 
 The full peripheral network parameter set is supported and labelled: IP addressing,
 network endpoints (``NET_Pn_*``), the PPP link (``NET_PPP_*``), and serial↔network
-**passthrough** (``NET_PASSn_*`` — bridge a node UART to a TCP/UDP endpoint on the
-LAN). Under the hood these are ordinary DroneCAN parameter writes (the same
-mechanism the CAN tab uses), presented as plain network settings.
+**passthrough** (``NET_PASSn_*``, which bridges a node UART to a TCP/UDP endpoint on
+the LAN). These are ordinary DroneCAN parameter writes, the same as on the CAN
+tab, shown as plain network settings.

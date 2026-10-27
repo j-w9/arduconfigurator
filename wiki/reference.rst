@@ -1,17 +1,17 @@
 Reference
 =========
 
-Practical references for using the configurator: how it is driven, what to do
-when something does not connect, what hardware it supports, and a short glossary
-of the terms used throughout this wiki.
+This page covers how the app is driven, what to do when something does not
+connect, what hardware it supports, and a short glossary of the terms used in
+this wiki.
 
 Keyboard shortcuts
 ------------------
 
-Configuration in ArduConfigurator is **mouse-driven** — there are no global
-keyboard shortcuts for navigation or editing. The one keyboard affordance is
-**Escape**, which closes transient dialogs and overlays (the motor-reorder
-dialog and the board-media lightbox).
+ArduConfigurator is **mouse-driven**. There are no global keyboard shortcuts
+for navigation or editing. The only key with a function is **Escape**, which
+closes transient dialogs and overlays (the motor-reorder dialog and the
+board-media lightbox).
 
 Troubleshooting
 ---------------
@@ -19,48 +19,46 @@ Troubleshooting
 **No RC telemetry / the Receiver monitor shows nothing.**
 The receiver isn't being seen by the flight controller yet. Check that the
 serial port the receiver is wired to has its protocol set to RCIN (serial
-protocol **23**) — see :doc:`first-time-setup/ports-serial` — and that the
+protocol **23**, see :doc:`first-time-setup/ports-serial`), and that the
 receiver is bound to your transmitter. The Receiver tab has an in-app bind
-button for ELRS/CRSF; see :doc:`first-time-setup/receiver`.
+button for ELRS/CRSF (see :doc:`first-time-setup/receiver`).
 
 **Wrong or silent serial port at connect.**
-Flight controllers typically expose **two** USB serial ports, and only one
-carries MAVLink. The app auto-detects the MAVLink port by probing for
-heartbeats, but if you connected to the wrong one (or nothing appears), simply
-reconnect and let it re-detect, or pick the other port.
+Flight controllers usually expose **two** USB serial ports, and only one
+carries MAVLink. The app finds the MAVLink port by probing for heartbeats. If
+you connected to the wrong one (or nothing appears), reconnect and let it
+detect again, or pick the other port.
 
 **The browser won't offer a serial port.**
-Web Serial is a **Chromium-only** API. Use Chrome, Edge, or another
-Chromium-based browser; Firefox and Safari do not implement it. The desktop
-shell uses a native serial transport instead and is not subject to this limit.
+Web Serial is a **Chromium-only** API. Use Chrome, Edge or another
+Chromium-based browser. Firefox and Safari do not implement it. The desktop
+shell uses native serial, so this limit does not apply there.
 See :doc:`getting-connected`.
 
 **A change didn't take effect.**
 Some parameters only apply after a reboot. When a change needs one, the app
-surfaces a reboot prompt — reboot the flight controller (or power-cycle it) and
-re-check the value. See :doc:`parameters`.
+shows a reboot prompt. Reboot the flight controller (or power-cycle it) and
+check the value again. See :doc:`parameters`.
 
 **The link dropped and I saw a "link lost" banner.**
-This is not data loss. If the connection drops — including a board that
-watchdog-resets partway through the parameter sync — the app keeps the
-parameters it already read behind a **link lost** banner (marked as no longer
-live; writes are blocked while disconnected). On reconnect the parameter
-download **resumes from where it stopped** instead of restarting, so even a
-board that keeps resetting eventually reaches a complete table. See
+You have not lost data. If the connection drops, including a board that
+watchdog-resets partway through the parameter sync, the app keeps the
+parameters it already read behind a **link lost** banner. They are marked as no
+longer live, and writes are blocked while disconnected. On reconnect the
+parameter download **resumes from where it stopped**, so even a board that keeps
+resetting reaches a complete table. See
 :doc:`getting-connected`.
 
 Supported hardware
 ------------------
 
-ArduConfigurator connects to, configures, and can flash **ArduPilot
-autopilots** — the same boards ArduPilot firmware targets. Connect over USB
+ArduConfigurator connects to, configures and can flash **ArduPilot
+autopilots**: the same boards ArduPilot firmware targets. Connect over USB
 (Web Serial in the browser, or native serial in the desktop shell).
 
-The validated, real-hardware-exercised path is **ArduCopter** — it is the trust
-anchor the project guarantees against, so Copter workflows are the most
-thoroughly exercised. Plane, Rover, and Sub are increasingly supported, but
-Copter is where the deepest testing lives. For the authoritative,
-continuously-updated list of supported boards, the ArduPilot wiki is canonical.
+**ArduCopter** is the path validated on real hardware, and Copter workflows are
+the most tested. Plane, Rover and Sub are supported, with less testing. For the
+current list of supported boards, see the ArduPilot wiki.
 
 Glossary
 --------
@@ -70,8 +68,8 @@ ArduPilot
    runs on the flight controller. ``ardupilot.org`` is its canonical wiki.
 
 GCS
-   *Ground Control Station* — software that talks to the vehicle over MAVLink.
-   ArduConfigurator is a setup- and configuration-first GCS, not a general
+   *Ground Control Station*: software that talks to the vehicle over MAVLink.
+   ArduConfigurator is a GCS for setup and configuration. It is not a general
    mission/flight GCS.
 
 MAVLink
@@ -79,17 +77,17 @@ MAVLink
    between a vehicle and a ground station. ArduConfigurator speaks MAVLink v2.
 
 DroneCAN
-   A message-based protocol (formerly UAVCAN) for peripherals — GPS, compass,
-   ESCs, power monitors — over a CAN bus. See :doc:`can-dronecan`.
+   A message-based protocol (formerly UAVCAN) for peripherals such as GPS,
+   compass, ESCs and power monitors over a CAN bus. See :doc:`can-dronecan`.
 
 CRSF / ELRS
-   *Crossfire* and *ExpressLRS* — modern RC link protocols. The flight
+   *Crossfire* and *ExpressLRS*: modern RC link protocols. The flight
    controller relays binding and link data over the CRSF serial link; see
    :doc:`first-time-setup/receiver`.
 
 RSSI
-   *Received Signal Strength Indication* — RC link-quality reporting, surfaced
-   as a percentage in the Receiver tab.
+   *Received Signal Strength Indication*: RC link-quality reporting, shown as
+   a percentage on the Receiver tab.
 
 DShot
    A digital ESC protocol. *Bidirectional DShot* additionally returns ESC RPM
@@ -100,15 +98,15 @@ MAVFTP
    logs and to read system files. See :doc:`logs-inspectors`.
 
 RTL
-   *Return To Launch* — an ArduPilot flight mode that flies the vehicle back to
+   *Return To Launch*: an ArduPilot flight mode that flies the vehicle back to
    its launch point.
 
 SITL
-   *Software In The Loop* — a simulated ArduPilot vehicle with no hardware,
+   *Software In The Loop*: a simulated ArduPilot vehicle with no hardware,
    used for testing and the in-app demo.
 
 ----
 
-For firmware concepts, flight modes, and tuning theory, the
-`ArduPilot documentation <https://ardupilot.org/>`__ remains the canonical
+For firmware concepts, flight modes and tuning theory, the
+`ArduPilot documentation <https://ardupilot.org/>`__ is the canonical
 reference.

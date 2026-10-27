@@ -2,27 +2,27 @@ Introduction to ArduConfigurator
 ================================
 
 ArduConfigurator is a **browser-first configurator for ArduPilot**. It connects
-to your flight controller over Web Serial directly from a Chromium-based browser
-— no install required — and is built setup- and configuration-first, in the same
-spirit as the Betaflight Configurator, but for ArduPilot.
+to your flight controller over Web Serial from a Chromium-based browser, with
+nothing to install. Like Betaflight Configurator, it is built for setup and
+configuration.
 
 .. note::
 
    ArduConfigurator is aimed first at **ArduCopter FPV** workflows. ArduPlane,
-   ArduRover, and ArduSub are supported and growing, but Copter is the validated,
-   hardware-exercised path.
+   ArduRover and ArduSub are supported, but Copter is the validated path,
+   exercised on real hardware.
 
 What you can do with it
 -----------------------
 
 - **Connect** to a flight controller over USB (Web Serial), a WebSocket bridge,
   or explore everything in **demo mode** with no hardware.
-- **Flash firmware** — ArduPilot ``.apj`` over the serial bootloader, or a
+- **Flash firmware**: ArduPilot ``.apj`` over the serial bootloader, or a
   ``.hex`` over WebUSB DFU.
-- **Run a guided setup** that walks you through the first-time configuration in
-  order, verifying each step against the live vehicle.
-- **Configure every subsystem** through product-shaped tabs — receiver, outputs
-  and motors, power, failsafe, flight modes, sensors, OSD/VTX, peripherals.
+- **Run a guided setup** that takes you through first-time configuration in
+  order, checking each step against the live vehicle.
+- **Configure each subsystem** on its own tab: receiver, outputs and motors,
+  power, failsafe, flight modes, sensors, OSD/VTX, peripherals.
 - **Tune** rate and angle controllers.
 - **Edit raw parameters** (Expert mode) with import/export, backups, presets,
   and snapshots.
@@ -31,25 +31,22 @@ What you can do with it
 Browser support
 ---------------
 
-ArduConfigurator uses the **Web Serial** and **WebUSB** APIs, which are available
-in Chromium-based browsers (Chrome, Edge, Brave, Opera). Firefox and Safari do
-not currently implement Web Serial, so live connections are not available there —
-demo mode still works everywhere.
+Live connections use the **Web Serial** and **WebUSB** APIs, which Chromium-based
+browsers have (Chrome, Edge, Brave, Opera). Firefox and Safari do not, so they
+can only run demo mode.
 
-A desktop application (Electron) is also available; it wraps the same app with a
-native serial transport and is handy when a browser's Web Serial support is
-restricted.
+A desktop app (Electron) wraps the same app with native serial, for machines
+where Web Serial is restricted.
 
 Demo mode
 ---------
 
-Selecting **Demo** as the connection source loads a built-in mock vehicle. The
-entire interface is explorable — tabs, the guided setup, the inspectors — with no
-flight controller attached. It is the fastest way to get a feel for the tool, and
-it is how the screenshots in this wiki are produced.
+Selecting **Demo** as the connection source loads a built-in mock vehicle. Every
+tab, the guided setup and the inspectors work with no flight controller
+attached. The screenshots in this wiki come from it.
 
 Next steps
 ----------
 
-- :doc:`getting-connected` — pick a connection method and connect.
-- :doc:`guided-setup` — the recommended path for a fresh vehicle.
+- :doc:`getting-connected`: pick a connection method and connect.
+- :doc:`guided-setup`: the recommended path for a fresh vehicle.
