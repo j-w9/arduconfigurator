@@ -415,11 +415,11 @@ export function PilotFeelView({ angle, acro, altHold, loiter, altHoldControllerS
 
   return (
     <div className="pilot-feel" data-testid="pilot-feel">
-      <section className="bf-gui-box pilot-feel-card" data-testid="pilot-feel-angle">
-        <div className="bf-gui-box__titlebar">
+      <details className="bf-gui-box pilot-feel-card" data-testid="pilot-feel-angle" open>
+        <summary className="bf-gui-box__titlebar">
           <strong>Angle modes</strong>
           <small className="pilot-feel-card__modes">Stabilize · AltHold · Loiter</small>
-        </div>
+        </summary>
         <div className="bf-gui-box__body">
           <FeelGrid
             testId="pilot-feel-angle-grid"
@@ -445,12 +445,12 @@ export function PilotFeelView({ angle, acro, altHold, loiter, altHoldControllerS
             ]}
           />
         </div>
-      </section>
+      </details>
 
-      <section className="bf-gui-box pilot-feel-card" data-testid="pilot-feel-acro">
-        <div className="bf-gui-box__titlebar">
+      <details className="bf-gui-box pilot-feel-card" data-testid="pilot-feel-acro" open>
+        <summary className="bf-gui-box__titlebar">
           <strong>Acro</strong>
-        </div>
+        </summary>
         <div className="bf-gui-box__body">
           <FeelGrid
             testId="pilot-feel-acro-grid"
@@ -473,7 +473,7 @@ export function PilotFeelView({ angle, acro, altHold, loiter, altHoldControllerS
           ) : null}
           {acroSeries.length > 0 ? <StickCurveChart testId="pilot-feel-acro-chart" series={acroSeries} /> : null}
         </div>
-      </section>
+      </details>
 
       <details className="bf-gui-box pilot-feel-card" data-testid="pilot-feel-althold">
         <summary className="bf-gui-box__titlebar">
