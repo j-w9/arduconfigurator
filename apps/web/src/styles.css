@@ -24821,3 +24821,288 @@ button.plot-side-list__name {
 .tuning-control .tuning-control__footer small {
   margin-left: auto;
 }
+
+/* Tuning ▸ Pilot: stick-feel cards (views/PilotFeel.tsx). Curve colours pass
+   the dataviz palette checks (lightness band, CVD separation) per theme. */
+:root {
+  --feel-rp: #c08a00;
+  --feel-y: #5b8fe8;
+}
+:root[data-theme='light'] {
+  --feel-rp: #b57f00;
+  --feel-y: #2f6fdc;
+}
+.pilot-feel {
+  display: grid;
+  gap: var(--space-3);
+}
+.pilot-feel-card .bf-gui-box__titlebar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.pilot-feel-card__modes {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.pilot-feel-card .bf-gui-box__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* A card's grid: a label column, then one column per axis. */
+.feel-grid {
+  display: grid;
+  gap: 6px;
+  max-width: 980px;
+}
+.feel-grid__row {
+  display: grid;
+  grid-template-columns: 9rem repeat(var(--feel-columns), minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: center;
+}
+.feel-grid__row--head .feel-grid__column,
+.feel-grid__label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.feel-grid__row--head .feel-grid__column {
+  font-weight: 600;
+}
+.feel-grid__cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.feel-grid__cell--span {
+  grid-column: 2 / -1;
+}
+.feel-grid__none {
+  color: var(--text-dim);
+}
+.feel-grid__readout {
+  min-width: 0;
+}
+.feel-readout {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.feel-readout--warning {
+  color: var(--warning);
+}
+.feel-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+@media (max-width: 760px) {
+  .feel-grid__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .feel-grid__row--head {
+    display: none;
+  }
+  .feel-grid__cell--span {
+    grid-column: auto;
+  }
+  .feel-grid__cell--empty {
+    display: none;
+  }
+  .feel-grid__cell[data-column]::before,
+  .feel-grid__readout[data-column]::before {
+    content: attr(data-column) ': ';
+    font-size: var(--text-sm);
+    color: var(--text-dim);
+  }
+  .feel-grid__cell[data-column]::before {
+    content: attr(data-column);
+    font-size: var(--text-sm);
+    color: var(--text-dim);
+  }
+  .feel-grid__row--foot > span:first-child {
+    display: none;
+  }
+}
+
+/* One value: box, unit, named-value dropdown, changed dot, "i". */
+.feel-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.feel-input input {
+  width: 96px;
+}
+.feel-input__tag {
+  width: 2.6rem;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.feel-input__unit {
+  min-width: 2.6rem;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.feel-input__choice {
+  width: auto;
+  max-width: 12rem;
+}
+.feel-input--staged input {
+  border-color: var(--accent);
+}
+.feel-input--invalid input {
+  border-color: var(--danger);
+}
+.feel-input__changed {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+.feel-input__changed:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.pilot-feel-chart {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  max-width: 720px;
+}
+.pilot-feel-chart__end {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+.pilot-feel-chart svg {
+  width: 100%;
+  height: auto;
+  background: var(--chart-bg);
+  border: 1px solid var(--chart-border);
+  border-radius: 6px;
+}
+.pilot-feel-chart__grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+.pilot-feel-chart__tick {
+  fill: var(--chart-dim-text);
+  font-size: 9px;
+}
+.pilot-feel-chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.pilot-feel-chart__line--rp { stroke: var(--feel-rp); }
+.pilot-feel-chart__line--y { stroke: var(--feel-y); }
+.pilot-feel-chart__cross {
+  stroke: var(--chart-dim-text);
+  stroke-dasharray: 3 3;
+}
+.pilot-feel-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.pilot-feel-chart__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pilot-feel-chart__swatch {
+  width: 10px;
+  height: 2px;
+  display: inline-block;
+}
+.pilot-feel-chart__swatch--rp { background: var(--feel-rp); }
+.pilot-feel-chart__swatch--y { background: var(--feel-y); }
+
+/* Tuning ▸ PID Gains (views/PidGains.tsx). */
+.pid-gains__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.pid-scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+.pid-scale__item {
+  display: grid;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.pid-scale__item input {
+  width: 72px;
+}
+.feel-input--bits {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+.feel-input--bits .scoped-option-chips {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.feel-input__choice--only {
+  max-width: 16rem;
+}
+.feel-input__suggest {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.initial-tune__group th {
+  padding-top: var(--space-2);
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.initial-tune__id {
+  margin-left: 8px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-dim);
+}
+.initial-tune__unit {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.tuning-profile-save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.tuning-profile-save input[type='text'] {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.tuning-profile-save--extra {
+  margin-top: var(--space-2);
+}

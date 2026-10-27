@@ -97,7 +97,6 @@ async function applySingleTuningChange(page: Page, value: string): Promise<void>
   await page.getByTestId('tuning-tab-rates').click()
   // The Pilot mode sections are collapsible and default collapsed — expand
   // Angle to reach its ATC_INPUT_TC control.
-  await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
   await page.getByTestId('tuning-input-ATC_INPUT_TC').fill(value)
   await page.getByTestId('tuning-input-ATC_INPUT_TC').blur()
   // Editing stages in place; the write is the draft bar's "Write all" (the
@@ -520,21 +519,21 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('tuning-task-nav')).toBeVisible()
     await expect(page.getByTestId('tuning-tab-rates')).toBeVisible()
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
-    await expect(page.getByText('Axis controller gains', { exact: true })).toBeVisible()
-    await expect(page.getByTestId('tuning-roll-pitch-link-button')).toBeVisible()
+    await expect(page.getByTestId('pid-gains-grid')).toBeVisible()
+    await expect(page.getByTestId('tuning-roll-pitch-link-toggle')).toBeChecked()
 
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.12')
     await expect(page.getByTestId('tuning-input-ATC_RAT_PIT_P')).toHaveValue('0.12')
 
-    await page.getByTestId('tuning-roll-pitch-unlink-button').click()
+    await page.getByTestId('tuning-roll-pitch-link-toggle').uncheck()
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.14')
     await expect(page.getByTestId('tuning-input-ATC_RAT_PIT_P')).toHaveValue('0.12')
 
     await page.getByTestId('tuning-toggle-advanced-button').click()
-    await expect(page.getByText('Roll D Feedforward', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ATC_RAT_RLL_D_FF')).toBeVisible()
 
-    await page.getByTestId('tuning-master-pi-range').focus()
-    await page.getByTestId('tuning-master-pi-range').press('ArrowRight')
+    await page.getByTestId('pid-gains-scale').locator('summary').click()
+    await page.getByTestId('tuning-master-pi-range').fill('1.05')
     await expect(page.getByTestId('tuning-stage-master-adjustments-button')).toBeEnabled()
     await page.getByTestId('tuning-stage-master-adjustments-button').click()
     // The master sliders scale the live PID gains and stage the result as a
@@ -567,7 +566,6 @@ test.describe('browser configurator regression flows', () => {
 
     // Default landing task is rates (Pilot); its mode sections are collapsible
     // and default collapsed — expand Angle to reach the flight-feel input.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible()
 
@@ -1042,8 +1040,7 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText(/Saved snapshot "Provisioning baseline" with \d+ parameters\./)).toBeVisible()
 
     await openView(page, 'tuning')
-    // Pilot mode sections default collapsed — expand Angle to reach ATC_INPUT_TC.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
+    // Pilot mode sections default collapsed — ATC_INPUT_TC is on the Angle modes card.
     await page.getByTestId('tuning-input-ATC_INPUT_TC').fill('0.2')
 
     await openView(page, 'snapshots')

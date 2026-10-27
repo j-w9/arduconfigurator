@@ -1528,7 +1528,6 @@ test.describe('Tuning tab', () => {
     // collapsible Angle section (default collapsed) — expand it first. The demo
     // seeds ATC_INPUT_TC as the float32-widened 0.15000000596046448 (what a real
     // FC reports); the number field must show it rounded, not all the digits.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible({ timeout: 10000 })
     await expect(input).toHaveValue('0.15')
@@ -1543,62 +1542,34 @@ test.describe('Tuning tab', () => {
     await connectViaHeader(page)
     await openView(page, 'tuning')
 
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     // Lean angle resolves to whichever param the FC streams (ANGLE_MAX <= 4.6,
     // ATC_ANGLE_MAX 4.7+); the demo Copter streams ANGLE_MAX.
     await expect(page.getByTestId('tuning-input-ANGLE_MAX')).toBeVisible({ timeout: 10000 })
     await expect(page.getByTestId('tuning-input-PILOT_Y_RATE')).toBeVisible()
     await expect(page.getByTestId('tuning-input-PILOT_Y_EXPO')).toBeVisible()
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Acro' }).click()
     await expect(page.getByTestId('tuning-input-ACRO_RP_RATE')).toBeVisible()
     await expect(page.getByTestId('tuning-input-ACRO_Y_RATE')).toBeVisible()
     await expect(page.getByTestId('tuning-input-ACRO_RP_EXPO')).toBeVisible()
     await expect(page.getByTestId('tuning-input-ACRO_Y_EXPO')).toBeVisible()
   })
 
-  test('the slider tracks live while dragging and only stages on release', async ({ page }) => {
+  test('Alt Hold and Loiter stay collapsible and default collapsed; the stick-feel cards are open', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'tuning')
 
-    // Pilot modes are collapsible and default collapsed — expand Angle first.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
-    const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
-    await expect(input).toBeVisible({ timeout: 10000 })
-    // Scope to the ATC_INPUT_TC control's own slider (not `.first()` — the
-    // Pilot section order isn't guaranteed, and a collapsed section's sliders
-    // are still in the DOM). Dragging it (input events, no pointer-up) must
-    // update the value live but NOT commit a staged draft yet — committing on
-    // every drag tick is what made the slider stutter and "jump to staged".
-    const slider = page
-      .locator('.tuning-control', { has: page.getByTestId('tuning-input-ATC_INPUT_TC') })
-      .locator('.tuning-control__range')
-    await slider.fill('0.3')
-    await expect(input).toHaveValue('0.3')
-    // Mid-drag (before release) nothing is staged.
-    await expect(page.locator('.tuning-control--staged')).toHaveCount(0)
-  })
-
-  test('Pilot mode sections are collapsible and default collapsed', async ({ page }) => {
-    await page.goto('/')
-    await connectViaHeader(page)
-    await openView(page, 'tuning')
-
-    // The Pilot tab opens as a compact list of collapsible mode pills; their
-    // controls stay hidden until the operator expands a mode.
-    const angleSummary = page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' })
-    await expect(angleSummary).toBeVisible()
-    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeHidden()
-
-    await angleSummary.click()
-    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible({ timeout: 10000 })
+    const altHoldSummary = page.locator('details.bf-gui-box > summary').filter({ hasText: 'Alt Hold' })
+    await expect(altHoldSummary).toBeVisible()
+    await expect(page.getByTestId('tuning-input-PILOT_SPEED_UP')).toBeHidden()
+    await altHoldSummary.click()
+    await expect(page.getByTestId('tuning-input-PILOT_SPEED_UP')).toBeVisible()
   })
 
   test('the curated control info bubble reveals the raw param name and a wiki link', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'tuning')
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
 
     // The card only ever shows the friendly label ("Stick feel smoothing"), so
     // the bubble is the operator's ONLY route from that label to ATC_INPUT_TC.
@@ -1644,7 +1615,6 @@ test.describe('Tuning tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'tuning')
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
 
     const info = page.getByTestId('tuning-info-ATC_INPUT_TC')
     await expect(info).toBeVisible({ timeout: 10000 })
@@ -4778,7 +4748,6 @@ test.describe('ArduPlane demo', () => {
     // The large Copter tuning workbench is the default ('rates'/Pilot) tab — its
     // ATC_INPUT_TC control is a signature workbench field and must still be
     // present. It lives under the collapsible Angle section (default collapsed).
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible({ timeout: 10000 })
 
     // AutoTune now lives in its own task tab; open it to reveal the surface.
@@ -4793,25 +4762,17 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('autotune-copter-procedure')).toBeVisible()
     await expect(page.getByTestId('autotune-copter-safety')).toBeVisible()
 
-    const apply = page.getByTestId('apply-copter-autotune-changes-button')
-    await expect(apply).toBeVisible()
-    await expect(apply).toBeDisabled() // nothing staged yet
-    await expect(apply).toContainText('Apply AutoTune Changes (0)')
-
-    // MOCK==REAL: the demo Copter seeds AUTOTUNE_AGGR=0.075, so the first numeric
-    // field shows the seeded live value (not an empty box). Editing it stages a
-    // draft through the shared setDraft -> scoped-apply machinery. Exclude the
-    // bitmask raw-value inputs (e.g. AUTOTUNE_AXES) which are also type=number.
-    const aggr = configGroup.locator('input[type="number"]:not([aria-label*="raw bitmask"])').first()
+    // MOCK==REAL: the demo Copter seeds AUTOTUNE_AGGR=0.075. Editing it stages
+    // a draft the global draft bar writes, like every other tab — AutoTune has
+    // no review panel of its own any more.
+    const aggr = page.getByTestId('tuning-input-AUTOTUNE_AGGR')
     await aggr.scrollIntoViewIfNeeded()
-    await expect(aggr).not.toHaveValue('')
     await expect(aggr).toHaveValue(/^0?\.0?7/)
+    await expect(page.getByTestId('apply-copter-autotune-changes-button')).toHaveCount(0)
     await aggr.fill('0.09')
-    await aggr.blur()
-
-    await expect(apply).toContainText('Apply AutoTune Changes (1)')
-    await expect(apply).toBeEnabled()
-    await expect(page.getByTestId('autotune-copter-review')).toContainText('AUTOTUNE_AGGR')
+    await expect(page.locator('body')).toContainText('1 staged change')
+    // The axes bitmask is one toggle per axis.
+    await expect(page.locator('[data-testid^="pilot-feel-AUTOTUNE_AXES-bit-"]').first()).toBeVisible()
   })
 
   test('Tuning: the Log Tuning sub-tab uploads a log and shows the quality gate', async ({ page }) => {
@@ -5048,6 +5009,48 @@ test.describe('ArduPlane demo', () => {
     await expect(page.locator('body')).toContainText('2 staged changes')
     await expect(page.getByTestId('althold-gain-check')).toHaveAttribute('data-tone', 'success')
     await expect(page.getByTestId('althold-gain-stage')).toHaveCount(0)
+  })
+
+  test('Tuning ▸ Pilot: stick feel as grids of number boxes with units, ArduPilot\'s named values, and the Acro stick curves', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-rates').click()
+
+    // Angle modes: roll/pitch and yaw side by side.
+    const angle = page.getByTestId('pilot-feel-angle-grid')
+    await expect(angle).toContainText('Roll / pitch')
+    await expect(angle).toContainText('Yaw')
+    // ATC_INPUT_TC 0.15 is the firmware's "Medium"; x3 is the time to full lean.
+    const response = page.getByTestId('pilot-feel-ATC_INPUT_TC-choice')
+    await expect(response).toHaveValue('0.15')
+    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in ≈ 0.45 s')
+    // A named value stages it; the box shows it and the readout follows.
+    await response.selectOption('0.1')
+    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toHaveValue('0.1')
+    await expect(page.getByTestId('pilot-feel-lean-time')).toHaveText('Full lean in ≈ 0.30 s')
+    // Any value can still be typed; the dropdown then reads Custom.
+    await page.getByTestId('tuning-input-ATC_INPUT_TC').fill('0.12')
+    await expect(response).toHaveValue('')
+    await expect(response.locator('option:checked')).toHaveText('Custom')
+
+    // Acro: both curves, accel limit in the grid, full rate per column.
+    await expect(page.getByTestId('pilot-feel-acro-chart-readout')).toContainText('Roll / pitch 360 °/s')
+    await expect(page.getByTestId('pilot-feel-roll-time')).toHaveText('Full rate in 0.26 s')
+    // Roll and pitch accel match on the demo: one box, written to both.
+    await expect(page.getByTestId('tuning-input-ATC_ACCEL_R_MAX')).toHaveValue('1409')
+    await expect(page.getByTestId('tuning-input-ATC_ACCEL_P_MAX')).toHaveCount(0)
+    // The pre-4.7 limits are centidegrees: shown and edited in deg/s².
+    await page.getByTestId('tuning-input-ATC_ACCEL_Y_MAX').fill('400')
+    await expect(page.getByTestId('pilot-feel-yaw-time')).toHaveText('Full rate in 0.45 s')
+
+    // Alt Hold and Loiter: metres, not centimetres; zero's meaning named.
+    await page.getByTestId('pilot-feel-loiter').locator('summary.bf-gui-box__titlebar').click()
+    await expect(page.getByTestId('tuning-input-LOIT_SPEED')).toHaveValue('12.5')
+    await expect(page.getByTestId('pilot-feel-LOIT_ANG_MAX-choice')).toHaveValue('0')
+    await expect(page.getByTestId('pilot-feel-LOIT_ANG_MAX-choice').locator('option:checked')).toHaveText('Auto (⅔ of max lean)')
   })
 
   test('Calibration: autotune is a flight you come back from', async ({ page }) => {
@@ -6171,8 +6174,8 @@ test.describe('Tuning ▸ PID Gains', () => {
     await openView(page, 'tuning')
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
 
-    // Linked is the default state, so the button is already disabled here.
-    await expect(page.getByTestId('tuning-roll-pitch-link-button')).toBeDisabled()
+    // Linked is the default state.
+    await expect(page.getByTestId('tuning-roll-pitch-link-toggle')).toBeChecked()
     await page.getByTestId('tuning-input-ATC_ANG_RLL_P').fill('7.5')
     await expect(page.getByTestId('tuning-input-ATC_ANG_PIT_P')).toHaveValue('7.5')
   })
@@ -6189,7 +6192,7 @@ test.describe('Tuning profile round-trip', () => {
 
     // Stage a distinct PID edit (demo default ATC_RAT_RLL_P is 0.1).
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
-    await page.getByTestId('tuning-roll-pitch-unlink-button').click()
+    await page.getByTestId('tuning-roll-pitch-link-toggle').uncheck()
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.137')
 
     // Capture the *staged* tune into a profile (exercises useTuningProfileSource's
@@ -8577,7 +8580,7 @@ test.describe('Tuning ▸ Filters', () => {
   test('sensor parameters joined the rate filters', async ({ page }) => {
     await openFilters(page)
     await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
-    await expect(page.getByTestId('tuning-filter-group-roll')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-axes')).toContainText('Roll')
   })
 
   test('the notches are their own task, not the tail of the filter page', async ({ page }) => {
@@ -8589,7 +8592,7 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('tuning-filter-group-notch2')).toHaveCount(0)
 
     await openNotches(page)
-    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    await expect(page.getByTestId('notches-grid')).toBeVisible()
     await expect(page.getByTestId('tuning-filter-group-sensor')).toHaveCount(0)
     // The evidence for a notch frequency is a log FFT, and that analysis is a
     // task in this same strip — say so rather than leave it to be guessed.
@@ -8603,30 +8606,25 @@ test.describe('Tuning ▸ Filters', () => {
     // sources — ESC telemetry on one, a fixed frame mode on the other — had to
     // configure half its filtering from the raw Parameters tab.
     await openNotches(page)
-    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
-    await expect(page.getByTestId('tuning-filter-group-notch2')).toBeVisible()
+    // Side by side: the two notches are the same settings.
+    await expect(page.getByTestId('notches-grid')).toContainText('Notch 1')
+    await expect(page.getByTestId('notches-grid')).toContainText('Notch 2')
     // The enum and bitmask fields are the ones that are useless as raw numbers,
     // so they are what proves the second notch got real metadata rather than
     // just appearing in the list.
-    for (const id of ['INS_HNTC2_MODE', 'INS_HNTC2_OPTS', 'INS_HNTC2_HMNCS']) {
-      await expect(page.getByTestId(`param-info-${id}`), id).toBeVisible()
-    }
-    // Same eight fields as the first notch, including two bitmasks, so it gets
-    // the same full-width card rather than a narrow column.
-    await expect(page.getByTestId('tuning-filter-group-notch2')).toHaveClass(/tuning-axis-card--wide/)
+    await expect(page.getByTestId('tuning-input-INS_HNTC2_MODE').locator('option', { hasText: 'ESC Telemetry' })).toHaveCount(1)
+    await expect(page.locator('[data-testid^="pilot-feel-INS_HNTC2_OPTS-bit-"]')).toHaveCount(7)
+    await expect(page.locator('[data-testid^="pilot-feel-INS_HNTC2_HMNCS-bit-"]')).toHaveCount(8)
   })
 
   test('each harmonic notch shows its attenuation (INS_HNTCH_ATT / INS_HNTC2_ATT), in dB', async ({ page }) => {
     // How deep the notch cuts was never on the card: a field report had to go
     // to raw Parameters for it. Both notches carry it beside bandwidth.
     await openNotches(page)
-    for (const [group, id] of [
-      ['notch', 'INS_HNTCH_ATT'],
-      ['notch2', 'INS_HNTC2_ATT']
-    ]) {
-      const card = page.getByTestId(`tuning-filter-group-${group}`)
-      await expect(card, id).toContainText(group === 'notch' ? 'Notch attenuation' : 'Notch attenuation 2')
-      await expect(card.locator(`[data-testid$="-${id}"]`).first(), id).toBeVisible()
+    await expect(page.getByTestId('notches-grid')).toContainText('Attenuation')
+    for (const id of ['INS_HNTCH_ATT', 'INS_HNTC2_ATT']) {
+      await expect(page.getByTestId(`tuning-input-${id}`), id).toHaveValue('40')
+      await expect(page.getByTestId(`pilot-feel-${id}`), id).toContainText('dB')
     }
   })
 
@@ -8646,19 +8644,14 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('tuning-info-INS_HNTCH_FREQ')).toBeVisible()
     await expect(page.getByTestId('param-wiki-INS_HNTCH_FREQ')).toHaveCount(1)
     for (const id of ['INS_HNTCH_MODE', 'INS_HNTCH_OPTS', 'INS_HNTCH_REF']) {
-      await expect(page.getByTestId(`param-info-${id}`), id).toBeVisible()
+      await expect(page.getByTestId(`tuning-info-${id}`), id).toBeVisible()
       await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
     }
   })
 
   test('the tracking mode is a named list, not a raw number', async ({ page }) => {
     await openNotches(page)
-    // Two notches on this page, so scope to the first — 'Notch tracking mode'
-    // is also a prefix of 'Notch tracking mode 2'.
-    const select = page
-      .getByTestId('tuning-filter-group-notch')
-      .locator('label', { hasText: 'Notch tracking mode' })
-      .getByRole('combobox')
+    const select = page.getByTestId('tuning-input-INS_HNTCH_MODE')
     await expect(select).toBeVisible()
     await expect(select.locator('option', { hasText: 'ESC Telemetry' })).toHaveCount(1)
   })
@@ -8667,20 +8660,26 @@ test.describe('Tuning ▸ Filters', () => {
     // INS_HNTCH_OPTS has 7 bits and INS_HNTCH_HMNCS 8. Without bitmask
     // metadata these were one integer field each.
     await openNotches(page)
-    const notch = page.getByTestId('tuning-filter-group-notch')
-    await expect(notch.locator('.scoped-bitmask-bit')).toHaveCount(15)
-    // Scoped: the second notch carries the same bit labels.
-    await expect(notch.getByText('Multi-Source', { exact: true })).toBeVisible()
+    await expect(page.locator('[data-testid^="pilot-feel-INS_HNTCH_HMNCS-bit-"], [data-testid^="pilot-feel-INS_HNTCH_OPTS-bit-"]')).toHaveCount(15)
+    await expect(page.getByTestId('pilot-feel-INS_HNTCH_OPTS')).toContainText('Multi-Source')
+    // A toggle stages the bit into the mask.
+    await page.getByTestId('pilot-feel-INS_HNTCH_HMNCS-bit-2').click()
+    await expect(page.getByTestId('pilot-feel-INS_HNTCH_HMNCS-bit-2')).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('the documented suggestions fill a field rather than applying themselves', async ({ page }) => {
     // ArduPilot: bandwidth is typically half the base frequency. Offered as a
     // button; nothing is derived on the operator's behalf.
     await openNotches(page)
-    const fill = page.getByTestId('filter-planner-fill-bw')
-    await expect(fill).toContainText('40')
+    // The demo's bandwidth is already half its 80 Hz frequency, so there is
+    // nothing to suggest until the frequency moves.
+    await expect(page.getByTestId('pilot-feel-INS_HNTCH_BW-suggest')).toHaveCount(0)
+    await page.getByTestId('tuning-input-INS_HNTCH_FREQ').fill('100')
+    const fill = page.getByTestId('pilot-feel-INS_HNTCH_BW-suggest')
+    await expect(fill).toContainText('50')
+    await expect(page.getByTestId('tuning-input-INS_HNTCH_BW')).toHaveValue('40')
     await fill.click()
-    await expect(page.getByTestId('tuning-filter-group-notch')).toContainText('40')
+    await expect(page.getByTestId('tuning-input-INS_HNTCH_BW')).toHaveValue('50')
   })
 
   test('derives the filter set from an entered gyro cutoff and stages it', async ({ page }) => {
@@ -8700,8 +8699,8 @@ test.describe('Tuning ▸ Filters', () => {
 
     // Staged as ordinary drafts: the value lands in the field above, and the
     // edited one -- not the derived one -- is what got staged.
-    await expect(page.getByTestId('tuning-filter-group-roll')).toContainText('18')
-    await expect(page.getByTestId('tuning-filter-group-yaw')).toContainText('10')
+    await expect(page.getByTestId('tuning-input-ATC_RAT_RLL_FLTD')).toHaveValue('18')
+    await expect(page.getByTestId('tuning-input-ATC_RAT_YAW_FLTD')).toHaveValue('10')
   })
 
   test('warns when an edited D filter passes the documented ceiling', async ({ page }) => {
@@ -8727,13 +8726,15 @@ test.describe('Tuning ▸ Filters', () => {
 
     // Configured slots say what they are; an empty one is shown, not hidden,
     // because filling it in is how a bank gets built.
-    await expect(page.getByTestId('filter-bank-slot-1')).toContainText('Notch 80 Hz')
-    await expect(page.getByTestId('filter-bank-slot-2')).toContainText('Notch 160 Hz')
-    await expect(page.getByTestId('filter-bank-slot-3')).toContainText('not configured')
+    const grid = page.getByTestId('filter-bank-grid')
+    await expect(grid).toContainText('FILT3')
+    await expect(page.getByTestId('tuning-input-FILT1_TYPE')).toHaveValue('1')
+    await expect(page.getByTestId('tuning-input-FILT1_NOTCH_FREQ')).toHaveValue('80')
+    await expect(page.getByTestId('tuning-input-FILT2_NOTCH_FREQ')).toHaveValue('160')
+    await expect(page.getByTestId('tuning-input-FILT3_TYPE')).toHaveValue('0')
 
     // The axis index fields are named lists over the bank, not raw numbers.
-    const routing = page.getByTestId('filter-bank-routing')
-    const select = routing.locator('label', { hasText: 'Yaw Target notch filter index' }).getByRole('combobox')
+    const select = page.getByTestId('tuning-input-ATC_RAT_YAW_NTF')
     await expect(select).toBeVisible()
     await expect(select.locator('option')).toContainText(['None', 'FILT1 — Notch 80 Hz', 'FILT2 — Notch 160 Hz'])
   })

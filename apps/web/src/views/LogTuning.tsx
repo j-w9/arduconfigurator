@@ -68,12 +68,6 @@ export function LogTuningView({ onStageParam, stagedParams, onboardLogs, onOpenL
         <StatusBadge tone="warning">beta</StatusBadge>
       </div>
       <div className="bf-gui-box__body">
-        <p className="bf-note">
-          Upload a dataflash flight log (<code>.bin</code>) from the SD card. The analyzer works through
-          vibration, oscillation, motor-noise, and rate-loop tuning, then stages the recommended parameter
-          changes for you to review and apply.
-        </p>
-
         <div className="log-tuning__upload">
           <label className="log-tuning__file" style={buttonStyle('primary')}>
             {busy ? 'Analyzing…' : 'Choose flight log (.bin)'}
@@ -105,19 +99,17 @@ export function LogTuningView({ onStageParam, stagedParams, onboardLogs, onOpenL
           {filename ? <small className="log-tuning__filename">{filename}</small> : null}
         </div>
 
-        <div className="parameter-follow-up parameter-follow-up--warning" data-testid="log-tuning-gate-note">
-          <StatusBadge tone="warning">read first</StatusBadge>
-          <p>
-            This only works on a <strong>good flight log</strong>: a real hover/flight (not a bench run), ideally
-            30–60 s of steady hovering. For the harmonic notch you also want ESC RPM telemetry, and for the best
-            spectrum the IMU batch sampler on, which the Logs tab sets up in one click. A poor log gives poor advice.
-          </p>
+        <p className="feel-note" data-testid="log-tuning-gate-note">
+          Use a real flight with 30–60 s of steady hover. The notch advice also needs ESC RPM telemetry.
           {onOpenLogSetup ? (
-            <button type="button" style={buttonStyle()} data-testid="log-tuning-open-log-setup" onClick={onOpenLogSetup}>
-              Set up logging for tuning
-            </button>
+            <>
+              {' '}
+              <button type="button" className="feel-input__suggest" data-testid="log-tuning-open-log-setup" onClick={onOpenLogSetup}>
+                Set up logging for tuning
+              </button>
+            </>
           ) : null}
-        </div>
+        </p>
 
         {error ? (
           <div className="parameter-follow-up parameter-follow-up--danger" role="alert" data-testid="log-tuning-error">

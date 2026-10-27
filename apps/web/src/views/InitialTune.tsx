@@ -38,7 +38,18 @@ export interface InitialTuneViewProps {
    */
   isExpertMode?: boolean
   disabled?: boolean
+  /** A parameter's friendly label and display units (Pilot-tab units), from App. */
+  describe?: (paramId: string) => { label: string; unit?: string; display: (raw: number) => number }
 }
+
+// What each row is for, in the order a build is set up.
+const GROUPS: Array<{ label: string; test: (id: string) => boolean }> = [
+  { label: 'Stick feel', test: (id) => /^(ACRO_|ATC_ACC|ATC_INPUT)/.test(id) || /^Q_A_ACC/.test(id) },
+  { label: 'Filters', test: (id) => /FLT[TDE]$|^INS_GYRO_FILTER$|^INS_ACCEL_FILTER$/.test(id) },
+  { label: 'Motors', test: (id) => /^(Q_)?M(OT)?_/.test(id) },
+  { label: 'Battery', test: (id) => /^BATT/.test(id) },
+  { label: 'Failsafes & fence', test: () => true }
+]
 
 export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
   const {
@@ -50,7 +61,8 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
     hasAccelPMax = true,
     hasAcroYawP = false,
     isExpertMode = false,
-    disabled = false
+    disabled = false,
+    describe
   } = props
 
   const [propText, setPropText] = useState('9')
@@ -189,32 +201,48 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
             <table className="initial-tune__table" data-testid="initial-tune-table">
               <thead>
                 <tr>
-                  <th>Parameter</th>
+                  <th>Setting</th>
                   <th className="num">Now</th>
                   <th className="num">New</th>
+                  <th />
                 </tr>
               </thead>
-              <tbody>
-                {changes.map((parameter) => {
-                  const live = liveValues.get(parameter.id)
-                  return (
-                    <tr
-                      key={parameter.id}
-                      data-testid={`initial-tune-row-${parameter.id}`}
-                      /* The reasoning stays available without taking a column
-                         of its own on every row. */
-                      title={parameter.reason}
-                    >
-                      <td>
-                        {parameter.id}
-                        {stagedIds.has(parameter.id) ? <span className="chip">staged</span> : null}
-                      </td>
-                      <td className="num">{live === undefined ? '—' : formatValue(live)}</td>
-                      <td className="num">{formatValue(parameter.value)}</td>
+              {GROUPS.map((group, groupIndex) => {
+                const rows = changes.filter(
+                  (parameter) => GROUPS.findIndex((candidate) => candidate.test(parameter.id)) === groupIndex
+                )
+                if (rows.length === 0) return null
+                return (
+                  <tbody key={group.label}>
+                    <tr className="initial-tune__group">
+                      <th colSpan={4}>{group.label}</th>
                     </tr>
-                  )
-                })}
-              </tbody>
+                    {rows.map((parameter) => {
+                      const live = liveValues.get(parameter.id)
+                      const info = describe?.(parameter.id)
+                      const shown = (raw: number): string => formatValue(info ? info.display(raw) : raw)
+                      return (
+                        <tr
+                          key={parameter.id}
+                          data-testid={`initial-tune-row-${parameter.id}`}
+                          /* The reasoning stays available without taking a column
+                             of its own on every row. */
+                          title={parameter.reason}
+                        >
+                          <td>
+                            {info?.label ?? parameter.id}
+                            {info && info.label !== parameter.id ? <code className="initial-tune__id">{parameter.id}</code> : null}
+                            {stagedIds.has(parameter.id) ? <span className="chip">staged</span> : null}
+                          </td>
+                          <td className="num">{live === undefined ? '—' : shown(live)}</td>
+                          <td className="num">{shown(parameter.value)}</td>
+                          <td className="initial-tune__unit">{info?.unit ?? ''}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                )
+              })}
             </table>
           </div>
           ) : (

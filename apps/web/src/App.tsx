@@ -1,5 +1,5 @@
-import type { ReactElement, ReactNode } from 'react'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
@@ -133,6 +133,7 @@ import {
 } from './status-formatters'
 import {
   formatParameterDisplayValue,
+  formatParameterValue,
   normalizeBitmaskValue
 } from './parameter-format'
 import {
@@ -222,14 +223,7 @@ import {
   buildPresetAutoBackupNote,
   deriveProvisioningOverlayParametersFromDrafts,
 } from './library-helpers'
-import {
-  tuningInputValue,
-  applyTuningEditedValue,
-  tuningNumericValue,
-  tuningControlBounds,
-  formatTuningDisplayValue,
-  TuningControl
-} from './tuning-control'
+import { tuningInputValue, applyTuningEditedValue, tuningControlBounds } from './tuning-control'
 import {
   missionTitleForView
 } from './setup-format-helpers'
@@ -272,6 +266,19 @@ import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './vie
 import type { TcalWrite } from './view-models/tcal-plan'
 import { altHoldGainCheck } from './view-models/althold-gain-check'
 import { AltHoldGainCheckView } from './views/AltHoldGainCheck'
+import { FeelGrid, PilotFeelView, type PilotFeelValue } from './views/PilotFeel'
+import { PidGainsView } from './views/PidGains'
+import { NotchesView } from './views/NotchesPanel'
+import { documentedNotchBandwidth, documentedNotchRef } from './view-models/filter-planner'
+import {
+  EXPO_CHOICES,
+  PILOT_FEEL_DISPLAY,
+  RESPONSE_TC_CHOICES,
+  ZERO_MEANS,
+  fromDisplayText,
+  toDisplay,
+  type NamedValue
+} from './view-models/pilot-feel'
 import { dronecanNodeStack } from './view-models/dronecan-node-stack'
 import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
@@ -349,10 +356,8 @@ import { TuningCopterSection } from './sections/TuningCopterSection'
 import { BetaflightConnect } from './views/BetaflightConnect'
 import { useBetaflightMsp } from './hooks/use-betaflight-msp'
 import { InitialTuneView } from './views/InitialTune'
-import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { FiltersFromGyro } from './views/FiltersFromGyro'
-import { buildFilterBank, buildFilterIndexOptions, filterSlotParamIds } from './view-models/filter-bank'
-import { FilterBankPanel } from './views/FilterBankPanel'
+import { buildFilterBank, buildFilterIndexOptions } from './view-models/filter-bank'
 import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
@@ -3037,7 +3042,6 @@ export function App() {
     planeSoaringAdsbDraftEntries,
     planeSoaringAdsbStagedDrafts,
     planeSoaringAdsbInvalidDrafts,
-    copterAutotuneDraftEntries,
     copterAutotuneStagedDrafts,
     copterAutotuneInvalidDrafts,
     planeAutotuneDraftEntries,
@@ -3233,14 +3237,7 @@ export function App() {
     flightFeelParameters,
     tuningAccelerationParameters,
     acroTuningParameters,
-    altHoldPilotParameters,
-    loiterPilotParameters,
-    tuningAdvancedPidParameters,
-    tuningFilterParameters,
-    tuningPidAxisGroups,
-    tuningFilterAxisGroups,
-    tuningNotchAxisGroups,
-    tuningAdvancedPidAxisGroups
+    tuningFilterParameters
   } = useTuningCatalog(snapshot)
   const outputReviewParameters = useMemo(
     () =>
@@ -4124,7 +4121,8 @@ export function App() {
       // meant the Default column read "—" on every row until the operator
       // happened to open one — a column that looks broken rather than one that
       // is loading. It is a single 15 KB MAVFTP read, once per build.
-      (activeViewId !== 'parameters' && selectedParameterId === undefined) ||
+      // The Tuning ▸ Pilot cards mark values changed from the default too.
+      (activeViewId !== 'parameters' && activeViewId !== 'tuning' && selectedParameterId === undefined) ||
       parameterDefaults !== null ||
       autoFetchedDefaultsRef.current ||
       fetchDefaultsBusy ||
@@ -5892,45 +5890,8 @@ export function App() {
   const activeTuningTask = tuningTaskCards.find((task) => task.id === activeTuningTaskId) ?? tuningTaskCards[0]
   const effectiveTuningTaskId = activeTuningTask?.id ?? activeTuningTaskId
 
-  const renderTuningControl = (parameter: ParameterState): ReactElement => {
-    const draft = parameterDraftById.get(parameter.id)
-    const { min, max, step } = tuningControlBounds(parameter)
-    const inputValue = tuningInputValue(parameter, editedValues)
-    const numericValue = tuningNumericValue(parameter, editedValues)
-    const currentValue = formatTuningDisplayValue(parameter, parameter.value)
-    const stagedValue = formatTuningDisplayValue(parameter, draft?.nextValue ?? parameter.value)
 
-    return (
-      <TuningControl
-        key={parameter.id}
-        parameter={parameter}
-        draftStatus={draft?.status}
-        draftReason={draft?.reason}
-        min={min}
-        max={max}
-        step={step}
-        inputValue={inputValue}
-        numericValue={numericValue}
-        currentValue={currentValue}
-        stagedValue={stagedValue}
-        label={parameter.definition?.label ?? parameter.id}
-        description={parameter.definition?.description}
-        onStage={handleStageTuningParameterValue}
-      />
-    )
-  }
 
-  /**
-   * Filter Editor control: the Tuning slider where a slider makes sense, the
-   * generic metadata editor where it does not.
-   *
-   * TuningControl is always a slider + number, which is right for a filter
-   * frequency and wrong for INS_HNTCH_MODE (an enum) or INS_HNTCH_OPTS (a
-   * bitmask) -- dragging a slider through mode values, or through a bitmask,
-   * produces states nobody meant to ask for. Those two fall through to the
-   * shared metadata renderer, which gives a named list and per-bit toggles.
-   * Both paths carry the same "i" bubble and wiki link.
-   */
   // The FILTn filter bank the rate loops point into. Derived from live values,
   // so a slot configured on the vehicle shows up here without anything being
   // hard-coded about how many exist.
@@ -5961,16 +5922,6 @@ export function App() {
       }))
   }, [filterBank, snapshot.parameters, metadataCatalog])
 
-  /** Every FILTn slot the vehicle reports, as parameter rows to render. */
-  const filterBankGroups = useMemo(() => {
-    const byId = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
-    return filterBank.slots.map((slot) => ({
-      slot,
-      parameters: filterSlotParamIds(slot.index)
-        .map((id) => byId.get(id))
-        .filter((parameter): parameter is ParameterState => parameter !== undefined)
-    }))
-  }, [filterBank, snapshot.parameters])
 
   // Live values for the filter helpers below the Filters grid. One map, built
   // once per parameter change, rather than one per helper per render.
@@ -5979,18 +5930,67 @@ export function App() {
     [snapshot.parameters]
   )
 
-  const renderFilterControl = (parameter: ParameterState): ReactNode => {
-    const definition = parameter.definition
-    const isChoice = definition?.bitmask === true || (definition?.options?.length ?? 0) > 0
-    // INS_HNTCH_REF and INS_HNTCH_FM_RAT are AP_Float ratios in 0..1, not
-    // frequencies: the values that matter are a measured hover thrust or
-    // exactly 1, and neither is something you find by dragging. They get the
-    // typed number field; the Hz filters keep the slider.
-    const isRatio = parameter.id === 'INS_HNTCH_REF' || parameter.id === 'INS_HNTCH_FM_RAT'
-    return isChoice || isRatio ? renderMetadataParameterField(parameter) : renderTuningControl(parameter)
-  }
+
 
   const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
+  // Tuning ▸ Pilot: the stick-feel cards (views/PilotFeel). Each value is the
+  // tuning draft path's own text (ANGLE_MAX already in degrees), shown in the
+  // units of pilot-feel's PILOT_FEEL_DISPLAY (centi-unit params in m and deg),
+  // with the firmware default when the FC reported one (param.pck).
+  const pilotFeelParameter = (paramIds: readonly string[]): ParameterState | undefined =>
+    paramIds
+      .map((paramId) => snapshot.parameters.find((candidate) => candidate.id === paramId))
+      .find((candidate): candidate is ParameterState => candidate !== undefined)
+  const pilotFeelFor = (
+    parameter: ParameterState | undefined,
+    label: string,
+    options: { unit?: string; choices?: readonly NamedValue[]; tag?: string; alsoStage?: ParameterState } = {}
+  ): PilotFeelValue | undefined => {
+    if (!parameter) return undefined
+    const display = PILOT_FEEL_DISPLAY[parameter.id]
+    const raw = tuningInputValue(parameter, editedValues)
+    const text = display && display.scale !== 1 && raw.trim() !== '' ? String(toDisplay(parameter.id, Number(raw))) : raw
+    const { min, max } = tuningControlBounds(parameter)
+    const scale = display?.scale ?? 1
+    const zero = ZERO_MEANS[parameter.id]
+    const choices = options.choices ?? (zero ? [{ value: 0, label: zero }] : undefined)
+    const rawDefault = parameterDefaults?.get(parameter.id)
+    return {
+      paramId: parameter.id,
+      label,
+      tag: options.tag,
+      description: parameter.definition?.description,
+      unit: options.unit ?? display?.unit,
+      text,
+      defaultValue: rawDefault === undefined ? undefined : toDisplay(parameter.id, rawDefault),
+      choices,
+      draftStatus: parameterDraftById.get(parameter.id)?.status,
+      min: parameter.id === 'ANGLE_MAX' || min === undefined ? min : min / scale,
+      max: parameter.id === 'ANGLE_MAX' || max === undefined ? max : max / scale,
+      onChange: (next) => {
+        handleStageTuningParameterValue(parameter, fromDisplayText(parameter.id, next))
+        if (options.alsoStage) handleStageTuningParameterValue(options.alsoStage, fromDisplayText(options.alsoStage.id, next))
+      }
+    }
+  }
+  const pilotFeelValue = (
+    paramIds: readonly string[],
+    label: string,
+    options: { unit?: string; choices?: readonly NamedValue[] } = {}
+  ): PilotFeelValue | undefined => pilotFeelFor(pilotFeelParameter(paramIds), label, options)
+  // Roll and pitch accel limits share a box while they match (AutoTune sets
+  // them separately, so they often differ); then they split into two.
+  const rollAccelParameter = pilotFeelParameter(['ATC_ACC_R_MAX', 'ATC_ACCEL_R_MAX'])
+  const pitchAccelParameter = pilotFeelParameter(['ATC_ACC_P_MAX', 'ATC_ACCEL_P_MAX'])
+  const rollAccelText = rollAccelParameter ? tuningInputValue(rollAccelParameter, editedValues) : undefined
+  const pitchAccelText = pitchAccelParameter ? tuningInputValue(pitchAccelParameter, editedValues) : undefined
+  const rpAccel: PilotFeelValue[] =
+    rollAccelParameter && pitchAccelParameter && rollAccelText === pitchAccelText
+      ? [pilotFeelFor(rollAccelParameter, 'Roll / pitch accel limit', { alsoStage: pitchAccelParameter })!]
+      : [
+          pilotFeelFor(rollAccelParameter, 'Roll accel limit', { tag: 'Roll' }),
+          pilotFeelFor(pitchAccelParameter, 'Pitch accel limit', { tag: 'Pitch' })
+        ].filter((value): value is PilotFeelValue => value !== undefined)
   // Tuning ▸ Pilot ▸ Alt Hold: the altitude controller AltHold flies with, and
   // its accel gains checked against ArduPilot's hover-throttle rule. Values are
   // draft-aware so staging a new hover throttle re-checks the gains at once.
@@ -6024,11 +6024,38 @@ export function App() {
         <p className="althold-gain-check__text">
           Holds altitude in AltHold, Loiter and Auto. Set the hover throttle first; the accel gains depend on it.
         </p>
-        <div className="tuning-control-grid">
-          {altHoldControllerParameters.map((parameter) => (
-            <Fragment key={parameter.id}>{renderMetadataParameterField(parameter)}</Fragment>
-          ))}
-        </div>
+        <FeelGrid
+          testId="althold-controller-hover"
+          columns={['']}
+          rows={[
+            { label: 'Hover throttle', cells: [pilotFeelValue(['MOT_THST_HOVER'], 'Hover throttle')] },
+            {
+              label: 'Hover learning',
+              cells: [
+                pilotFeelValue(['MOT_HOVER_LEARN'], 'Hover learning', {
+                  choices: [
+                    { value: 0, label: 'Disabled' },
+                    { value: 1, label: 'Learn' },
+                    { value: 2, label: 'Learn and save' }
+                  ]
+                })
+              ]
+            }
+          ]}
+        />
+        <FeelGrid
+          testId="althold-controller-gains"
+          columns={['P', 'I']}
+          rows={[
+            { label: 'Position', cells: [pilotFeelValue(['PSC_D_POS_P', 'PSC_POSZ_P'], 'Position P'), undefined] },
+            {
+              label: 'Velocity',
+              cells: [pilotFeelValue(['PSC_D_VEL_P', 'PSC_VELZ_P'], 'Velocity P'), pilotFeelValue(['PSC_D_VEL_I', 'PSC_VELZ_I'], 'Velocity I')]
+            },
+            { label: 'Accel', cells: [pilotFeelValue([altHoldPId], 'Accel P'), pilotFeelValue([altHoldIId], 'Accel I')] },
+            { label: 'Accel I max', cells: [undefined, pilotFeelValue(['PSC_D_ACC_IMAX', 'PSC_ACCZ_IMAX'], 'Accel I max')] }
+          ]}
+        />
         {/* The AltHold test flight (ArduPilot's initial tuning guide, and the
             usual community procedure): learn the hover, then set the accel
             gains from it; an up-down oscillation after that is the outer
@@ -6065,6 +6092,221 @@ export function App() {
         ) : null}
       </div>
     ) : null
+
+  // Tuning ▸ PID Gains (views/PidGains): Roll | Pitch | Yaw grid, same value
+  // shape and draft path as the Pilot cards.
+  const pidAxis = (ids: [string, string, string], name: string): [PilotFeelValue | undefined, PilotFeelValue | undefined, PilotFeelValue | undefined] => [
+    pilotFeelValue([ids[0]], `Roll ${name}`),
+    pilotFeelValue([ids[1]], `Pitch ${name}`),
+    pilotFeelValue([ids[2]], `Yaw ${name}`)
+  ]
+  const pidTerm = (suffix: string, name: string) =>
+    pidAxis([`ATC_RAT_RLL_${suffix}`, `ATC_RAT_PIT_${suffix}`, `ATC_RAT_YAW_${suffix}`], name)
+  const pidGainsSlot = (
+    <PidGainsView
+      linked={tuningRollPitchLinked}
+      onLinkedChange={tuningWorkbench.setTuningRollPitchLinked}
+      rows={{
+        angleP: pidAxis(['ATC_ANG_RLL_P', 'ATC_ANG_PIT_P', 'ATC_ANG_YAW_P'], 'angle P'),
+        p: pidTerm('P', 'rate P'),
+        i: pidTerm('I', 'rate I'),
+        d: pidTerm('D', 'rate D'),
+        ff: pidTerm('FF', 'feedforward')
+      }}
+      more={{
+        imax: pidTerm('IMAX', 'I max'),
+        dff: pidTerm('D_FF', 'D feedforward'),
+        pdmax: pidTerm('PDMX', 'P + D max'),
+        smax: pidTerm('SMAX', 'slew max')
+      }}
+      scale={{
+        values: [
+          { id: 'pi', label: 'P & I', value: tuningMasterPiGain, min: 0.7, max: 1.3, onChange: setTuningMasterPiGain },
+          { id: 'd', label: 'D', value: tuningMasterDGain, min: 0.7, max: 1.3, onChange: setTuningMasterDGain },
+          { id: 'ff', label: 'Feedforward', value: tuningMasterFeedforwardGain, min: 0.7, max: 1.3, onChange: setTuningMasterFeedforwardGain },
+          { id: 'pitch-ratio', label: 'Pitch vs roll', value: tuningMasterPitchRatio, min: 0.85, max: 1.15, onChange: setTuningMasterPitchRatio },
+          { id: 'filter', label: 'Filter frequencies', value: tuningMasterFilterStrength, min: 0.8, max: 1.2, onChange: setTuningMasterFilterStrength }
+        ],
+        preview: tuningMasterPreviewEntries.map((entry) => `${entry.label} ${formatParameterValue(entry.nextValue, entry.definition?.unit)}`),
+        canStage: !tuningMasterDefaultsActive && tuningMasterPreviewEntries.length > 0,
+        isNeutral: tuningMasterDefaultsActive,
+        onReset: handleResetTuningMasterSliders,
+        onStage: handleStageTuningMasterAdjustments
+      }}
+    />
+  )
+  // A value whose metadata names its values: an enum becomes the named list
+  // only, a bitmask one toggle per bit.
+  const metaFeelValue = (
+    parameter: ParameterState | undefined,
+    label: string,
+    options: { unit?: string; suggestion?: { label: string; text: string } } = {}
+  ): PilotFeelValue | undefined => {
+    const value = pilotFeelFor(parameter, label, { unit: options.unit })
+    if (!value || !parameter) return value
+    const definition = parameter.definition ?? metadataCatalog.parameters[parameter.id]
+    const named = definition?.options ?? []
+    if (definition?.bitmask && named.length > 0) {
+      return { ...value, bits: named.map((option) => ({ bit: option.value, label: option.label })) }
+    }
+    if (named.length > 0) {
+      return { ...value, selectOnly: true, choices: named.map((option) => ({ value: option.value, label: option.label })) }
+    }
+    return { ...value, suggestion: options.suggestion }
+  }
+  const byParamId = (paramId: string): ParameterState | undefined => snapshot.parameters.find((parameter) => parameter.id === paramId)
+  const notchEffective = (paramId: string): number | undefined => {
+    const drafted = editedValues[paramId]
+    if (drafted !== undefined && drafted.trim() !== '' && Number.isFinite(Number(drafted))) return Number(drafted)
+    return byParamId(paramId)?.value
+  }
+  const notchColumn = (prefix: 'INS_HNTCH' | 'INS_HNTC2') => {
+    const freq = notchEffective(`${prefix}_FREQ`)
+    const mode = notchEffective(`${prefix}_MODE`)
+    // ArduPilot's documented hints (view-models/filter-planner): bandwidth is
+    // half the frequency for throttle-mode tracking; the reference is 1 for
+    // RPM / ESC telemetry and the hover thrust for throttle mode.
+    const measured = mode !== undefined && [2, 3, 4, 5].includes(Math.round(mode))
+    const bw = freq !== undefined && !measured ? documentedNotchBandwidth(freq) : undefined
+    const ref = mode !== undefined ? documentedNotchRef(Math.round(mode), byParamId('MOT_THST_HOVER')?.value) : undefined
+    return {
+      enable: metaFeelValue(byParamId(`${prefix}_ENABLE`), 'Notch enabled'),
+      mode: metaFeelValue(byParamId(`${prefix}_MODE`), 'Notch tracking'),
+      ref: metaFeelValue(byParamId(`${prefix}_REF`), 'Notch reference', {
+        suggestion: ref !== undefined ? { label: `Use ${ref}`, text: String(ref) } : undefined
+      }),
+      freq: metaFeelValue(byParamId(`${prefix}_FREQ`), 'Notch frequency', { unit: 'Hz' }),
+      bw: metaFeelValue(byParamId(`${prefix}_BW`), 'Notch bandwidth', {
+        unit: 'Hz',
+        suggestion: bw !== undefined ? { label: `Use ${bw} (half the frequency)`, text: String(bw) } : undefined
+      }),
+      att: metaFeelValue(byParamId(`${prefix}_ATT`), 'Notch attenuation', { unit: 'dB' }),
+      fmRat: metaFeelValue(byParamId(`${prefix}_FM_RAT`), 'Notch min frequency ratio'),
+      harmonics: metaFeelValue(byParamId(`${prefix}_HMNCS`), 'Notch harmonics'),
+      options: metaFeelValue(byParamId(`${prefix}_OPTS`), 'Notch options'),
+      warning:
+        notchEffective(`${prefix}_ENABLE`) === 1 && notchEffective(`${prefix}_REF`) === 0 ? (
+          <span className="feel-readout feel-readout--warning" data-testid={`notch-ref-zero-${prefix}`}>
+            Reference 0 turns tracking off.
+          </span>
+        ) : null
+    }
+  }
+  const notch1 = notchColumn('INS_HNTCH')
+  const notch2 = notchColumn('INS_HNTC2')
+  const pair = <K extends keyof typeof notch1>(key: K) => [notch1[key], notch2[key]] as [PilotFeelValue | undefined, PilotFeelValue | undefined]
+  const routingFor = (kind: 'NTF' | 'NEF') =>
+    (['RLL', 'PIT', 'YAW'] as const).map((axis) =>
+      metaFeelValue(
+        filterIndexParameters?.find((parameter) => parameter.id === `ATC_RAT_${axis}_${kind}`),
+        `${axis === 'RLL' ? 'Roll' : axis === 'PIT' ? 'Pitch' : 'Yaw'} ${kind === 'NTF' ? 'target' : 'error'} filter`
+      )
+    )
+  const bankSlot = (index: number, suffix: string): ParameterState | undefined => byParamId(`FILT${index}_${suffix}`)
+  const notchesSlot = (
+    <NotchesView
+      notch={{
+        enable: pair('enable'),
+        mode: pair('mode'),
+        ref: pair('ref'),
+        freq: pair('freq'),
+        bw: pair('bw'),
+        att: pair('att'),
+        fmRat: pair('fmRat'),
+        harmonics: pair('harmonics'),
+        options: pair('options')
+      }}
+      notchFooter={[notch1.warning, notch2.warning]}
+      bank={
+        filterBank.supported
+          ? {
+              slots: filterBank.slots.map((slot) => ({ index: slot.index, summary: slot.summary })),
+              inUse: filterBank.configured.length,
+              type: filterBank.slots.map((slot) => {
+                const parameter = bankSlot(slot.index, 'TYPE')
+                const value = pilotFeelFor(parameter, `FILT${slot.index} type`)
+                // AP_Filter_params.cpp @Values: 0 Disable, 1 Notch Filter.
+                return value ? { ...value, selectOnly: true, choices: [{ value: 0, label: 'Off' }, { value: 1, label: 'Notch' }] } : undefined
+              }),
+              freq: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_FREQ'), `FILT${slot.index} frequency`, { unit: 'Hz' })),
+              q: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_Q'), `FILT${slot.index} Q`)),
+              att: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_ATT'), `FILT${slot.index} attenuation`, { unit: 'dB' })),
+              routing: { target: routingFor('NTF'), error: routingFor('NEF') }
+            }
+          : undefined
+      }
+    />
+  )
+  // Tuning ▸ Filters, the manual part: sensor filters, then the rate-loop
+  // filters as a Roll | Pitch | Yaw grid (all Hz).
+  const filterAxis = (suffix: 'FLTT' | 'FLTE' | 'FLTD', name: string) =>
+    (['RLL', 'PIT', 'YAW'] as const).map((axis) =>
+      pilotFeelValue([`ATC_RAT_${axis}_${suffix}`], `${axis === 'RLL' ? 'Roll' : axis === 'PIT' ? 'Pitch' : 'Yaw'} ${name}`, { unit: 'Hz' })
+    )
+  const filterManualSlot = (
+    <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
+      <div className="tuning-filter-manual__header">
+        <strong>Manual</strong>
+      </div>
+      <FeelGrid
+        testId="tuning-filter-group-sensor"
+        columns={['']}
+        rows={[
+          { label: 'Gyro filter', cells: [pilotFeelValue(['INS_GYRO_FILTER'], 'Gyro filter', { unit: 'Hz' })] },
+          { label: 'Accel filter', cells: [pilotFeelValue(['INS_ACCEL_FILTER'], 'Accel filter', { unit: 'Hz' })] }
+        ]}
+      />
+      <FeelGrid
+        testId="tuning-filter-axes"
+        columns={['Roll', 'Pitch', 'Yaw']}
+        rows={[
+          { label: 'Target filter', cells: filterAxis('FLTT', 'target filter') },
+          { label: 'Error filter', cells: filterAxis('FLTE', 'error filter') },
+          { label: 'D filter', cells: filterAxis('FLTD', 'D filter') }
+        ]}
+      />
+    </div>
+  )
+  const responseChoices = RESPONSE_TC_CHOICES
+  const rateResponseChoices: readonly NamedValue[] = [{ value: 0, label: 'Off' }, ...RESPONSE_TC_CHOICES]
+  const pilotFeelSlot = (
+    <PilotFeelView
+      angle={{
+        lean: pilotFeelValue(['ATC_ANGLE_MAX', 'ANGLE_MAX'], 'Max lean', { unit: 'deg' }),
+        inputTc: pilotFeelValue(['ATC_INPUT_TC'], 'Roll / pitch response', { unit: 's', choices: responseChoices }),
+        yawRate: pilotFeelValue(['PILOT_Y_RATE'], 'Yaw rate', { unit: 'deg/s' }),
+        yawExpo: pilotFeelValue(['PILOT_Y_EXPO'], 'Yaw expo', { choices: EXPO_CHOICES }),
+        yawRateTc: pilotFeelValue(['PILOT_Y_RATE_TC'], 'Yaw response', { unit: 's', choices: rateResponseChoices })
+      }}
+      acro={{
+        rpRate: pilotFeelValue(['ACRO_RP_RATE'], 'Acro roll / pitch rate', { unit: 'deg/s' }),
+        rpExpo: pilotFeelValue(['ACRO_RP_EXPO'], 'Acro roll / pitch expo', { choices: EXPO_CHOICES }),
+        rpRateTc: pilotFeelValue(['ACRO_RP_RATE_TC'], 'Acro roll / pitch response', { unit: 's', choices: rateResponseChoices }),
+        yRate: pilotFeelValue(['ACRO_Y_RATE'], 'Acro yaw rate', { unit: 'deg/s' }),
+        yExpo: pilotFeelValue(['ACRO_Y_EXPO'], 'Acro yaw expo', { choices: EXPO_CHOICES }),
+        yRateTc: pilotFeelValue(['ACRO_Y_RATE_TC'], 'Acro yaw response', { unit: 's', choices: rateResponseChoices }),
+        rpAccel,
+        yAccel: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw accel limit')
+      }}
+      altHold={{
+        climb: pilotFeelValue(['PILOT_SPD_UP', 'PILOT_SPEED_UP'], 'Max climb speed'),
+        descent: pilotFeelValue(['PILOT_SPD_DN', 'PILOT_SPEED_DN'], 'Max descent speed'),
+        accel: pilotFeelValue(['PILOT_ACC_Z', 'PILOT_ACCEL_Z'], 'Vertical accel'),
+        deadzone: pilotFeelValue(['THR_DZ'], 'Throttle deadzone', { unit: 'PWM' }),
+        throttleFilter: pilotFeelValue(['PILOT_THR_FILT'], 'Throttle filter', { unit: 'Hz' }),
+        takeoffAlt: pilotFeelValue(['PILOT_TKO_ALT_M', 'PILOT_TKOFF_ALT'], 'Takeoff altitude')
+      }}
+      loiter={{
+        speed: pilotFeelValue(['LOIT_SPEED_MS', 'LOIT_SPEED'], 'Loiter max speed'),
+        accel: pilotFeelValue(['LOIT_ACC_MAX_M', 'LOIT_ACC_MAX'], 'Loiter accel'),
+        maxLean: pilotFeelValue(['LOIT_ANG_MAX'], 'Loiter max lean', { unit: 'deg' }),
+        brakeAccel: pilotFeelValue(['LOIT_BRK_ACC_M', 'LOIT_BRK_ACCEL'], 'Loiter braking accel'),
+        brakeJerk: pilotFeelValue(['LOIT_BRK_JRK_M', 'LOIT_BRK_JERK'], 'Loiter braking jerk'),
+        brakeDelay: pilotFeelValue(['LOIT_BRK_DELAY'], 'Loiter brake delay', { unit: 's' })
+      }}
+      altHoldControllerSlot={altHoldControllerSlot}
+    />
+  )
 
   const currentMotorVerificationOutput =
     motorVerification.currentOutputChannel !== undefined
@@ -10325,19 +10567,7 @@ export function App() {
             activeTuningTaskId: effectiveTuningTaskId,
             activeTuningTask,
             tuningTaskCards,
-            flightFeelParameters,
-            acroTuningParameters,
-            tuningAccelerationParameters,
-            altHoldPilotParameters,
-            loiterPilotParameters,
-            tuningPidAxisGroups,
-            tuningAdvancedPidParameters,
-            tuningAdvancedPidAxisGroups,
             tuningFilterParameters,
-            tuningFilterAxisGroups,
-            tuningNotchAxisGroups,
-            tuningMasterPreviewEntries,
-            tuningMasterDefaultsActive,
             tuningProfileSourceUsesStaged,
             canCreateTuningProfile,
             savedTuningProfiles,
@@ -10348,39 +10578,24 @@ export function App() {
             selectedTuningProfileDiffGroups,
             selectedTuningProfileChangedEntries,
             selectedTuningProfileInvalidEntries,
-            tuningRateStagedDrafts,
-            tuningRateInvalidDrafts,
-            tuningPidStagedDrafts,
-            tuningPidInvalidDrafts,
             tuningFilterStagedDrafts,
             tuningFilterInvalidDrafts,
             tuningProfileNotice,
             tuningProfileStorageNotice
           }}
           handlers={{
-            handleStageTuningMasterAdjustments,
-            handleResetTuningMasterSliders,
             handleStageSelectedTuningProfile,
             handleCreateTuningProfile,
             handleDeleteSelectedTuningProfile,
             handleToggleSelectedTuningProfileProtection,
             setSelectedTuningProfileId,
-            renderTuningControl,
-          renderFilterControl,
             formatCategoryLabel
           }}
           isExpertMode={isExpertMode}
-          filterBankSlot={
-            filterBank.supported ? (
-              <FilterBankPanel
-                bank={filterBank}
-                groups={filterBankGroups}
-                indexParameters={filterIndexParameters ?? []}
-                renderField={renderMetadataParameterField}
-              />
-            ) : undefined
-          }
-          altHoldControllerSlot={altHoldControllerSlot}
+          pilotFeelSlot={pilotFeelSlot}
+          pidGainsSlot={pidGainsSlot}
+          notchesSlot={notchesSlot}
+          filterManualSlot={filterManualSlot}
           filterNotchSlot={
             <>
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as
@@ -10407,23 +10622,22 @@ export function App() {
               />
             </>
           }
-          /* The notch SUGGESTIONS (bandwidth from base frequency, a reference
-             that actually tracks) travel with the notch fields they fill in,
-             not with the gyro-cutoff panel they used to sit under. */
-          notchHelpSlot={
-            <FilterNotchHelp
-              liveValues={filterLiveValues}
-              editedValues={editedValues}
-              onSetDraft={setDraft}
-              disabled={busyAction !== undefined}
-            />
-          }
           initialTuneSlot={
             /* Starting-point tuning. Reads live values to show what each
                parameter moves FROM, and stages through the shared draft set —
                it has no write path of its own. */
             <InitialTuneView
               isExpertMode={isExpertMode}
+              describe={(paramId) => {
+                const definition =
+                  metadataCatalog.parameters[paramId] ?? snapshot.parameters.find((parameter) => parameter.id === paramId)?.definition
+                const display = PILOT_FEEL_DISPLAY[paramId]
+                return {
+                  label: definition?.label ?? paramId,
+                  unit: paramId === 'ANGLE_MAX' ? 'deg' : display?.unit ?? definition?.unit,
+                  display: (raw) => toDisplay(paramId, raw)
+                }
+              }}
               liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
               stagedIds={new Set(parameterDraftById.keys())}
               onStage={handleStageInitialTuneParameters}
@@ -10458,16 +10672,9 @@ export function App() {
                AUTOTUNE_ params. */
             <AutotuneCopterSection
               snapshot={snapshot}
-              canApplyDraftParameters={canApplyDraftParameters}
-              busyAction={busyAction}
               editedValues={editedValues}
               parameterDraftById={parameterDraftById}
-              copterAutotuneDraftEntries={copterAutotuneDraftEntries}
-              copterAutotuneStagedDrafts={copterAutotuneStagedDrafts}
-              copterAutotuneInvalidDrafts={copterAutotuneInvalidDrafts}
               setDraft={setDraft}
-              handleApplyScopedParameterDrafts={handleApplyScopedParameterDrafts}
-              handleDiscardScopedParameterDrafts={handleDiscardScopedParameterDrafts}
             />
           }
         />
