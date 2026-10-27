@@ -8699,8 +8699,8 @@ test.describe('Tuning ▸ Filters', () => {
 
     // Staged as ordinary drafts: the value lands in the field above, and the
     // edited one -- not the derived one -- is what got staged.
-    await expect(page.getByTestId('tuning-filter-group-roll')).toContainText('18')
-    await expect(page.getByTestId('tuning-filter-group-yaw')).toContainText('10')
+    await expect(page.getByTestId('tuning-input-ATC_RAT_RLL_FLTD')).toHaveValue('18')
+    await expect(page.getByTestId('tuning-input-ATC_RAT_YAW_FLTD')).toHaveValue('10')
   })
 
   test('warns when an edited D filter passes the documented ceiling', async ({ page }) => {

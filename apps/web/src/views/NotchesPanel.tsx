@@ -42,6 +42,12 @@ export function NotchesView({ notch, notchFooter, bank }: NotchesViewProps): Rea
           <strong>Harmonic notches</strong>
         </div>
         <div className="bf-gui-box__body">
+          {/* The evidence for a notch frequency is a log FFT, and that analysis
+              is a task in this same strip. */}
+          <p className="feel-note" data-testid="tuning-notches-log-hint">
+            Placing these from a flight log? Log Tuning reads a .bin and recommends the frequency, bandwidth and
+            reference.
+          </p>
           <FeelGrid
             testId="notches-grid"
             columns={['Notch 1', 'Notch 2']}
