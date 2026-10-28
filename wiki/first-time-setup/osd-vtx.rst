@@ -85,8 +85,8 @@ Band table
    **The band table only exists if your firmware has it.** It is a build-time
    feature that not every ArduPilot build carries, and no parameter turns it
    on. The tab detects it. Where the firmware does not serve
-   ``@VTX/vtxtable.dat`` you get a **"Table not available"** notice instead of
-   the grid, and you set the channel with ``VTX_FREQ`` (a frequency in MHz).
+   ``@VTX/vtxtable.dat`` the grid is not shown, and you set the channel with
+   ``VTX_FREQ`` (a frequency in MHz).
    This section and the next apply only to builds that carry the feature.
 
 Where the firmware has it, the table holds a band/channel map and the tab edits

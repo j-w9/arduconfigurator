@@ -266,16 +266,7 @@ export function VtxView(props: VtxViewProps) {
                       onPowerEnabledChange={onPowerEnabledChange}
                       onPowerPreset={onPowerPreset}
                     />
-                  ) : vtxTable.status === 'unavailable' ? (
-                    <div className="bf-vtx-callout" data-testid="vtx-table-unavailable">
-                      <StatusBadge tone="warning">Table not available</StatusBadge>
-                      <p>
-                        This firmware does not expose a VTX band/frequency table (<code>@VTX/vtxtable.dat</code>).
-                        ArduPilot exposes frequency, power, max power, and an options bitmask instead. Build firmware
-                        with the VTX table feature to edit bands/frequencies here.
-                      </p>
-                    </div>
-                  ) : (
+                  ) : vtxTable.status === 'unavailable' ? null : (
                     <div className="bf-vtx-callout" data-testid="vtx-table-checking">
                       <StatusBadge tone="neutral">Checking…</StatusBadge>
                       <p>Reading the VTX band/frequency table from the flight controller…</p>
