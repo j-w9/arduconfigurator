@@ -4500,6 +4500,31 @@ export class ArduPilotConfiguratorRuntime {
     return missing
   }
 
+  /**
+   * Targeted by-name PARAM_REQUEST_READ for every synced (non-mirror)
+   * parameter whose id matches one of `patterns`. The PARAM_VALUE replies
+   * flow through processParamValue like any other arrival, so the snapshot
+   * picks the fresh values up. Used after a calibration stores new values.
+   */
+  private async rereadParametersMatching(patterns: readonly RegExp[]): Promise<void> {
+    if (!this.vehicle || this.connection.kind !== 'connected') {
+      return
+    }
+    const ids = [...this.parameters.values()]
+      .filter((parameter) => parameter.aliasedFrom === undefined && patterns.some((pattern) => pattern.test(parameter.id)))
+      .map((parameter) => parameter.id)
+    for (const paramId of ids) {
+      await this.session.send({
+        type: 'PARAM_REQUEST_READ',
+        targetSystem: this.vehicle.systemId,
+        targetComponent: this.vehicle.componentId,
+        paramId,
+        // By name: the index is -1 (common.xml).
+        paramIndex: -1
+      })
+    }
+  }
+
   // Refetch specific parameter slots by index with PARAM_REQUEST_READ. Bounded
   // per pass so a pathological gap can't emit thousands of frames at once; any
   // remainder is picked up by the next stall-retry pass.
