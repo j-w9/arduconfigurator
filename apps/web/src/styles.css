@@ -24073,12 +24073,6 @@ button.plot-side-list__name {
   color: var(--text);
 }
 
-/* The raw "Value" entry under a bitmask chip group is for pasting a number
-   out of a param file; outside Expert the chips are the editor. */
-:root:not([data-product-mode="expert"]) .scoped-bitmask-raw {
-  display: none;
-}
-
 /* Servos: the FUNCTION column header names the field, so the per-row
    "Output n Function" label is for screen readers only. */
 .servo-mapping__function .scoped-editor-field > span:first-of-type {
