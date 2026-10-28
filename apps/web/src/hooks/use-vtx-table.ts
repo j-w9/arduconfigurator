@@ -1,7 +1,7 @@
 // VTX band/frequency table detection + edit state for the VTX view. The table
 // lives on the FC behind a MAVLink-FTP mount (@VTX/vtxtable.dat); when the
 // firmware exposes it the VTX view shows a real editable band/frequency grid,
-// otherwise it keeps the "Table not available" preview.
+// otherwise it shows nothing.
 //
 // Bands/frequencies and power levels are both editable + savable for an analog
 // VTX — the firmware now resolves the selectable power set from this table (its

@@ -6855,7 +6855,7 @@ export function App() {
   } = useRcMixer(snapshot)
   // VTX band/frequency table (MAVFTP @VTX/vtxtable.dat). Detects lazily when the
   // VTX view opens; when present the view shows the real editable table,
-  // otherwise the "Table not available" preview.
+  // otherwise nothing.
   const vtxTable = useVtxTable({
     runtime,
     // Also load on the RC Mixer view so a VTX_POWER term's level selector can
