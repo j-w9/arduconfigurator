@@ -40,6 +40,11 @@ interface FlightDeckPreviewProps {
    *  Clear only exists once an offset is saved — so on a dense surface the
    *  word is a label for "nothing special is happening". */
   showHeadingReference?: boolean
+  /** Camera level with the craft, straight from behind, like Betaflight's
+   *  setup view. For previews of the real attitude: a level aircraft then
+   *  looks level, so a pitch reading is never mistaken for a bad level
+   *  calibration. The stick preview keeps the raised view. */
+  levelView?: boolean
 }
 
 interface ModelSceneState {
@@ -708,7 +713,8 @@ export function FlightDeckPreview({
   liftNorm = 0.5,
   testId,
   captionLabel,
-  showHeadingReference = true
+  showHeadingReference = true,
+  levelView = false
 }: FlightDeckPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -768,7 +774,13 @@ export function FlightDeckPreview({
     // the nose (-Z). The aircraft points away from the viewer (forward) and
     // sits nearly flat at rest — a low rear-on view like Betaflight's setup,
     // not a steep top-down. Roll banks left/right and pitch dips the nose away.
-    camera.position.set(0, 40, 132)
+    // levelView puts the camera at the craft's height instead (0° elevation).
+    // It is fixed per preview instance, so reading it once at mount is enough.
+    if (levelView) {
+      camera.position.set(0, 2, 138)
+    } else {
+      camera.position.set(0, 40, 132)
+    }
     camera.lookAt(0, 2, 0)
 
     const modelWrapper = new THREE.Group()

@@ -64,6 +64,7 @@ export function AttitudePreview({
       showReadouts={showReadouts}
       captionLabel={captionLabel}
       showHeadingReference={showHeadingReference}
+      levelView
       testId={compact ? undefined : 'setup-craft-preview'}
     />
   )
