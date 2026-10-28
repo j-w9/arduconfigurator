@@ -788,6 +788,7 @@ export class ArduPilotConfiguratorRuntime {
       sendCommand: (command, params, sendOptions) => this.sendCommand(command, params, sendOptions),
       appendStatusEntry: (severity, text) => this.appendStatusEntry(severity, text),
       emit: () => this.emit(),
+      refreshParameters: (patterns) => this.rereadParametersMatching(patterns),
       accelerometerInitialWarmupMs: options.accelerometerInitialWarmupMs,
       accelerometerStepAdvanceMs: options.accelerometerStepAdvanceMs,
       accelerometerCompletionFallbackMs: options.accelerometerCompletionFallbackMs,

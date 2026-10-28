@@ -71,6 +71,22 @@ const ACCELEROMETER_AUTO_STILL_DEG = 15
 const ACCELCAL_SUCCESS_VALUE = 16777215
 const ACCELCAL_FAILED_VALUE = 16777216
 
+// Parameters a successful calibration writes on the autopilot (AP_AccelCal
+// clients save INS_ACC*OFFS/SCAL + the trim; calibrate_trim saves AHRS_TRIM;
+// Compass::_accept_calibration saves COMPASS_OFS/DIA/ODI/SCALE and, with
+// auto-rotation, COMPASS_ORIENT). Re-read by name after success.
+const LEVEL_CALIBRATION_RESULT_PARAMETERS: readonly RegExp[] = [/^AHRS_TRIM_[XY]$/]
+const ACCELEROMETER_CALIBRATION_RESULT_PARAMETERS: readonly RegExp[] = [
+  /^INS_ACC\d?(OFFS|SCAL)_[XYZ]$/,
+  /^INS_ACC\d?_ID$/,
+  /^AHRS_TRIM_[XY]$/
+]
+const COMPASS_CALIBRATION_RESULT_PARAMETERS: readonly RegExp[] = [
+  /^COMPASS_(OFS|DIA|ODI)\d?_[XYZ]$/,
+  /^COMPASS_SCALE\d?$/,
+  /^COMPASS_ORIENT\d?$/
+]
+
 // MAG_CAL_STATUS enum (ArduPilot / MAVLink common).
 const MAG_CAL_STATUS_SUCCESS = 4
 const MAG_CAL_STATUS_FAILED = 5
@@ -119,6 +135,14 @@ export interface GuidedActionServiceOptions {
   ) => Promise<CommandAckMessage | void>
   appendStatusEntry: (severity: StatusTextEntry['severity'], text: string) => void
   emit: () => void
+  /**
+   * Re-read the synced parameters whose ids match any pattern (targeted
+   * PARAM_REQUEST_READ by name). Called after a calibration succeeds so the
+   * snapshot — and every verdict the UI derives from it — reflects the
+   * offsets the autopilot just stored instead of the pre-cal values until
+   * the next full sync. Optional; best-effort.
+   */
+  refreshParameters?: (patterns: readonly RegExp[]) => Promise<void>
   accelerometerInitialWarmupMs?: number
   accelerometerStepAdvanceMs?: number
   accelerometerCompletionFallbackMs?: number
@@ -149,6 +173,7 @@ export class GuidedActionService {
   private readonly sendCommand: GuidedActionServiceOptions['sendCommand']
   private readonly appendStatusEntry: GuidedActionServiceOptions['appendStatusEntry']
   private readonly emit: () => void
+  private readonly refreshParameters: GuidedActionServiceOptions['refreshParameters']
   private readonly accelerometerInitialWarmupMs: number
   private readonly accelerometerStepAdvanceMs: number
   private readonly accelerometerCompletionFallbackMs: number
@@ -188,6 +213,7 @@ export class GuidedActionService {
     this.sendCommand = options.sendCommand
     this.appendStatusEntry = options.appendStatusEntry
     this.emit = options.emit
+    this.refreshParameters = options.refreshParameters
     this.accelerometerInitialWarmupMs =
       options.accelerometerInitialWarmupMs ?? DEFAULT_ACCELEROMETER_INITIAL_WARMUP_MS
     this.accelerometerStepAdvanceMs =
@@ -462,6 +488,7 @@ export class GuidedActionService {
         updatedAtMs: now,
         completedAtMs: now
       })
+      this.refreshCalibrationResultParameters(COMPASS_CALIBRATION_RESULT_PARAMETERS)
       return
     }
 
@@ -530,6 +557,7 @@ export class GuidedActionService {
         this.clearAccelerometerAdvanceTimer()
         if (nextStatus === 'succeeded') {
           this.appendStatusEntry('info', 'Accelerometer calibration complete.')
+          this.refreshCalibrationResultParameters(ACCELEROMETER_CALIBRATION_RESULT_PARAMETERS)
         }
       }
     })
@@ -789,10 +817,20 @@ export class GuidedActionService {
         // calibrate_trim() samples gravity for ~1-2s before ACKing, but the
         // FC can be slower under load; use a generous 15s ACK budget so a
         // healthy command isn't timed out while a genuine hang still fails.
-        await this.sendCommand(MAV_CMD.PREFLIGHT_CALIBRATION, [0, 0, 0, 0, 2, 0, 0], {
+        const ack = await this.sendCommand(MAV_CMD.PREFLIGHT_CALIBRATION, [0, 0, 0, 0, 2, 0, 0], {
           waitForAck: true,
           ackTimeoutMs: 15000
         })
+        // The ack IS the verdict, so read it. The waiter already rejects
+        // FAILED/DENIED/UNSUPPORTED/TEMPORARILY_REJECTED; what it resolves
+        // with that is not a success is an IN_PROGRESS beat whose final ack
+        // never came — calibrate_trim() returns its result synchronously, so
+        // that is not a stored trim either.
+        if (ack && ack.result !== MAV_RESULT.ACCEPTED) {
+          throw new Error(
+            `Autopilot acknowledged the level calibration with MAV_RESULT ${ack.result} but never confirmed it finished — the trim was not stored.`
+          )
+        }
       }
     )
 
@@ -803,12 +841,11 @@ export class GuidedActionService {
         ...current,
         status: 'succeeded',
         summary: 'Board level calibration complete.',
-        instructions: [
-          'AHRS_TRIM_X and AHRS_TRIM_Y were updated; re-pull parameters if you want a clean post-cal snapshot.'
-        ],
+        instructions: ['AHRS_TRIM_X and AHRS_TRIM_Y were updated and re-read into the parameter table.'],
         updatedAtMs: now,
         completedAtMs: now
       })
+      this.refreshCalibrationResultParameters(LEVEL_CALIBRATION_RESULT_PARAMETERS)
       this.emit()
     }
   }
@@ -1031,6 +1068,16 @@ export class GuidedActionService {
     }
   }
 
+  /** Best-effort post-calibration re-read; see GuidedActionServiceOptions.refreshParameters. */
+  private refreshCalibrationResultParameters(patterns: readonly RegExp[]): void {
+    if (!this.refreshParameters) {
+      return
+    }
+    void this.refreshParameters(patterns).catch(() => {
+      // The next full sync still corrects the snapshot; nothing to surface.
+    })
+  }
+
   private completeAccelerometerCalibration(): void {
     const current = this.guidedActions['calibrate-accelerometer']
     const now = Date.now()
@@ -1047,5 +1094,6 @@ export class GuidedActionService {
       updatedAtMs: now,
       completedAtMs: now
     })
+    this.refreshCalibrationResultParameters(ACCELEROMETER_CALIBRATION_RESULT_PARAMETERS)
   }
 }

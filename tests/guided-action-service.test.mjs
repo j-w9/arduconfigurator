@@ -1007,3 +1007,92 @@ test('accelerometerAutoHoldMs = 0 disables auto-confirm (click-every-pose flow)'
     service.destroy()
   }
 })
+
+// ---------------------------------------------------------------------------
+// Level ack payload + post-calibration parameter re-reads
+// ---------------------------------------------------------------------------
+
+function accelPoseCommand(value) {
+  return { type: 'COMMAND_LONG', command: MAV_CMD.ACCELCAL_VEHICLE_POS, params: [value, 0, 0, 0, 0, 0, 0] }
+}
+
+test('level calibration does not report success on an IN_PROGRESS ack whose final result never came', async () => {
+  // The waiter resolves with the remembered IN_PROGRESS beat when no final
+  // ack arrives. calibrate_trim() answers synchronously, so that is not a
+  // stored trim; pre-fix the action ignored the payload and said "complete".
+  const harness = createHostHarness({
+    sendCommand: async (command) => ({ type: 'COMMAND_ACK', command, result: 5, progress: 50, resultParam2: 0, targetSystem: 255, targetComponent: 190 })
+  })
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('calibrate-level').catch(() => {})
+  const action = service.getAction('calibrate-level')
+  assert.equal(action.status, 'failed')
+  assert.match(action.summary, /never confirmed it finished/i)
+})
+
+function matchingIds(patterns, ids) {
+  return ids.filter((id) => patterns.some((pattern) => pattern.test(id)))
+}
+
+const CAL_PARAM_IDS = [
+  'AHRS_TRIM_X', 'AHRS_TRIM_Y', 'AHRS_TRIM_Z', 'AHRS_ORIENTATION',
+  'INS_ACCOFFS_X', 'INS_ACC2OFFS_Z', 'INS_ACC3SCAL_Y', 'INS_ACC_ID', 'INS_ACC2_ID', 'INS_ACCEL_FILTER', 'INS_GYROFFS_X',
+  'COMPASS_OFS_X', 'COMPASS_OFS2_Y', 'COMPASS_DIA3_Z', 'COMPASS_ODI_X', 'COMPASS_SCALE', 'COMPASS_SCALE2', 'COMPASS_ORIENT2', 'COMPASS_USE', 'COMPASS_DEV_ID'
+]
+
+test('a successful level calibration re-reads AHRS_TRIM_X/Y and nothing else', async () => {
+  const refreshed = []
+  const harness = createHostHarness({
+    sendCommand: async (command) => ({ type: 'COMMAND_ACK', command, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 }),
+    refreshParameters: async (patterns) => {
+      refreshed.push(...matchingIds(patterns, CAL_PARAM_IDS))
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('calibrate-level')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(service.getAction('calibrate-level').status, 'succeeded')
+  assert.deepEqual(refreshed.sort(), ['AHRS_TRIM_X', 'AHRS_TRIM_Y'])
+})
+
+test('a successful accelerometer calibration re-reads the INS_ACC offsets/scales/ids and the trim', async () => {
+  const refreshed = []
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    refreshParameters: async (patterns) => {
+      refreshed.push(...matchingIds(patterns, CAL_PARAM_IDS))
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    assert.deepEqual(
+      refreshed.sort(),
+      ['AHRS_TRIM_X', 'AHRS_TRIM_Y', 'INS_ACC2OFFS_Z', 'INS_ACC2_ID', 'INS_ACC3SCAL_Y', 'INS_ACCOFFS_X', 'INS_ACC_ID']
+    )
+    assert.ok(!refreshed.includes('INS_ACCEL_FILTER') && !refreshed.includes('INS_GYROFFS_X'))
+  } finally {
+    service.destroy()
+  }
+})
+
+test('a successful compass calibration re-reads COMPASS_OFS/DIA/ODI/SCALE/ORIENT', async () => {
+  const refreshed = []
+  const harness = createHostHarness({
+    refreshParameters: async (patterns) => {
+      refreshed.push(...matchingIds(patterns, CAL_PARAM_IDS))
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('calibrate-compass')
+  service.handleMagCalReport(magCalReport({ calStatus: 4, autosaved: 1 }))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(service.getAction('calibrate-compass').status, 'succeeded')
+  assert.deepEqual(
+    refreshed.sort(),
+    ['COMPASS_DIA3_Z', 'COMPASS_ODI_X', 'COMPASS_OFS2_Y', 'COMPASS_OFS_X', 'COMPASS_ORIENT2', 'COMPASS_SCALE', 'COMPASS_SCALE2']
+  )
+  assert.ok(!refreshed.includes('COMPASS_USE') && !refreshed.includes('COMPASS_DEV_ID'))
+})

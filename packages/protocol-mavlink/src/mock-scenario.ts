@@ -26,6 +26,7 @@ import type {
   LogRequestDataMessage,
   MavlinkEnvelope,
   MavlinkMessage,
+  ParamRequestReadMessage,
   ParamSetMessage,
   ParamValueMessage
 } from './messages.js'
@@ -2087,6 +2088,29 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
         case 'PARAM_REQUEST_LIST':
           responses.push(...buildParameterFrames(parameters))
           break
+        case 'PARAM_REQUEST_READ': {
+          // By-name read (the post-calibration re-read): answer with the
+          // current value at its real index, as a real FC does. By-index
+          // reads are left unanswered, as before.
+          const request = outbound.message as ParamRequestReadMessage
+          const ids = Object.keys(parameters)
+          const index = request.paramId ? ids.indexOf(request.paramId) : -1
+          if (index >= 0) {
+            responses.push(
+              codec.encode(
+                envelope(nextDynamicSequence(), {
+                  type: 'PARAM_VALUE',
+                  paramId: request.paramId,
+                  paramValue: parameters[request.paramId],
+                  paramType: MAV_PARAM_TYPE.REAL32,
+                  paramCount: ids.length,
+                  paramIndex: index
+                })
+              )
+            )
+          }
+          break
+        }
         case 'PARAM_SET': {
           const paramSet = outbound.message as ParamSetMessage
           parameters[paramSet.paramId] = paramSet.paramValue
