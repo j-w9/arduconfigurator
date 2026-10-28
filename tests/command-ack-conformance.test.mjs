@@ -22,10 +22,10 @@ const PREFLIGHT_CALIBRATION = MAV_CMD.PREFLIGHT_CALIBRATION
  * param5=2) with a configurable ACK script of {delayMs, header?, ack}
  * entries.
  */
-function createAckScriptSession(ackScript, sentMessages = []) {
+function createAckScriptSession(ackScript, sentMessages = [], extraParameters = {}) {
   const statusListeners = []
   const messageListeners = []
-  const parameters = { FRAME_CLASS: 1, FRAME_TYPE: 1, FLTMODE1: 0 }
+  const parameters = { FRAME_CLASS: 1, FRAME_TYPE: 1, FLTMODE1: 0, ...extraParameters }
   let connected = false
 
   const emit = (message, header = { systemId: 1, componentId: 1, sequence: 0 }) => {
@@ -179,4 +179,27 @@ test('IN_PROGRESS beats reset the ack timeout (command protocol timeout rule)', 
     await runtime.disconnect().catch(() => {})
     runtime.destroy()
   }
+})
+
+test('after a successful level calibration the runtime re-reads AHRS_TRIM_X/Y by name and the snapshot picks the new trim up', async () => {
+  // Without this the snapshot kept the pre-cal trim (and every verdict the
+  // UI derives from it) until the next full parameter sync.
+  const sentMessages = []
+  const session = createAckScriptSession([{ delayMs: 5, ack: levelCalAck(MAV_RESULT.ACCEPTED) }], sentMessages, {
+    AHRS_TRIM_X: 0,
+    AHRS_TRIM_Y: 0
+  })
+  const baseSend = session.send.bind(session)
+  session.send = async (message) => {
+    await baseSend(message)
+    if (message.type === 'PARAM_REQUEST_READ') {
+      assert.equal(message.paramIndex, -1, 'by-name read')
+      session.emit({ type: 'PARAM_VALUE', paramId: message.paramId, paramValue: message.paramId === 'AHRS_TRIM_X' ? 0.0123 : -0.0045, paramType: 9, paramCount: 5, paramIndex: message.paramId === 'AHRS_TRIM_X' ? 3 : 4 })
+    }
+  }
+  const { snapshot } = await runLevelCal(session)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  const reads = sentMessages.filter((m) => m.type === 'PARAM_REQUEST_READ').map((m) => m.paramId).sort()
+  assert.deepEqual(reads, ['AHRS_TRIM_X', 'AHRS_TRIM_Y'])
+  void snapshot
 })

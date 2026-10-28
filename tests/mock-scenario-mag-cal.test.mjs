@@ -79,3 +79,20 @@ test('mock scenario acks DO_ACCEPT_MAG_CAL and DO_CANCEL_MAG_CAL', () => {
     assert.equal(responses[0].result, MAV_RESULT.ACCEPTED)
   }
 })
+
+test('mock scenario answers a by-name PARAM_REQUEST_READ with the current value at its real index', () => {
+  const scenario = createArduCopterMockScenario()
+  const responses = decodeAll(
+    scenario.respondToOutbound(outbound({ type: 'PARAM_REQUEST_READ', targetSystem: 1, targetComponent: 1, paramId: 'COMPASS_OFS_X', paramIndex: -1 }))
+  )
+  assert.equal(responses.length, 1)
+  assert.equal(responses[0].type, 'PARAM_VALUE')
+  assert.equal(responses[0].paramId, 'COMPASS_OFS_X')
+  assert.equal(responses[0].paramValue, -12.5)
+  assert.ok(responses[0].paramIndex >= 0 && responses[0].paramIndex < responses[0].paramCount)
+  // Unknown name → nothing, like a real FC.
+  assert.deepEqual(
+    scenario.respondToOutbound(outbound({ type: 'PARAM_REQUEST_READ', targetSystem: 1, targetComponent: 1, paramId: 'NOPE_X', paramIndex: -1 })),
+    []
+  )
+})
