@@ -81,58 +81,6 @@ The tab shows your requested **Selected Mode** next to the VTX's reported
 **Actual State** (device ready, frequency, power, max power), so you can confirm
 the transmitter accepted the settings.
 
-Band table
-~~~~~~~~~~
-
-.. important::
-
-   **The band table only exists if your firmware has it.** It is a build-time
-   feature that not every ArduPilot build carries, and no parameter turns it
-   on. The tab detects it. Where the firmware does not serve
-   ``@VTX/vtxtable.dat`` the grid is not shown, and you set the channel with
-   ``VTX_FREQ`` (a frequency in MHz).
-   This section and the next apply only to builds that carry the feature.
-
-Where the firmware has it, the table holds a band/channel map and the tab edits
-it as a grid: band name, its OSD letter, whether it is a factory band, and the
-frequency for each channel. It is sent as one blob over MAVLink FTP at
-``@VTX/vtxtable.dat``.
-
-You can import or export a table as a **Betaflight** ``vtxtable`` CLI snippet,
-so a map shared in that format drops straight in. Curated presets (Raceband and
-others) load the same way. **Load default bands** restores the firmware's
-standard 11 bands. The protocol has no reset command, so restoring them is an
-upload and goes through **Save**.
-
-.. note::
-
-   Only boards with **32 KB of parameter storage** (most H7s) can store a custom
-   table. Most F405s cannot. The firmware exposes no capability flag for this.
-   If a well-formed table is refused when the upload closes, the board has
-   nowhere to put it, and the app tells you. Reading always works there and
-   returns the built-in bands.
-
-   On a digital/MSP video system the goggles own the table and push it to the
-   flight controller, so the tab shows it read-only.
-
-Power levels
-~~~~~~~~~~~~
-
-Power levels are **parameters**, not part of the table blob. The same caveat
-applies: they exist only where the firmware exposes them. Where they are
-missing, the tab says so and shows no editor.
-
-``VTX_PWRTBL_EN`` turns the user power table on. Six slots, ``VTX_PWRTBL1``
-… ``VTX_PWRTBL6``, hold it in switch-position order. A slot is **unused**,
-**pit mode**, or a **power in milliwatts**. Enter mW for every protocol,
-including SmartAudio. The firmware stores mW and derives the dBm/dac step from
-it.
-
-These are ordinary parameters, so they stage and apply like any other edit. On
-firmware that has them they work on **every board**, including one whose
-parameter storage is too small to keep a band table. Labels are not stored. The
-text shown is derived from the value (1600 mW reads as "1.6").
-
 .. warning::
 
    Transmitting on the wrong frequency or at illegal power can break the law and

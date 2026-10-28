@@ -12,14 +12,8 @@ import type { ReactNode } from 'react'
 import { VTX_PARAM_IDS } from '../param-groups'
 import { readRoundedParameter } from '../selectors/parameter-read'
 import { selectViewCatalog } from '../selectors/view-catalog'
-import {
-  isAnalogVtxControlSerialProtocol,
-  isDigitalVtxSerialProtocol,
-  isVtxControlSerialProtocol,
-  type SerialPortViewModel
-} from '../serial-port-helpers'
-import type { UseVtxTableResult } from '../hooks/use-vtx-table'
-import { VtxView, type VtxViewProps } from '../views/Vtx'
+import { isVtxControlSerialProtocol, type SerialPortViewModel } from '../serial-port-helpers'
+import { VtxView } from '../views/Vtx'
 
 export interface VtxSectionProps {
   /** The OSD/VTX switcher, rendered under the panel title like every other
@@ -31,11 +25,6 @@ export interface VtxSectionProps {
   setDraft: (paramId: string, value: string) => void
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
   busyAction: string | undefined
-  vtxTable: UseVtxTableResult
-  powerTable: VtxViewProps['powerTable']
-  onPowerSlotChange: VtxViewProps['onPowerSlotChange']
-  onPowerEnabledChange: VtxViewProps['onPowerEnabledChange']
-  onPowerPreset: VtxViewProps['onPowerPreset']
 }
 
 export function VtxSection(props: VtxSectionProps) {
@@ -46,12 +35,7 @@ export function VtxSection(props: VtxSectionProps) {
     editedValues,
     setDraft,
     parameterDraftById,
-    busyAction,
-    vtxTable,
-    powerTable,
-    onPowerSlotChange,
-    onPowerEnabledChange,
-    onPowerPreset
+    busyAction
   } = props
 
   const { byId: vtxParameterById } = useMemo(
@@ -77,20 +61,6 @@ export function VtxSection(props: VtxSectionProps) {
     [serialPortViewModels]
   )
 
-  // For a digital/MSP video system (DJI/HDZero/Walksnail over MSP DisplayPort)
-  // the @VTX table is LEARNED — the goggles push their bands/power into the FC
-  // over MSP_SET_VTXTABLE_*. We must not author/upload it, so the table renders
-  // read-only. An analog VTX-control link (SmartAudio/Tramp/Crossfire) means the
-  // operator authors the table, so it wins even alongside an MSP DisplayPort OSD
-  // (a common analog-VTX + digital-goggles combo): learned only when a digital
-  // VTX link exists AND no analog control link does.
-  const vtxTableLearned = useMemo(() => {
-    const ports = serialPortViewModels
-    const hasDigitalVtx = ports.some((port) => isDigitalVtxSerialProtocol(port.protocolValue))
-    const hasAnalogControl = ports.some((port) => isAnalogVtxControlSerialProtocol(port.protocolValue))
-    return hasDigitalVtx && !hasAnalogControl
-  }, [serialPortViewModels])
-
   return (
     <VtxView
       headerNav={headerNav}
@@ -106,12 +76,6 @@ export function VtxSection(props: VtxSectionProps) {
       onEditChange={(paramId, value) => setDraft(paramId, value)}
       draftStatusById={parameterDraftById}
       isBusy={busyAction !== undefined}
-      vtxTable={vtxTable}
-      powerTable={powerTable}
-      onPowerSlotChange={onPowerSlotChange}
-      onPowerEnabledChange={onPowerEnabledChange}
-      onPowerPreset={onPowerPreset}
-      tableLearned={vtxTableLearned}
     />
   )
 }

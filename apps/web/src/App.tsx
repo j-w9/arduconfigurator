@@ -47,13 +47,6 @@ import {
   LEGACY_PARAM_ALIASES,
   readVtxPowerTable,
   defaultVtxPowerLabel,
-  vtxPowerTableWrites,
-  vtxPowerPresetLevels,
-  VTX_POWER_PRESETS,
-  VTX_POWER_SLOT_PIT,
-  VTX_POWER_SLOT_UNUSED,
-  VTX_POWER_TABLE_ENABLE_PARAM,
-  VTX_POWER_TABLE_SLOT_PARAMS,
   GCS_DRONECAN_NODE_ID,
 } from '@arduconfig/ardupilot-core'
 import {
@@ -87,7 +80,6 @@ import { createRuntime } from './runtime-factory'
 import { attemptSerialPortReconnect } from './serial-reconnect'
 import { useOsdEditor } from './hooks/use-osd-editor'
 import { useRcMixer } from './hooks/use-rc-mixer'
-import { useVtxTable } from './hooks/use-vtx-table'
 import { useOsdShorthand } from './hooks/use-osd-shorthand'
 import { useCalibrationNotices } from './hooks/use-calibration-notices'
 import { useLibraryNotices } from './hooks/use-library-notices'
@@ -6853,16 +6845,6 @@ export function App() {
     handleRcMixerRemoveAssignment,
     handleRcMixerUpdateAssignment
   } = useRcMixer(snapshot)
-  // VTX band/frequency table (MAVFTP @VTX/vtxtable.dat). Detects lazily when the
-  // VTX view opens; when present the view shows the real editable table,
-  // otherwise nothing.
-  const vtxTable = useVtxTable({
-    runtime,
-    // Also load on the RC Mixer view so a VTX_POWER term's level selector can
-    // list the real @VTX power levels by mW.
-    active: (activeViewId === 'osd' && osdVtxTab === 'vtx') || activeViewId === 'rc-mixer',
-    connected: snapshot.connection.kind === 'connected'
-  })
   // NET_ENABLE is present on every networking-capable ArduPilot build (Ethernet
   // or PPP), so its presence is the reliable "this FC does networking" sentinel.
   const hasNetworkingParams = useMemo(
@@ -7140,48 +7122,6 @@ export function App() {
         return readRoundedParameter(snapshot, paramId)
       }),
     [snapshot, editedValues]
-  )
-  // Power slots stage as ordinary parameter drafts — same review + Apply as
-  // every other parameter, and no FTP upload involved.
-  const handleVtxPowerSlotChange = useCallback(
-    (index: number, value: number | 'pit' | undefined) => {
-      const paramId = VTX_POWER_TABLE_SLOT_PARAMS[index]
-      if (paramId === undefined) {
-        return
-      }
-      setDraft(
-        paramId,
-        String(
-          value === undefined
-            ? VTX_POWER_SLOT_UNUSED
-            : value === 'pit'
-              ? VTX_POWER_SLOT_PIT
-              : Math.max(0, Math.round(value))
-        )
-      )
-    },
-    [setDraft]
-  )
-  const handleVtxPowerEnabledChange = useCallback(
-    (enabled: boolean) => {
-      setDraft(VTX_POWER_TABLE_ENABLE_PARAM, enabled ? '1' : '0')
-    },
-    [setDraft]
-  )
-  const handleVtxPowerPreset = useCallback(
-    (presetId: string) => {
-      const preset = VTX_POWER_PRESETS.find((candidate) => candidate.id === presetId)
-      // An empty id clears the ladder — used by the Betaflight import before it
-      // stages the levels the snippet carried, so a shorter imported ladder
-      // cannot leave a stale slot behind.
-      const levels = preset ? vtxPowerPresetLevels(preset).map((level) => level.value) : []
-      // Turn the table on with it: staging six slots and leaving VTX_PWRTBL_EN
-      // at 0 writes a table the vehicle then ignores.
-      for (const write of vtxPowerTableWrites(levels, { enable: levels.length > 0 })) {
-        setDraft(write.paramId, String(write.value))
-      }
-    },
-    [setDraft]
   )
   const rcMixerVtxPowerLevels = useMemo(
     () => (vtxPowerTable.supported ? deriveVtxPowerLevels(vtxPowerTable.slots, defaultVtxPowerLabel) : undefined),
@@ -10036,11 +9976,6 @@ export function App() {
             setDraft={setDraft}
             parameterDraftById={parameterDraftById}
             busyAction={busyAction}
-            vtxTable={vtxTable}
-            powerTable={vtxPowerTable}
-            onPowerSlotChange={handleVtxPowerSlotChange}
-            onPowerEnabledChange={handleVtxPowerEnabledChange}
-            onPowerPreset={handleVtxPowerPreset}
           />
         ) : null}
 
