@@ -3,8 +3,9 @@ OSD and VTX
 
 The **OSD** tab lays out the on-screen-display overlay drawn on your FPV video,
 and the **VTX** sub-tab beside it configures the video transmitter. Both use
-staged drafts: edits accumulate, then **Save** writes them and **Revert**
-discards them.
+staged drafts: edits accumulate until you write them. On OSD, **Save** writes
+them and **Revert** discards them. On VTX, the changes bar at the top writes
+them (**Write all**) or discards them.
 
 OSD layout
 ----------
@@ -68,7 +69,10 @@ you reach this tab. The tab shows these parameters:
 
 - ``VTX_ENABLE``: turns VTX control on or off.
 - ``VTX_FREQ``: the transmit frequency in MHz.
-- ``VTX_POWER``: the output power in milliwatts.
+- ``VTX_POWER``: the output power in milliwatts. **Pit mode (0 mW)** stages 0.
+  On a SmartAudio 2.1 VTX (TBS Unify Pro32) 0 mW puts it into pit mode, and
+  any other power takes it out. The ``VTX_OPTIONS`` pit-mode bit on these VTXs
+  only sets whether the VTX starts in pit mode at the next power-up.
 - ``VTX_MAX_POWER``: a cap on the power the VTX may use.
 - ``VTX_OPTIONS``: an advanced bitmask (pit mode, arming behaviour, and
   protocol tweaks), shown in hex.

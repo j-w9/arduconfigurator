@@ -10034,12 +10034,8 @@ export function App() {
             serialPortViewModels={serialPortViewModels}
             editedValues={editedValues}
             setDraft={setDraft}
-            parameterDraftEntries={parameterDraftEntries}
             parameterDraftById={parameterDraftById}
-            canApplyDraftParameters={canApplyDraftParameters}
             busyAction={busyAction}
-            onApplyScopedDrafts={handleApplyScopedParameterDrafts}
-            onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
             vtxTable={vtxTable}
             powerTable={vtxPowerTable}
             onPowerSlotChange={handleVtxPowerSlotChange}

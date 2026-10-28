@@ -10,10 +10,8 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 
 import { VTX_PARAM_IDS } from '../param-groups'
-import { isVtxReviewParamId } from '../param-review'
 import { readRoundedParameter } from '../selectors/parameter-read'
 import { selectViewCatalog } from '../selectors/view-catalog'
-import { selectViewDrafts } from '../selectors/view-drafts'
 import {
   isAnalogVtxControlSerialProtocol,
   isDigitalVtxSerialProtocol,
@@ -31,16 +29,8 @@ export interface VtxSectionProps {
   serialPortViewModels: readonly SerialPortViewModel[]
   editedValues: Record<string, string>
   setDraft: (paramId: string, value: string) => void
-  parameterDraftEntries: readonly ParameterDraftEntry[]
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
-  canApplyDraftParameters: boolean
   busyAction: string | undefined
-  onApplyScopedDrafts: (
-    drafts: readonly ParameterDraftEntry[],
-    busyKey: string,
-    scopeLabel: string
-  ) => void | Promise<void>
-  onDiscardScopedDrafts: (paramIds: readonly string[], scopeLabel: string) => void
   vtxTable: UseVtxTableResult
   powerTable: VtxViewProps['powerTable']
   onPowerSlotChange: VtxViewProps['onPowerSlotChange']
@@ -55,12 +45,8 @@ export function VtxSection(props: VtxSectionProps) {
     serialPortViewModels,
     editedValues,
     setDraft,
-    parameterDraftEntries,
     parameterDraftById,
-    canApplyDraftParameters,
     busyAction,
-    onApplyScopedDrafts,
-    onDiscardScopedDrafts,
     vtxTable,
     powerTable,
     onPowerSlotChange,
@@ -105,11 +91,6 @@ export function VtxSection(props: VtxSectionProps) {
     return hasDigitalVtx && !hasAnalogControl
   }, [serialPortViewModels])
 
-  const { entries: vtxDraftEntries, staged: vtxStagedDrafts, invalid: vtxInvalidDrafts } = useMemo(
-    () => selectViewDrafts(parameterDraftEntries, isVtxReviewParamId),
-    [parameterDraftEntries]
-  )
-
   return (
     <VtxView
       headerNav={headerNav}
@@ -124,14 +105,7 @@ export function VtxSection(props: VtxSectionProps) {
       editedValues={editedValues}
       onEditChange={(paramId, value) => setDraft(paramId, value)}
       draftStatusById={parameterDraftById}
-      stagedCount={vtxStagedDrafts.length}
-      invalidCount={vtxInvalidDrafts.length}
-      draftCount={vtxDraftEntries.length}
-      canApply={canApplyDraftParameters}
-      isApplying={busyAction === 'vtx:apply'}
       isBusy={busyAction !== undefined}
-      onApply={() => void onApplyScopedDrafts(vtxDraftEntries, 'vtx:apply', 'VTX')}
-      onRevert={() => onDiscardScopedDrafts(vtxDraftEntries.map((entry) => entry.id), 'VTX')}
       vtxTable={vtxTable}
       powerTable={powerTable}
       onPowerSlotChange={onPowerSlotChange}

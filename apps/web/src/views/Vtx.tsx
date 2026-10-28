@@ -47,19 +47,18 @@ export interface VtxViewProps extends VtxPowerTableProps {
   editedValues: Record<string, string>
   onEditChange: (paramId: string, value: string) => void
   draftStatusById: ScopedFieldDraftMap
-  stagedCount: number
-  invalidCount: number
-  draftCount: number
-  canApply: boolean
-  isApplying: boolean
   isBusy: boolean
-  onApply: () => void
-  onRevert: () => void
   /** MAVFTP-backed VTX band/frequency table (detection + edit state). */
   vtxTable: UseVtxTableResult
   /** True when a digital/MSP video system owns the @VTX table (learned from the
    *  goggles over MSP). The table then renders read-only — no edit/upload. */
   tableLearned: boolean
+}
+
+/** Requested VTX power for display; 0 mW is pit mode. */
+export function formatVtxPower(power: number | undefined): string {
+  if (power === undefined) return 'Unknown'
+  return power === 0 ? 'Pit mode (0 mW)' : `${power} mW`
 }
 
 export function VtxView(props: VtxViewProps) {
@@ -81,14 +80,7 @@ export function VtxView(props: VtxViewProps) {
     onPowerSlotChange,
     onPowerEnabledChange,
     onPowerPreset,
-    stagedCount,
-    invalidCount,
-    draftCount,
-    canApply,
-    isApplying,
     isBusy,
-    onApply,
-    onRevert,
     tableLearned
   } = props
 
@@ -118,28 +110,12 @@ export function VtxView(props: VtxViewProps) {
       >
         <div className="bf-tab-stack">
           {headerNav}
-          <div className="bf-note">
-            <p>Assign the control UART in Ports first. This tab is for transmitter-facing behavior, not the serial-role assignment itself.</p>
-            <p>
-              {linkPorts.length > 0
-                ? `Detected control path: ${linkPorts.map((port) => `${port.label} (${port.protocolLabel})`).join(', ')}`
-                : 'No VTX control link detected in current port roles.'}
-            </p>
-          </div>
-
           <div className="bf-vtx-grid">
             <article className="bf-gui-box bf-vtx-grid__config">
               <div className="bf-gui-box__titlebar">
                 <strong>Selected Mode</strong>
               </div>
               <div className="bf-gui-box__body">
-                <div className="config-pills">
-                  {enableField ? <span>Control: {enabledLabel}</span> : null}
-                  {frequencyField ? <span>Frequency: {frequency !== undefined ? `${frequency} MHz` : 'Unknown'}</span> : null}
-                  {powerField ? <span>Power: {power !== undefined ? `${power} mW` : 'Unknown'}</span> : null}
-                  {maxPowerField ? <span>Max power: {maxPower !== undefined ? `${maxPower} mW` : 'Unknown'}</span> : null}
-                </div>
-
                 <div className="bf-compact-field-grid">
                   {enableField ? (
                     <ScopedSelectField
@@ -163,13 +139,25 @@ export function VtxView(props: VtxViewProps) {
                   ) : null}
 
                   {powerField ? (
-                    <ScopedField
-                      parameter={powerField.parameter}
-                      liveValue={powerField.liveValue}
-                      editedValues={editedValues}
-                      onChange={onEditChange}
-                      draftStatusById={draftStatusById}
-                    />
+                    <div className="bf-vtx-power-field">
+                      <ScopedField
+                        parameter={powerField.parameter}
+                        liveValue={powerField.liveValue}
+                        editedValues={editedValues}
+                        onChange={onEditChange}
+                        draftStatusById={draftStatusById}
+                      />
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid="vtx-pit-mode-button"
+                        title="0 mW is pit mode on SmartAudio 2.1 VTXs (TBS Unify Pro32)."
+                        onClick={() => onEditChange(powerField.parameter.id, '0')}
+                        disabled={isBusy}
+                      >
+                        Pit mode (0 mW)
+                      </button>
+                    </div>
                   ) : null}
 
                   {maxPowerField ? (
@@ -205,7 +193,7 @@ export function VtxView(props: VtxViewProps) {
                   </div>
                   <div className="bf-gui-box__kv-row">
                     <span>Power</span>
-                    <strong>{power !== undefined ? `${power} mW` : 'Unknown'}</strong>
+                    <strong data-testid="vtx-actual-power">{formatVtxPower(power)}</strong>
                   </div>
                   <div className="bf-gui-box__kv-row">
                     <span>Max power</span>
@@ -277,28 +265,6 @@ export function VtxView(props: VtxViewProps) {
             </article>
           </div>
 
-          <div className="bf-toolbar">
-            <div className="bf-toolbar__status">
-              <span>{stagedCount} staged</span>
-              <span>{invalidCount} invalid</span>
-            </div>
-            <button
-              type="button"
-              style={buttonStyle('primary')}
-              onClick={onApply}
-              disabled={isBusy || stagedCount === 0 || invalidCount > 0 || !canApply}
-            >
-              {isApplying ? 'Applying…' : `Save VTX (${stagedCount})`}
-            </button>
-            <button
-              type="button"
-              style={buttonStyle()}
-              onClick={onRevert}
-              disabled={isBusy || draftCount === 0}
-            >
-              Revert
-            </button>
-          </div>
         </div>
       </Panel>
     </section>
