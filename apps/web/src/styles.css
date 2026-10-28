@@ -4070,11 +4070,20 @@ body.is-status-dash-dragging {
   gap: var(--space-3);
 }
 
+/* The power cell carries the pit-mode button; top-align the row so the cell
+   beside it keeps its own height. */
+.bf-vtx-grid__config .bf-compact-field-grid {
+  align-items: start;
+}
+
 .bf-vtx-power-field {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: var(--space-2);
+}
+
+.bf-vtx-power-field > button {
+  align-self: flex-start;
 }
 
 .bf-vtx-callout {

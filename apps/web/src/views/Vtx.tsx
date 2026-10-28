@@ -160,12 +160,12 @@ export function VtxView(props: VtxViewProps) {
                         editedValues={editedValues}
                         onChange={onEditChange}
                         draftStatusById={draftStatusById}
-                        caption="0 mW is pit mode on SmartAudio 2.1 VTXs (TBS Unify Pro32)."
                       />
                       <button
                         type="button"
                         style={buttonStyle()}
                         data-testid="vtx-pit-mode-button"
+                        title="0 mW is pit mode on SmartAudio 2.1 VTXs (TBS Unify Pro32)."
                         onClick={() => onEditChange(powerField.parameter.id, '0')}
                         disabled={isBusy}
                       >
