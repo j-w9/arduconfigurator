@@ -57,7 +57,7 @@ type CalibrationSectionId = 'sensors' | 'power' | 'flight'
 const CALIBRATION_SECTIONS: ReadonlyArray<{ id: CalibrationSectionId; label: string; summary: string }> = [
   { id: 'sensors', label: 'Sensors', summary: 'Accelerometer, level, compass, thermal' },
   { id: 'power', label: 'Power', summary: 'Battery voltage; current and ESCs in Expert' },
-  { id: 'flight', label: 'Flight', summary: 'Autotune, hover, Z-bias' }
+  { id: 'flight', label: 'Flight', summary: 'Hover, autotune, Z-bias' }
 ]
 
 export interface CalibrationSectionProps {
@@ -1634,26 +1634,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 * a manually-entered hover height, so it does not require a
                 * rangefinder to be configured. Shows n/a on firmware without
                 * BARO1_THST_SCALE. */}
-              {/* Autotune is NOT Expert-gated. It is stock ArduCopter, it is
-                  how an ordinary operator gets a tuned aircraft, and the card
-                  is safer than the alternative it replaces — flying AUTOTUNE
-                  from memory with no record of the gains it started from.
-                  Expert mode is for surfaces that can hurt someone who does
-                  not already know what they are; this is the opposite. */}
-              {calibrationTab === 'flight' ? (
-                <AutotuneFlightCard
-                  snapshot={snapshot}
-                  canApplyDraftParameters={canApplyDraftParameters}
-                  busyAction={busyAction}
-                  setDraft={setDraft}
-                />
-              ) : null}
               {/* Ordered by what depends on what.
                   The two MOT_THST_HOVER cards sit together -- learning it in
                   the air, and measuring it from a log when the firmware's own
                   learner will not run -- and the Z-bias flight, which needs an
                   accepted hover throttle before it means anything, comes after
-                  both. They stay SEPARATE cards because they are separate
+                  both and after autotune. They stay SEPARATE cards because they are separate
                   flights with separate outcomes; one card only ever showed
                   whichever half the vehicle happened to be on. */}
               {calibrationTab === 'flight' ? (
@@ -1674,6 +1660,25 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   busyAction={busyAction}
                   setDraft={setDraft}
                   onboardLogs={onboardLogs}
+                />
+              ) : null}
+              {/* After hover throttle and before the Z-bias, in the order a new
+                  build flies them (wiki: sensors-calibration, "Where tuning
+                  fits"): the bias is learned at the hover the tune leaves.
+                  Operators read this row left to right as a sequence.
+
+                  Autotune is NOT Expert-gated. It is stock ArduCopter, it is
+                  how an ordinary operator gets a tuned aircraft, and the card
+                  is safer than the alternative it replaces — flying AUTOTUNE
+                  from memory with no record of the gains it started from.
+                  Expert mode is for surfaces that can hurt someone who does
+                  not already know what they are; this is the opposite. */}
+              {calibrationTab === 'flight' ? (
+                <AutotuneFlightCard
+                  snapshot={snapshot}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  busyAction={busyAction}
+                  setDraft={setDraft}
                 />
               ) : null}
               {calibrationTab === 'flight' ? (
