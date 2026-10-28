@@ -195,6 +195,36 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByLabel('FS_OPTIONS value')).toHaveCount(0)
   })
 
+  test('a bitmask row shows its value, and a set bit outside the list can be seen and cleared', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await page.getByTestId('product-mode-expert').click()
+    await openView(page, 'parameters')
+    await page.getByTestId('parameter-search-input').fill('FS_OPTIONS')
+    // The row's collapsed editor; the expanded detail repeats the test id.
+    const field = page.locator('.parameter-row details[data-testid="scoped-bitmask-FS_OPTIONS"]')
+    await field.scrollIntoViewIfNeeded()
+    const summary = field.getByTestId('scoped-bitmask-summary-FS_OPTIONS')
+    await expect(summary).toHaveText('0 · None set')
+
+    // Stock firmware lists bits 0-5. A fork bit (6, the SFD AltHold-drift
+    // option) typed as a raw value must not vanish.
+    // The first click can expand the row instead of opening the dropdown, so
+    // click until the raw value box shows.
+    const raw = field.getByLabel('FS_OPTIONS raw bitmask value')
+    await expect(async () => {
+      if (!(await raw.isVisible())) await field.locator('summary').click()
+      await expect(raw).toBeVisible({ timeout: 1000 })
+    }).toPass({ timeout: 10000 })
+    await raw.fill('64')
+    await expect(summary).toHaveText('64 · bit 6 not in list')
+    const unlisted = field.getByTestId('scoped-bitmask-unlisted-FS_OPTIONS-6')
+    await expect(unlisted).toBeVisible()
+
+    await unlisted.click()
+    await expect(summary).toHaveText('0 · None set')
+    await expect(unlisted).toHaveCount(0)
+  })
+
   test('parameter table can filter by category', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     await page.getByTestId('product-mode-expert').click()

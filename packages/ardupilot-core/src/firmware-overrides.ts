@@ -156,3 +156,66 @@ export function applySfdValtCatalogOverrides<
   }
   return { ...catalog, parameters }
 }
+
+// ---------------------------------------------------------------------------
+// SFD fork feature gate: failsafe AltHold drift without position.
+//
+// The fork (SmallFastDrone-4.7.0-gps-optflow-fallback, "Copter: allow failsafe
+// fallback to AltHold drift without position") adds FS_OPTIONS bit 6,
+// ALTHOLD_NO_POSITION = (1<<6), and the FS_ALTH_TMO timeout that goes with it.
+// Stock ArduCopter 4.6.3, 4.7.0, 4.7.2 and master stop at bit 5.
+//
+// Detection is by parameter presence: FS_ALTH_TMO is added in the same commit
+// as the bit, so it is on the wire exactly when the option exists.
+
+/** The fork parameter whose presence proves FS_OPTIONS bit 6 exists. */
+export const SFD_FS_ALTHOLD_DETECTION_PARAM_ID = 'FS_ALTH_TMO'
+
+/** FS_OPTIONS bit index of ALTHOLD_NO_POSITION (Copter.h `1<<6`). */
+export const SFD_FS_ALTHOLD_OPTION_BIT = 6
+
+/** True when the firmware carries the failsafe AltHold-drift option. */
+export function detectSfdFailsafeAltholdDrift(parameterIds: Iterable<string>): boolean {
+  for (const id of parameterIds) {
+    if (id === SFD_FS_ALTHOLD_DETECTION_PARAM_ID) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Add FS_OPTIONS bit 6 and the FS_ALTH_TMO definition when the fork feature is
+ * detected. Returns the SAME catalog object when it is not, so stock
+ * ArduCopter and the pre-connect catalog are untouched by identity.
+ */
+export function applySfdFailsafeAltholdCatalogOverrides<
+  T extends { parameters: Record<string, ParameterDefinition> }
+>(catalog: T, available: boolean): T {
+  if (!available) {
+    return catalog
+  }
+  const parameters = { ...catalog.parameters }
+  const fsOptions = parameters.FS_OPTIONS
+  if (fsOptions?.options && !fsOptions.options.some((option) => option.value === SFD_FS_ALTHOLD_OPTION_BIT)) {
+    parameters.FS_OPTIONS = {
+      ...fsOptions,
+      // Copy from the fork's @Bitmask entry, shortened.
+      options: [...fsOptions.options, { value: SFD_FS_ALTHOLD_OPTION_BIT, label: 'AltHold and drift instead of Land without position' }]
+    }
+  }
+  if (!parameters[SFD_FS_ALTHOLD_DETECTION_PARAM_ID]) {
+    parameters[SFD_FS_ALTHOLD_DETECTION_PARAM_ID] = {
+      id: SFD_FS_ALTHOLD_DETECTION_PARAM_ID,
+      label: 'Failsafe AltHold drift timeout',
+      description:
+        'Maximum time the vehicle will hold altitude and drift with neutral sticks after a failsafe has fallen back to AltHold without a position estimate (FS_OPTIONS bit 6). If the RC link has not returned when this expires the vehicle lands. 0 drifts indefinitely.',
+      category: 'failsafe',
+      unit: 's',
+      minimum: 0,
+      maximum: 300,
+      step: 1
+    }
+  }
+  return { ...catalog, parameters }
+}

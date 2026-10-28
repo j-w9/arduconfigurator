@@ -8763,6 +8763,11 @@ body.is-status-dash-dragging {
   color: var(--accent-strong, var(--accent));
 }
 
+/* A bit set on the vehicle that the parameter's list does not name. */
+.scoped-bitmask-bit--unlisted {
+  border-style: dashed;
+}
+
 .scoped-bitmask-bit:focus-visible,
 .scoped-option-chip:focus-visible {
   outline: 2px solid var(--accent);
@@ -24066,12 +24071,6 @@ button.plot-side-list__name {
 
 .setup-gui-box__status-fold:hover {
   color: var(--text);
-}
-
-/* The raw "Value" entry under a bitmask chip group is for pasting a number
-   out of a param file; outside Expert the chips are the editor. */
-:root:not([data-product-mode="expert"]) .scoped-bitmask-raw {
-  display: none;
 }
 
 /* Servos: the FUNCTION column header names the field, so the per-row
