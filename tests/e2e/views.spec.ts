@@ -7325,9 +7325,9 @@ test.describe('VTX power', () => {
     await expect(page.getByTestId('vtx-actual-power')).toHaveText('200 mW')
 
     await page.getByTestId('vtx-pit-mode-button').click()
-    const save = page.getByRole('button', { name: 'Save VTX (1)' })
-    await expect(save).toBeEnabled()
-    await save.click()
+    const write = page.getByTestId('global-draft-write')
+    await expect(write).toBeEnabled()
+    await write.click()
     await expect(page.getByTestId('vtx-actual-power')).toHaveText('Pit mode (0 mW)', { timeout: 10000 })
   })
 })

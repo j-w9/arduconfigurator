@@ -47,14 +47,7 @@ export interface VtxViewProps extends VtxPowerTableProps {
   editedValues: Record<string, string>
   onEditChange: (paramId: string, value: string) => void
   draftStatusById: ScopedFieldDraftMap
-  stagedCount: number
-  invalidCount: number
-  draftCount: number
-  canApply: boolean
-  isApplying: boolean
   isBusy: boolean
-  onApply: () => void
-  onRevert: () => void
   /** MAVFTP-backed VTX band/frequency table (detection + edit state). */
   vtxTable: UseVtxTableResult
   /** True when a digital/MSP video system owns the @VTX table (learned from the
@@ -87,14 +80,7 @@ export function VtxView(props: VtxViewProps) {
     onPowerSlotChange,
     onPowerEnabledChange,
     onPowerPreset,
-    stagedCount,
-    invalidCount,
-    draftCount,
-    canApply,
-    isApplying,
     isBusy,
-    onApply,
-    onRevert,
     tableLearned
   } = props
 
@@ -279,28 +265,6 @@ export function VtxView(props: VtxViewProps) {
             </article>
           </div>
 
-          <div className="bf-toolbar">
-            <div className="bf-toolbar__status">
-              <span>{stagedCount} staged</span>
-              <span>{invalidCount} invalid</span>
-            </div>
-            <button
-              type="button"
-              style={buttonStyle('primary')}
-              onClick={onApply}
-              disabled={isBusy || stagedCount === 0 || invalidCount > 0 || !canApply}
-            >
-              {isApplying ? 'Applying…' : `Save VTX (${stagedCount})`}
-            </button>
-            <button
-              type="button"
-              style={buttonStyle()}
-              onClick={onRevert}
-              disabled={isBusy || draftCount === 0}
-            >
-              Revert
-            </button>
-          </div>
         </div>
       </Panel>
     </section>

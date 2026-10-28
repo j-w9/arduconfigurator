@@ -3,8 +3,9 @@ OSD and VTX
 
 The **OSD** tab lays out the on-screen-display overlay drawn on your FPV video,
 and the **VTX** sub-tab beside it configures the video transmitter. Both use
-staged drafts: edits accumulate, then **Save** writes them and **Revert**
-discards them.
+staged drafts: edits accumulate until you write them. On OSD, **Save** writes
+them and **Revert** discards them. On VTX, the changes bar at the top writes
+them (**Write all**) or discards them.
 
 OSD layout
 ----------
