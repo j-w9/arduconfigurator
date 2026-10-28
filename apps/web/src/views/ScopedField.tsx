@@ -397,6 +397,52 @@ export function ScopedField(props: ScopedNumberFieldProps) {
 }
 
 /**
+ * Bits set in `value` that the definition does not list, lowest first. A
+ * firmware can carry an option the metadata does not know yet (a fork bit, a
+ * newer release); those still need to be visible and clearable.
+ */
+export function unlistedSetBits(value: number, options: readonly { value: number }[]): number[] {
+  const listed = new Set(options.map((option) => option.value))
+  const bits: number[] = []
+  for (let bit = 0; bit < 31; bit += 1) {
+    if ((value & (1 << bit)) !== 0 && !listed.has(bit)) {
+      bits.push(bit)
+    }
+  }
+  return bits
+}
+
+function UnlistedBitButtons({
+  paramId,
+  value,
+  options,
+  onChange
+}: {
+  paramId: string
+  value: number
+  options: readonly { value: number }[]
+  onChange: (paramId: string, value: string) => void
+}) {
+  return (
+    <>
+      {unlistedSetBits(value, options).map((bit) => (
+        <button
+          type="button"
+          key={`${paramId}:unlisted:${bit}`}
+          className="scoped-bitmask-bit is-set scoped-bitmask-bit--unlisted"
+          aria-pressed
+          data-testid={`scoped-bitmask-unlisted-${paramId}-${bit}`}
+          title="Set on the vehicle but not in this parameter's list. Click to clear it."
+          onClick={() => onChange(paramId, String((value & ~(1 << bit)) >>> 0))}
+        >
+          Bit {bit}
+        </button>
+      ))}
+    </>
+  )
+}
+
+/**
  * Render a bitmask parameter as a grid of per-bit checkboxes (instead of a
  * single dropdown). Each option's `value` is the BIT INDEX (0, 1, 2, …);
  * the staged value is the OR of the checked bits. Used by the generic
@@ -433,6 +479,7 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
             </button>
           )
         })}
+        <UnlistedBitButtons paramId={parameter.id} value={safeCurrent} options={options} onChange={onChange} />
       </div>
       {/* Raw value entry: paste/type a bitmask number directly (e.g. copying a
           value out of another param file). Shares the same edited value as the
@@ -552,6 +599,14 @@ export function ScopedOptionChipsField(props: CommonScopedFieldProps) {
  * per-bit checkbox grid as ScopedBitmaskField (single column, scrollable). Used
  * where the always-open inline grid would be too tall / overlap neighbours.
  */
+/** Collapsed-row text: the raw value, then how many listed bits are set. */
+export function formatBitmaskSummary(value: number, setCount: number, listedCount: number, unlisted: readonly number[]): string {
+  const parts: string[] = []
+  if (setCount > 0) parts.push(`${setCount} of ${listedCount} set`)
+  if (unlisted.length > 0) parts.push(`bit ${unlisted.join(', ')} not in list`)
+  return `${value} · ${parts.length > 0 ? parts.join(', ') : 'None set'}`
+}
+
 export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
   const { parameter, liveValue, editedValues, draftStatusById, onChange } = props
   const status = statusModifier(draftStatusById, parameter.id)
@@ -570,7 +625,9 @@ export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
       data-testid={`scoped-bitmask-${parameter.id}`}
     >
       <summary className="scoped-bitmask-popover__summary">
-        <span>{setCount > 0 ? `${setCount} of ${options.length} set` : 'None set'}</span>
+        <span data-testid={`scoped-bitmask-summary-${parameter.id}`}>
+          {formatBitmaskSummary(safeCurrent, setCount, options.length, unlistedSetBits(safeCurrent, options))}
+        </span>
       </summary>
       <div className="scoped-bitmask-popover__panel">
         <div className="scoped-bitmask-bits scoped-bitmask-bits--single">
@@ -590,6 +647,7 @@ export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
               </button>
             )
           })}
+          <UnlistedBitButtons paramId={parameter.id} value={safeCurrent} options={options} onChange={onChange} />
         </div>
         {/* Raw value entry: paste/type a bitmask number directly (e.g. copying a
             value out of another param file) — the checkboxes track it. */}

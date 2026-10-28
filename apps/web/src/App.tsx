@@ -32,6 +32,8 @@ import {
   type MotorTestRequest,
   applyArducopter47CatalogOverrides,
   applySfdValtCatalogOverrides,
+  applySfdFailsafeAltholdCatalogOverrides,
+  detectSfdFailsafeAltholdDrift,
   detectSfdValtMode,
   type ParameterBackupFile,
   type ParameterBackupImportOptions,
@@ -778,23 +780,32 @@ export function App() {
     () => detectSfdValtMode(snapshot.parameters.map((parameter) => parameter.id)),
     [snapshot.parameters]
   )
+  const failsafeAltholdDriftAvailable = useMemo(
+    () => detectSfdFailsafeAltholdDrift(snapshot.parameters.map((parameter) => parameter.id)),
+    [snapshot.parameters]
+  )
   const metadataCatalog = useMemo(
     () =>
-      // Fork gate runs AFTER the version gate: it only ever appends VALT to the
-      // flight-mode enums, and returns the catalog by identity on stock builds.
-      applySfdValtCatalogOverrides(
-        applyArducopter47CatalogOverrides(
-          normalizeFirmwareMetadata(activeMetadataBundle),
-          snapshot.hardware.board?.firmwareVersionParts,
-          snapshot.vehicle?.vehicle === 'ArduCopter'
+      // Fork gates run AFTER the version gate: they only ever append fork
+      // options and definitions, and return the catalog by identity on stock
+      // builds.
+      applySfdFailsafeAltholdCatalogOverrides(
+        applySfdValtCatalogOverrides(
+          applyArducopter47CatalogOverrides(
+            normalizeFirmwareMetadata(activeMetadataBundle),
+            snapshot.hardware.board?.firmwareVersionParts,
+            snapshot.vehicle?.vehicle === 'ArduCopter'
+          ),
+          valtModeAvailable
         ),
-        valtModeAvailable
+        failsafeAltholdDriftAvailable
       ),
     [
       activeMetadataBundle,
       snapshot.hardware.board?.firmwareVersionParts,
       snapshot.vehicle?.vehicle,
-      valtModeAvailable
+      valtModeAvailable,
+      failsafeAltholdDriftAvailable
     ]
   )
   const setupSectionIds = useMemo(

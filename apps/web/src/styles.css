@@ -8763,6 +8763,11 @@ body.is-status-dash-dragging {
   color: var(--accent-strong, var(--accent));
 }
 
+/* A bit set on the vehicle that the parameter's list does not name. */
+.scoped-bitmask-bit--unlisted {
+  border-style: dashed;
+}
+
 .scoped-bitmask-bit:focus-visible,
 .scoped-option-chip:focus-visible {
   outline: 2px solid var(--accent);
