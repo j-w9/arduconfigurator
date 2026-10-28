@@ -7315,6 +7315,23 @@ test.describe('App update banner', () => {
   })
 })
 
+test.describe('VTX power', () => {
+  test('the pit-mode button stages 0 mW, and the saved value reads as pit mode', async ({ page }) => {
+    // 0 mW is pit mode on a SmartAudio 2.1 VTX (TBS Unify Pro32).
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
+    await expect(page.getByText('Power: 200 mW')).toBeVisible()
+
+    await page.getByTestId('vtx-pit-mode-button').click()
+    const save = page.getByRole('button', { name: 'Save VTX (1)' })
+    await expect(save).toBeEnabled()
+    await save.click()
+    await expect(page.getByText('Power: Pit mode (0 mW)')).toBeVisible({ timeout: 10000 })
+  })
+})
+
 test.describe('VTX band/frequency table', () => {
   test('detected table renders an editable grid; edits upload via MAVFTP', async ({ page }) => {
     // The demo seeds @VTX/vtxtable.dat as a VERSION 2 blob: 3 factory bands ×

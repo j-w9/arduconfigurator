@@ -68,7 +68,10 @@ you reach this tab. The tab shows these parameters:
 
 - ``VTX_ENABLE``: turns VTX control on or off.
 - ``VTX_FREQ``: the transmit frequency in MHz.
-- ``VTX_POWER``: the output power in milliwatts.
+- ``VTX_POWER``: the output power in milliwatts. **Pit mode (0 mW)** stages 0.
+  On a SmartAudio 2.1 VTX (TBS Unify Pro32) 0 mW puts it into pit mode, and
+  any other power takes it out. The ``VTX_OPTIONS`` pit-mode bit on these VTXs
+  only sets whether the VTX starts in pit mode at the next power-up.
 - ``VTX_MAX_POWER``: a cap on the power the VTX may use.
 - ``VTX_OPTIONS``: an advanced bitmask (pit mode, arming behaviour, and
   protocol tweaks), shown in hex.

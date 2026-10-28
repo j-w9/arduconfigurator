@@ -62,6 +62,12 @@ export interface VtxViewProps extends VtxPowerTableProps {
   tableLearned: boolean
 }
 
+/** Requested VTX power for display; 0 mW is pit mode. */
+export function formatVtxPower(power: number | undefined): string {
+  if (power === undefined) return 'Unknown'
+  return power === 0 ? 'Pit mode (0 mW)' : `${power} mW`
+}
+
 export function VtxView(props: VtxViewProps) {
   const {
     headerNav,
@@ -136,7 +142,7 @@ export function VtxView(props: VtxViewProps) {
                 <div className="config-pills">
                   {enableField ? <span>Control: {enabledLabel}</span> : null}
                   {frequencyField ? <span>Frequency: {frequency !== undefined ? `${frequency} MHz` : 'Unknown'}</span> : null}
-                  {powerField ? <span>Power: {power !== undefined ? `${power} mW` : 'Unknown'}</span> : null}
+                  {powerField ? <span>Power: {formatVtxPower(power)}</span> : null}
                   {maxPowerField ? <span>Max power: {maxPower !== undefined ? `${maxPower} mW` : 'Unknown'}</span> : null}
                 </div>
 
@@ -163,13 +169,25 @@ export function VtxView(props: VtxViewProps) {
                   ) : null}
 
                   {powerField ? (
-                    <ScopedField
-                      parameter={powerField.parameter}
-                      liveValue={powerField.liveValue}
-                      editedValues={editedValues}
-                      onChange={onEditChange}
-                      draftStatusById={draftStatusById}
-                    />
+                    <div className="bf-vtx-power-field">
+                      <ScopedField
+                        parameter={powerField.parameter}
+                        liveValue={powerField.liveValue}
+                        editedValues={editedValues}
+                        onChange={onEditChange}
+                        draftStatusById={draftStatusById}
+                        caption="0 mW is pit mode on SmartAudio 2.1 VTXs (TBS Unify Pro32)."
+                      />
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid="vtx-pit-mode-button"
+                        onClick={() => onEditChange(powerField.parameter.id, '0')}
+                        disabled={isBusy}
+                      >
+                        Pit mode (0 mW)
+                      </button>
+                    </div>
                   ) : null}
 
                   {maxPowerField ? (
@@ -205,7 +223,7 @@ export function VtxView(props: VtxViewProps) {
                   </div>
                   <div className="bf-gui-box__kv-row">
                     <span>Power</span>
-                    <strong>{power !== undefined ? `${power} mW` : 'Unknown'}</strong>
+                    <strong>{formatVtxPower(power)}</strong>
                   </div>
                   <div className="bf-gui-box__kv-row">
                     <span>Max power</span>
