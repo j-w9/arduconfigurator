@@ -3113,6 +3113,15 @@ export class ArduPilotConfiguratorRuntime {
       })
       this.statusTexts.splice(STATUS_TEXT_HISTORY_LIMIT)
     }
+    // Per-IMU thermal calibration ends inside the firmware: it saves
+    // INS_TCALn_ENABLE (1 on success, 0 on a failed fit), TMIN/TMAX and the
+    // coefficients with set_and_save_ifchanged, which sends no PARAM_VALUE.
+    // These two messages are the only sign it finished
+    // (AP_InertialSensor_tempcal.cpp finish_calibration), so re-read the
+    // TCAL parameters or the app keeps showing "learning".
+    if (/^TCAL\[\d+\]: (completed calibration|failed fit)/.test(text)) {
+      void this.rereadParametersMatching([/^INS_TCAL\d+_/])
+    }
     // Resolve any one-shot substring waiters (e.g. the passthru-enabled gate).
     if (this.statusTextWaiters.length > 0) {
       const remaining: typeof this.statusTextWaiters = []
@@ -4489,6 +4498,31 @@ export class ArduPilotConfiguratorRuntime {
       }
     }
     return missing
+  }
+
+  /**
+   * Targeted by-name PARAM_REQUEST_READ for every synced (non-mirror)
+   * parameter whose id matches one of `patterns`. The PARAM_VALUE replies
+   * flow through processParamValue like any other arrival, so the snapshot
+   * picks the fresh values up. Used after a calibration stores new values.
+   */
+  private async rereadParametersMatching(patterns: readonly RegExp[]): Promise<void> {
+    if (!this.vehicle || this.connection.kind !== 'connected') {
+      return
+    }
+    const ids = [...this.parameters.values()]
+      .filter((parameter) => parameter.aliasedFrom === undefined && patterns.some((pattern) => pattern.test(parameter.id)))
+      .map((parameter) => parameter.id)
+    for (const paramId of ids) {
+      await this.session.send({
+        type: 'PARAM_REQUEST_READ',
+        targetSystem: this.vehicle.systemId,
+        targetComponent: this.vehicle.componentId,
+        paramId,
+        // By name: the index is -1 (common.xml).
+        paramIndex: -1
+      })
+    }
   }
 
   // Refetch specific parameter slots by index with PARAM_REQUEST_READ. Bounded

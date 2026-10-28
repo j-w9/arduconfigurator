@@ -15,8 +15,9 @@ The tab has three **sub-tabs**:
 - **Power:** **Battery voltage**, **Battery current**, and **ESC** throttle
   range.
 - **Flight:** calibrations that need a flight and a reconnect afterwards:
-  **Autotune flight**, **Hover throttle learning**, **Hover throttle from a
-  log**, **Accelerometer Z-bias**, and **Baro thrust (VALT)**.
+  **Hover throttle learning**, **Hover throttle from a log**, **Autotune
+  flight**, **Accelerometer Z-bias**, and **Baro thrust (VALT)**, left to right
+  in the order a new build flies them.
 
 The Flight cards all work the same way. You set something up, fly, land and plug
 back in, and the card tells you what the vehicle came back with. None of them

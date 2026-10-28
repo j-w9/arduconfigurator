@@ -81,3 +81,20 @@ export function tcalTargetCheck(targetC: number, boardTempC: number | undefined)
 export function latestTcalMessage(statusTexts: readonly StatusTextEntry[]): StatusTextEntry | undefined {
   return statusTexts.find((entry) => /^TCAL\[\d+\]:/.test(entry.text))
 }
+
+/**
+ * How the last learn ended, once nothing is learning: the firmware says
+ * "TCAL[n]: completed calibration …" or "TCAL[n]: failed fit"
+ * (AP_InertialSensor_tempcal.cpp finish_calibration). Undefined while a learn
+ * is still running or when no such message has arrived this session.
+ */
+export function tcalOutcome(
+  statusTexts: readonly StatusTextEntry[],
+  anyLearning: boolean
+): 'finished' | 'failed' | undefined {
+  if (anyLearning) return undefined
+  const text = latestTcalMessage(statusTexts)?.text ?? ''
+  if (/: completed calibration/.test(text)) return 'finished'
+  if (/: failed fit/.test(text)) return 'failed'
+  return undefined
+}
