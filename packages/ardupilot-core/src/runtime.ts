@@ -3113,6 +3113,15 @@ export class ArduPilotConfiguratorRuntime {
       })
       this.statusTexts.splice(STATUS_TEXT_HISTORY_LIMIT)
     }
+    // Per-IMU thermal calibration ends inside the firmware: it saves
+    // INS_TCALn_ENABLE (1 on success, 0 on a failed fit), TMIN/TMAX and the
+    // coefficients with set_and_save_ifchanged, which sends no PARAM_VALUE.
+    // These two messages are the only sign it finished
+    // (AP_InertialSensor_tempcal.cpp finish_calibration), so re-read the
+    // TCAL parameters or the app keeps showing "learning".
+    if (/^TCAL\[\d+\]: (completed calibration|failed fit)/.test(text)) {
+      void this.rereadParametersMatching([/^INS_TCAL\d+_/])
+    }
     // Resolve any one-shot substring waiters (e.g. the passthru-enabled gate).
     if (this.statusTextWaiters.length > 0) {
       const remaining: typeof this.statusTextWaiters = []

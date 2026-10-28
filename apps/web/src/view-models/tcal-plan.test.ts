@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { latestTcalMessage, tcalStopWrites, tcalStartWrites, tcalTargetCheck } from './tcal-plan'
+import { latestTcalMessage, tcalOutcome, tcalStopWrites, tcalStartWrites, tcalTargetCheck } from './tcal-plan'
 
 describe('tcalStartWrites', () => {
   it('writes every target before any enable, and the baro enable last', () => {
@@ -52,5 +52,22 @@ describe('latestTcalMessage', () => {
       { severity: 'warning', text: 'TCAL[1]: started calibration t=24.0C tmax=45.0C' }
     ])
     expect(found?.text).toContain('completed')
+  })
+})
+
+describe('tcalOutcome', () => {
+  const entry = (text: string) => ({ severity: 'warning' as const, text, receivedAtMs: 0 })
+  it('reads finished from the completion message once nothing is learning', () => {
+    expect(tcalOutcome([entry('TCAL[1]: completed calibration tmin=36.1 tmax=75.0')], false)).toBe('finished')
+  })
+  it('reads failed from a failed fit', () => {
+    expect(tcalOutcome([entry('TCAL[2]: failed fit')], false)).toBe('failed')
+  })
+  it('says nothing while an IMU is still learning', () => {
+    expect(tcalOutcome([entry('TCAL[1]: completed calibration tmin=36.1 tmax=75.0')], true)).toBeUndefined()
+  })
+  it('says nothing for a start message or no message', () => {
+    expect(tcalOutcome([entry('TCAL[1]: started calibration t=30.0C tmax=75.0C')], false)).toBeUndefined()
+    expect(tcalOutcome([], false)).toBeUndefined()
   })
 })

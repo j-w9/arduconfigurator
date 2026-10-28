@@ -38,6 +38,7 @@ import {
   TCAL_TEMP_LIMIT_HIGH_C,
   TCAL_TEMP_LIMIT_LOW_C,
   latestTcalMessage,
+  tcalOutcome,
   tcalStopWrites,
   tcalStartWrites,
   tcalTargetCheck,
@@ -107,6 +108,7 @@ export function TcalCalibrationCard({
   const reportedTargets = imus.map((imu) => imu.tmax).filter((t): t is number => typeof t === 'number')
   const learningTarget = reportedTargets.length > 0 ? Math.max(...reportedTargets) : undefined
   const tcalMessage = latestTcalMessage(snapshot.statusTexts)
+  const outcome = tcalOutcome(snapshot.statusTexts, anyLearning)
 
   // Folded by default (operator request): the full card is the tallest on the
   // page, and on a wide screen its height pushed the rest of the Sensors row
@@ -254,6 +256,19 @@ export function TcalCalibrationCard({
           </span>
         ) : null}
       </div>
+
+      {/* The learn ends inside the firmware, which never announces the new
+          state; the runtime re-reads it on these messages. Said here too, so
+          the result is visible without opening the card. */}
+      {outcome === 'finished' ? (
+        <p className="success-copy" data-testid="tcal-finished">
+          Finished. Thermal cal is on and in use.
+        </p>
+      ) : outcome === 'failed' ? (
+        <p className="switch-exercise-warning" data-testid="tcal-failed">
+          The fit failed, so thermal cal is off. Let the board cool and start again.
+        </p>
+      ) : null}
 
       {expandToggle}
 
