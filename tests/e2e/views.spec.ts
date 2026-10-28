@@ -7322,13 +7322,13 @@ test.describe('VTX power', () => {
     await connectViaHeader(page)
     await page.getByTestId('view-button-osd').click()
     await page.getByTestId('osd-vtx-tab-vtx').click()
-    await expect(page.getByText('Power: 200 mW')).toBeVisible()
+    await expect(page.getByTestId('vtx-actual-power')).toHaveText('200 mW')
 
     await page.getByTestId('vtx-pit-mode-button').click()
     const save = page.getByRole('button', { name: 'Save VTX (1)' })
     await expect(save).toBeEnabled()
     await save.click()
-    await expect(page.getByText('Power: Pit mode (0 mW)')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('vtx-actual-power')).toHaveText('Pit mode (0 mW)', { timeout: 10000 })
   })
 })
 

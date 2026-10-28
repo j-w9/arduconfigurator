@@ -124,28 +124,12 @@ export function VtxView(props: VtxViewProps) {
       >
         <div className="bf-tab-stack">
           {headerNav}
-          <div className="bf-note">
-            <p>Assign the control UART in Ports first. This tab is for transmitter-facing behavior, not the serial-role assignment itself.</p>
-            <p>
-              {linkPorts.length > 0
-                ? `Detected control path: ${linkPorts.map((port) => `${port.label} (${port.protocolLabel})`).join(', ')}`
-                : 'No VTX control link detected in current port roles.'}
-            </p>
-          </div>
-
           <div className="bf-vtx-grid">
             <article className="bf-gui-box bf-vtx-grid__config">
               <div className="bf-gui-box__titlebar">
                 <strong>Selected Mode</strong>
               </div>
               <div className="bf-gui-box__body">
-                <div className="config-pills">
-                  {enableField ? <span>Control: {enabledLabel}</span> : null}
-                  {frequencyField ? <span>Frequency: {frequency !== undefined ? `${frequency} MHz` : 'Unknown'}</span> : null}
-                  {powerField ? <span>Power: {formatVtxPower(power)}</span> : null}
-                  {maxPowerField ? <span>Max power: {maxPower !== undefined ? `${maxPower} mW` : 'Unknown'}</span> : null}
-                </div>
-
                 <div className="bf-compact-field-grid">
                   {enableField ? (
                     <ScopedSelectField
@@ -223,7 +207,7 @@ export function VtxView(props: VtxViewProps) {
                   </div>
                   <div className="bf-gui-box__kv-row">
                     <span>Power</span>
-                    <strong>{formatVtxPower(power)}</strong>
+                    <strong data-testid="vtx-actual-power">{formatVtxPower(power)}</strong>
                   </div>
                   <div className="bf-gui-box__kv-row">
                     <span>Max power</span>
