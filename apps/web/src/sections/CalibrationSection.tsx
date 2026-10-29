@@ -143,8 +143,11 @@ const CALIBRATION_REBOOT_ADVICE: Partial<
  */
 function CalibrationRebootPrompt(props: {
   actionId: GuidedActionId
-  runtime: ArduPilotConfiguratorRuntime
   connected: boolean
+  /** App's reboot action: it arms the reconnect before rebooting, as the
+   *  Parameters tab's reboot does. Calling runtime.reboot() directly skipped
+   *  that, so the link never came back on its own. */
+  onReboot: () => void | Promise<void>
   onDismiss: () => void
 }): ReactElement | null {
   const advice = CALIBRATION_REBOOT_ADVICE[props.actionId]
@@ -172,7 +175,7 @@ function CalibrationRebootPrompt(props: {
           onClick={() => {
             setSending(true)
             setError(undefined)
-            void runtimeReboot(props.runtime)
+            void Promise.resolve(props.onReboot())
               .then(() => props.onDismiss())
               .catch((cause: unknown) => {
                 setError(cause instanceof Error ? cause.message : 'Reboot request failed.')
@@ -192,15 +195,10 @@ function CalibrationRebootPrompt(props: {
         </button>
       </div>
       {advice.required ? (
-        <p className="calibration-card__reboot-note">The link will drop; reconnect once the board comes back up.</p>
+        <p className="calibration-card__reboot-note">The link drops while the board restarts, then reconnects.</p>
       ) : null}
     </div>
   )
-}
-
-/** Kept separate so the prompt stays a pure render of one runtime call. */
-async function runtimeReboot(runtime: ArduPilotConfiguratorRuntime): Promise<void> {
-  await runtime.reboot()
 }
 
 /** Load-spin duration for battery-current calibration. Pinned to the shared
@@ -598,7 +596,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                     {pendingRebootPromptKey !== undefined ? (
                       <CalibrationRebootPrompt
                         actionId={action.actionId}
-                        runtime={runtime}
+                        onReboot={() => handleGuidedAction('reboot-autopilot')}
                         connected={snapshot.connection.kind === 'connected'}
                         onDismiss={() =>
                           setDismissedRebootPrompts((current) => new Set(current).add(pendingRebootPromptKey))
