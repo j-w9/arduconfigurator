@@ -35,6 +35,7 @@ import {
   applySfdFailsafeAltholdCatalogOverrides,
   detectSfdFailsafeAltholdDrift,
   detectSfdValtMode,
+  isNonNegativeGainParameterId,
   type ParameterBackupFile,
   type ParameterBackupImportOptions,
   type ParameterBatchWriteProgress,
@@ -5968,7 +5969,13 @@ export function App() {
       defaultValue: rawDefault === undefined ? undefined : toDisplay(parameter.id, rawDefault),
       choices,
       draftStatus: parameterDraftById.get(parameter.id)?.status,
-      min: parameter.id === 'ANGLE_MAX' || min === undefined ? min : min / scale,
+      // Gains never go negative; the box's lower bound says so even where the
+      // metadata documents no minimum (draft validation refuses it too).
+      min: isNonNegativeGainParameterId(parameter.id)
+        ? Math.max(0, min === undefined ? 0 : min / scale)
+        : parameter.id === 'ANGLE_MAX' || min === undefined
+          ? min
+          : min / scale,
       max: parameter.id === 'ANGLE_MAX' || max === undefined ? max : max / scale,
       onChange: (next) => {
         handleStageTuningParameterValue(parameter, fromDisplayText(parameter.id, next))

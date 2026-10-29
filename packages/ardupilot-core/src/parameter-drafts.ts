@@ -101,6 +101,22 @@ export function groupParameterDraftEntries(
 }
 
 /**
+ * Controller gains and their limits, which ArduPilot never takes negative: a
+ * negative P, I or D turns the loop's correction around. Matches the attitude
+ * rate and angle loops (ATC_RAT_*, ATC_ANG_*_P), the position controller in
+ * both its 4.6 and 4.7 names (PSC_VELXY_P, PSC_D_ACC_P, ...), and Plane's rate
+ * loops (RLL_RATE_*, PTCH_RATE_*, YAW_RATE_*). Many of these carry no
+ * documented minimum, so the range check alone let a negative value through.
+ */
+const GAIN_PARAMETER_ID =
+  /^(ATC_RAT_(RLL|PIT|YAW)_(P|I|D|FF|D_FF|IMAX|PDMX|SMAX)|ATC_ANG_(RLL|PIT|YAW)_P|PSC_[A-Z]+(_[A-Z]+)?_(P|I|D|FF|IMAX)|(RLL|PTCH|YAW)_RATE_(P|I|D|FF|D_FF|IMAX|PDMX|SMAX))$/
+
+/** True for a controller gain or gain limit that must not be negative. */
+export function isNonNegativeGainParameterId(paramId: string): boolean {
+  return GAIN_PARAMETER_ID.test(paramId)
+}
+
+/**
  * `enumOverride` is the legacy parameter name — semantically it's now a
  * "bypass METADATA validation" flag. Setting it true skips the strict
  * enum match AND the documented min/max range checks. Used by the
@@ -163,6 +179,23 @@ function deriveParameterDraftEntry(
       currentValue: parameter.value,
       status: 'invalid',
       reason: 'Only finite numeric values can be written to the controller.',
+      overridable: false
+    }
+  }
+
+  // A negative gain is never right, so it is refused outright: no override,
+  // unlike the documented-range checks below.
+  if (parsedValue < 0 && isNonNegativeGainParameterId(paramId)) {
+    return {
+      id: paramId,
+      label,
+      category,
+      definition: parameter.definition,
+      rawValue,
+      currentValue: parameter.value,
+      nextValue: parsedValue,
+      status: 'invalid',
+      reason: 'Gains can\'t be negative.',
       overridable: false
     }
   }
