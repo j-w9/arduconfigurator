@@ -1553,6 +1553,22 @@ test.describe('Tuning tab', () => {
     await expect(page.getByTestId('tuning-input-ACRO_Y_EXPO')).toBeVisible()
   })
 
+  test('Acro shows the trainer setting, and picking one stages ACRO_TRAINER', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-rates').click()
+    const acro = page.locator('details.bf-gui-box', { hasText: 'Acro' }).filter({ has: page.getByTestId('pilot-feel-acro-grid') })
+    if (!(await acro.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await acro.locator('summary').first().click()
+    }
+    const trainer = page.getByTestId('pilot-feel-acro-grid').locator('select').first()
+    // The demo seeds ACRO_TRAINER = 2 (Leveling and Limited).
+    await expect(trainer).toHaveValue('2')
+    await trainer.selectOption('0')
+    await expect(page.getByTestId('global-draft-count')).toContainText('1 staged change')
+  })
+
   test('Alt Hold and Loiter stay collapsible and default collapsed; the stick-feel cards are open', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)

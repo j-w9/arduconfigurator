@@ -377,6 +377,8 @@ export interface PilotFeelViewProps {
     /** One value when roll and pitch match, two (tagged) when they differ. */
     rpAccel: PilotFeelValue[]
     yAccel?: PilotFeelValue
+    /** ACRO_TRAINER: levels the craft at centre stick, optionally capping lean. */
+    trainer?: PilotFeelValue
   }
   altHold: {
     climb?: PilotFeelValue
@@ -456,6 +458,7 @@ export function PilotFeelView({ angle, acro, altHold, loiter, altHoldControllerS
             testId="pilot-feel-acro-grid"
             columns={['Roll / pitch', 'Yaw']}
             rows={[
+              { label: 'Trainer', cells: [acro.trainer], span: true },
               { label: 'Rate', cells: [acro.rpRate, acro.yRate] },
               { label: 'Expo', cells: [acro.rpExpo, acro.yExpo] },
               { label: 'Response', cells: [acro.rpRateTc, acro.yRateTc] },

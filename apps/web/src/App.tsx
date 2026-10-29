@@ -6296,7 +6296,8 @@ export function App() {
         yExpo: pilotFeelValue(['ACRO_Y_EXPO'], 'Acro yaw expo', { choices: EXPO_CHOICES }),
         yRateTc: pilotFeelValue(['ACRO_Y_RATE_TC'], 'Acro yaw response', { unit: 's', choices: rateResponseChoices }),
         rpAccel,
-        yAccel: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw accel limit')
+        yAccel: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw accel limit'),
+        trainer: metaFeelValue(byParamId('ACRO_TRAINER'), 'Acro trainer')
       }}
       altHold={{
         climb: pilotFeelValue(['PILOT_SPD_UP', 'PILOT_SPEED_UP'], 'Max climb speed'),
