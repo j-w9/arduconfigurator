@@ -597,21 +597,16 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
 })
 
 test.describe('CAN tab: Send', () => {
-  async function openSend(page: Page, { expert = true } = {}): Promise<void> {
-    if (expert) await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+  // Send, like every bus tool, is Expert-only: the test outside Expert is
+  // 'outside Expert the CAN tab shows devices only'. openCanTab turns it on.
+  async function openSend(page: Page): Promise<void> {
     await page.goto('/')
     await connectDemo(page)
     await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
-    if (expert) await page.getByTestId('can-subtab-send').click()
+    await page.getByTestId('can-subtab-send').click()
   }
-
-  test('Send is an Expert tool: absent in Basic', async ({ page }) => {
-    await openSend(page, { expert: false })
-    await expect(page.getByTestId('can-subtab-plot')).toBeVisible()
-    await expect(page.getByTestId('can-subtab-send')).toHaveCount(0)
-  })
 
   test('a service request is built from its DSDL and its reply lands under Sent', async ({ page }) => {
     await openSend(page)

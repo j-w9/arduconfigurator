@@ -24981,3 +24981,7 @@ button.plot-side-list__name {
 .tuning-profile-save--extra {
   margin-top: var(--space-2);
 }
+
+.feature-search__expert {
+  color: var(--accent-strong, var(--accent));
+}

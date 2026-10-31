@@ -56,6 +56,20 @@ describe('buildFeatureSearchIndex', () => {
     expect(index.find((entry) => entry.key === 'param:BATT_MONITOR')).toMatchObject({ viewId: 'config', configCategory: 'power' })
   })
 
+  it('sends rangefinder and optical-flow parameters to Peripherals ▸ Flow & Lidar, not Motors', () => {
+    const index = buildFeatureSearchIndex(
+      inputs({
+        parameters: [
+          { id: 'RNGFND1_TYPE', label: 'Rangefinder type', category: 'rangefinder' },
+          { id: 'FLOW_TYPE', label: 'Optical flow sensor type', category: 'optical-flow' }
+        ],
+        parameterCategoryViews: { rangefinder: 'motors', 'optical-flow': 'motors' }
+      })
+    )
+    expect(index.find((entry) => entry.key === 'param:RNGFND1_TYPE')).toMatchObject({ viewId: 'peripherals', configCategory: 'flow-lidar' })
+    expect(index.find((entry) => entry.key === 'param:FLOW_TYPE')).toMatchObject({ viewId: 'peripherals', configCategory: 'flow-lidar' })
+  })
+
   it('falls back to Parameters for a category whose tab the app does not have', () => {
     expect(buildFeatureSearchIndex(inputs()).find((entry) => entry.key === 'param:SCR_ENABLE')).toMatchObject({ viewId: 'parameters' })
   })
@@ -80,11 +94,16 @@ describe('searchFeatures', () => {
     expect(searchFeatures(index, 'throttle gps', { isExpertMode: false })).toEqual([])
   })
 
-  it('offers no Expert-only tab outside Expert mode', () => {
-    expect(searchFeatures(index, 'parameters', { isExpertMode: false })).toEqual([])
-    expect(searchFeatures(index, 'SCR_ENABLE', { isExpertMode: false })).toEqual([])
+  it('offers an Expert-only tab outside Expert mode, marked, after what opens as it is', () => {
+    const [parameters] = searchFeatures(index, 'parameters', { isExpertMode: false })
+    expect(parameters).toMatchObject({ kind: 'tab', viewId: 'parameters', needsExpert: true })
     expect(searchFeatures(index, 'parameters', { isExpertMode: true })[0]).toMatchObject({ kind: 'tab', viewId: 'parameters' })
+    expect(searchFeatures(index, 'parameters', { isExpertMode: true })[0]?.needsExpert).toBeUndefined()
     expect(searchFeatures(index, 'servos', { isExpertMode: false })[0]).toMatchObject({ kind: 'tab', viewId: 'servos' })
+    // A loose match on an Expert-only tab never outranks one that opens.
+    const loose = searchFeatures(index, 'a', { isExpertMode: false })
+    const firstExpert = loose.findIndex((result) => result.needsExpert && !result.label.toLowerCase().startsWith('a'))
+    if (firstExpert >= 0) expect(loose.slice(firstExpert).every((result) => result.needsExpert)).toBe(true)
   })
 
   it('caps the list', () => {

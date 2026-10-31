@@ -9081,7 +9081,7 @@ test.describe('Config ▸ Power', () => {
 })
 
 test.describe('Find a setting', () => {
-  test('finds a tab, a Config card or a parameter by name, and offers no Expert-only tab outside Expert', async ({ page }) => {
+  test('finds a tab, a Config card or a parameter by name; an Expert-only tab turns Expert on', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     // The index follows the synced parameters: a card gated on a parameter
@@ -9106,18 +9106,19 @@ test.describe('Find a setting', () => {
     await search.press('Enter')
     await expect(page.getByTestId('view-button-failsafe')).toHaveClass(/is-active/)
 
-    // Expert-only tabs are not offered outside Expert: no secret menu. (Cards
-    // and parameters whose text says "parameters" still match, so the list is
-    // not empty; the tab is what must be missing.)
-    await search.fill('parameters')
+    // Rangefinder parameters open Peripherals ▸ Flow & Lidar, not Motors.
+    await search.fill('rangefinder')
     await expect(page.getByTestId('feature-search-results')).toBeVisible()
-    await expect(page.getByTestId('feature-search-result-tab:parameters')).toHaveCount(0)
+    await expect(page.getByTestId('feature-search-results')).not.toContainText('Motors')
+
+    // An Expert-only tab is offered outside Expert, marked; opening it turns
+    // Expert mode on.
     await search.fill('zzz-no-such-setting')
     await expect(page.getByTestId('feature-search-empty')).toBeVisible()
-    await search.fill('')
-    await enableExpertMode(page)
     await search.fill('parameters')
-    await page.getByTestId('feature-search-result-tab:parameters').click()
+    const parametersResult = page.getByTestId('feature-search-result-tab:parameters')
+    await expect(parametersResult.getByTestId('feature-search-needs-expert')).toBeVisible()
+    await parametersResult.click()
     await expect(page.getByTestId('view-button-parameters')).toHaveClass(/is-active/)
   })
 })

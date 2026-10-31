@@ -75,7 +75,14 @@ export function FeatureSearch({ index, isExpertMode, onOpen }: FeatureSearchProp
                 onClick={() => pick(result)}
               >
                 <strong>{result.label}</strong>
-                <small>{result.detail}</small>
+                <small>
+                  {result.detail}
+                  {result.needsExpert ? (
+                    <span className="feature-search__expert" data-testid="feature-search-needs-expert">
+                      {' '}· Expert mode (turns it on)
+                    </span>
+                  ) : null}
+                </small>
               </button>
             </li>
           ))}

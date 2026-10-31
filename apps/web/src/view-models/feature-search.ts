@@ -34,7 +34,8 @@ export interface FeatureSearchEntry {
   haystack: string
 }
 
-export type FeatureSearchResult = FeatureSearchEntry
+/** A result; `needsExpert` when it lives on an Expert-only tab and Expert is off. */
+export type FeatureSearchResult = FeatureSearchEntry & { needsExpert?: boolean }
 
 export interface FeatureSearchView {
   id: AppViewId
@@ -67,6 +68,15 @@ export interface FeatureSearchIndexInputs {
   parameters: readonly FeatureSearchParameter[]
   /** The parameter catalog's category -> tab mapping. */
   parameterCategoryViews: Readonly<Record<string, AppViewId | undefined>>
+}
+
+/**
+ * Parameter categories the catalog still files under a tab they left. The
+ * rangefinder and optical-flow drivers live on Peripherals ▸ Flow & Lidar.
+ */
+const CATEGORY_HOMES: Readonly<Record<string, { viewId: AppViewId; configCategory?: ConfigCategoryId }>> = {
+  rangefinder: { viewId: 'peripherals', configCategory: 'flow-lidar' },
+  'optical-flow': { viewId: 'peripherals', configCategory: 'flow-lidar' }
 }
 
 /** Tabs the catalog still names that are categories of another tab now. */
@@ -134,10 +144,11 @@ export function buildFeatureSearchIndex(inputs: FeatureSearchIndexInputs): Featu
       configCategory = home.configCategory
       sectionId = home.sectionId
     } else {
+      const categoryHome = parameter.category ? CATEGORY_HOMES[parameter.category] : undefined
       const catalogView = (parameter.category && inputs.parameterCategoryViews[parameter.category]) || 'parameters'
       const legacy = LEGACY_VIEW_HOMES[catalogView]
-      viewId = legacy?.viewId ?? catalogView
-      configCategory = legacy?.configCategory
+      viewId = categoryHome?.viewId ?? legacy?.viewId ?? catalogView
+      configCategory = categoryHome?.configCategory ?? legacy?.configCategory
     }
     if (!viewLabel.has(viewId)) {
       // A tab that is not in the app (hidden for everyone): raw Parameters is
@@ -186,20 +197,22 @@ export function searchFeatures(
   const tokens = query.split(' ')
   const limit = options.limit ?? 8
 
-  const scored: { entry: FeatureSearchEntry; score: number }[] = []
+  const scored: { entry: FeatureSearchEntry; score: number; needsExpert: boolean }[] = []
   for (const entry of index) {
-    // Expert-only tabs are not reachable outside Expert, so they are not
-    // offered there either: no secret menu, and no result that cannot open.
-    if (isExpertOnlyView(entry.viewId) && !options.isExpertMode) continue
+    // Outside Expert, a result on an Expert-only tab is still offered (so a
+    // search for "lua" finds Lua Scripts) but marked: opening it turns Expert
+    // mode on. It ranks after everything that opens as it is.
+    const needsExpert = isExpertOnlyView(entry.viewId) && !options.isExpertMode
     const score = scoreOf(entry, query, tokens)
-    if (score !== undefined) scored.push({ entry, score })
+    if (score !== undefined) scored.push({ entry, score, needsExpert })
   }
   scored.sort(
     (left, right) =>
+      Number(left.needsExpert && left.score > 1) - Number(right.needsExpert && right.score > 1) ||
       left.score - right.score ||
       KIND_RANK[left.entry.kind] - KIND_RANK[right.entry.kind] ||
       left.entry.label.length - right.entry.label.length ||
       left.entry.label.localeCompare(right.entry.label)
   )
-  return scored.slice(0, limit).map(({ entry }) => entry)
+  return scored.slice(0, limit).map(({ entry, needsExpert }) => (needsExpert ? { ...entry, needsExpert } : entry))
 }
