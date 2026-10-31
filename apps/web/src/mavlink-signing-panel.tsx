@@ -150,6 +150,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
   return (
     <div data-testid="mavlink-signing-panel" className="mavlink-signing-panel">
       <Panel
+        showTitle
         title="MAVLink signing"
         subtitle="Authenticate the link with a shared MAVLink v2 signing key. The key is derived from a passphrase (SHA-256) or pasted as a 32-byte hex key, kept in memory only, and never logged."
         actions={
