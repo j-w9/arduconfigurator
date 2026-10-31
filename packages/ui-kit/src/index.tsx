@@ -16,44 +16,64 @@ const palette = {
   danger: 'var(--danger, #e2123f)'
 }
 
+/** Visually hidden, still read out and still a heading. */
+const visuallyHidden: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: 0
+}
+
 export function Panel({
   title,
   subtitle,
   actions,
+  showTitle = false,
   children
-}: PropsWithChildren<{ title: string; subtitle?: string; actions?: ReactNode }>) {
+}: PropsWithChildren<{
+  title: string
+  subtitle?: string
+  actions?: ReactNode
+  /** A tab's page title is hidden (the rail says which tab is open); a card
+   *  inside a page passes true to keep its heading on screen. */
+  showTitle?: boolean
+}>) {
+  const titleStyle: CSSProperties = {
+    margin: 0,
+    color: palette.text,
+    fontSize: 'var(--font-title, 18px)',
+    lineHeight: 1,
+    letterSpacing: -0.04,
+    fontWeight: 600,
+    display: 'inline-block'
+  }
+  const hasRow = showTitle || subtitle !== undefined || actions !== undefined
   return (
     <section
       style={{
         background: 'transparent',
         border: 'none',
         borderRadius: 0,
-        padding: 0
+        padding: 0,
+        position: 'relative'
       }}
     >
-      {/* Panel title block. Pulled in from 32px to 24px (2026-05-20
-        * audit), then to 18px (2026-06-10 density audit) — the title is
-        * the largest single density loss on every tab. CSS vars used so
-        * themes / future zoom modes can override. */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 'var(--space-3, 12px)' }}>
-        <div style={{ minWidth: 0 }}>
-          <h2
-            style={{
-              margin: 0,
-              color: palette.text,
-              fontSize: 'var(--font-title, 18px)',
-              lineHeight: 1,
-              letterSpacing: -0.04,
-              fontWeight: 600,
-              display: 'inline-block'
-            }}
-          >
-            {title}
-          </h2>
-          {subtitle ? <p style={{ margin: '8px 0 0', color: palette.muted, lineHeight: 1.55, fontSize: 13, maxWidth: 720 }}>{subtitle}</p> : null}
+      {hasRow ? (
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 'var(--space-3, 12px)' }}>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={showTitle ? titleStyle : visuallyHidden}>{title}</h2>
+            {subtitle ? <p style={{ margin: showTitle ? '8px 0 0' : 0, color: palette.muted, lineHeight: 1.55, fontSize: 13, maxWidth: 720 }}>{subtitle}</p> : null}
+          </div>
+          {actions}
         </div>
-        {actions}
-      </div>
+      ) : (
+        <h2 style={visuallyHidden}>{title}</h2>
+      )}
       <div>{children}</div>
     </section>
   )

@@ -796,18 +796,21 @@ export function isDefaultStatusDashboardLayout(
       expected.flow === column.flow
     )
   })
-  if (!columnsMatch || layout.cards.length !== specs.length) {
+  if (!columnsMatch || layout.cards.length !== specs.length || layout.cards.some((card) => card.heightRows !== undefined)) {
     return false
   }
-  return layout.cards.every((placement, index) => {
-    const spec = specs[index]
-    return (
-      spec !== undefined &&
-      spec.id === placement.id &&
-      spec.column === placement.column &&
-      placement.heightRows === undefined
-    )
-  })
+  // Compare what is on screen: each column's cards, top to bottom. The global
+  // order of the cards array is not visible (a card moved away and back, or a
+  // card a newer build added to an older saved layout, can sit elsewhere in it
+  // while every column reads the same), so it is not compared.
+  const columnOrder = (cards: readonly { id: string; column: string }[]): string =>
+    DEFAULT_STATUS_DASHBOARD_COLUMNS.map((column) =>
+      cards
+        .filter((card) => card.column === column.id)
+        .map((card) => card.id)
+        .join(',')
+    ).join('|')
+  return columnOrder(layout.cards) === columnOrder(specs.map((spec) => ({ id: spec.id, column: spec.column })))
 }
 
 // ── Drop-target hit testing ───────────────────────────────────────────────

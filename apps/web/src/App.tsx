@@ -401,6 +401,7 @@ import { buildAdvancedSensorCards } from './view-models/advanced-sensor-cards'
 import { buildPreArmStatusViewModel } from './view-models/prearm-status'
 import { useStatusClock } from './hooks/use-status-clock'
 import {
+  StatusDashboardLayoutButtons,
   StatusDashboardProvider,
   StatusDashboardRegion,
   type StatusDashboardCardEntry
@@ -8956,6 +8957,8 @@ export function App() {
                 </div>
               }
             />
+            {/* Tidy Up / Reset Layout, once the page has been rearranged. */}
+            <StatusDashboardLayoutButtons />
           </div>
         </article>
       )
@@ -9393,40 +9396,6 @@ export function App() {
                      *  on a phone the page is one column and the default order
                      *  stands. */}
                     <StatusDashboardProvider controller={statusDashboard} cards={statusDashboardCards}>
-                    {/* The toolbar is only the Tidy/Reset pair now that the
-                     *  drag-and-drop instructions are gone, so it renders only
-                     *  once there is an arrangement to tidy or reset —
-                     *  otherwise it was an empty flex row still taking a gap. */}
-                    {statusDashboard.customisable && statusDashboard.customised ? (
-                      <div className="status-dash-toolbar" data-testid="status-dash-toolbar">
-                        {statusDashboard.customised ? (
-                          <>
-                            {/* Tidy is the way out of a mess that is not a full
-                             *  Reset: it drops the columns the operator emptied
-                             *  and evens up the widths, keeping the arrangement
-                             *  they actually built. */}
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid="status-dash-tidy-layout"
-                              onClick={statusDashboard.tidyLayout}
-                              title="Close up empty columns and even out the widths, keeping your arrangement"
-                            >
-                              Tidy Up
-                            </button>
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid="status-dash-reset-layout"
-                              onClick={statusDashboard.resetLayout}
-                              title="Put every Status card back where it shipped"
-                            >
-                              Reset Layout to Default
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
                     <div className="setup-bench__workspace">
                       <div className="setup-bench__viewer">
                         <div className="setup-bench__viewer-header">

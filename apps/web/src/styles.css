@@ -24985,3 +24985,12 @@ button.plot-side-list__name {
 .feature-search__expert {
   color: var(--accent-strong, var(--accent));
 }
+
+/* Tidy Up / Reset Layout at the foot of the Vehicle actions card. */
+.setup-gui-box__body > .status-dash-toolbar {
+  justify-content: stretch;
+  margin-top: var(--space-2);
+}
+.setup-gui-box__body > .status-dash-toolbar > button {
+  flex: 1 1 0;
+}
