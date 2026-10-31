@@ -233,8 +233,9 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     peripheralsDescriptor,
     calibrationDescriptor,
     canBusDescriptor,
+    // Files is Expert-only (isExpertOnlyView).
     flashDescriptor,
-    filesDescriptor,
+    ...(isExpertMode ? [filesDescriptor] : []),
     // Networking — Expert-only AND only when the FC advertises NET_ params.
     ...(isExpertMode && hasNetworkingParams ? [networkingDescriptor] : []),
     // Lua Scripts — Expert-only AND only when the FC advertises scripting (SCR_).

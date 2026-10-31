@@ -211,6 +211,11 @@ async function settlePreviewChunk(page: Page): Promise<void> {
 }
 
 async function openView(page: Page, viewId: string): Promise<void> {
+  // Files is an Expert-only tab, and so are the CAN tab's bus tools.
+  if (((viewId === 'can' || viewId === 'files') && (await page.getByTestId(`view-button-${viewId}`).count()) === 0) || viewId === 'can') {
+    const expert = page.getByTestId('product-mode-expert')
+    if (!(await expert.isChecked())) await expert.click()
+  }
   await page.getByTestId(`view-button-${viewId}`).click()
 }
 
@@ -882,7 +887,7 @@ test.describe('CAN bus enable prompt', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
 
     const prompt = page.getByTestId('can-enable-prompt')
     await expect(prompt).toBeVisible()
@@ -1553,6 +1558,22 @@ test.describe('Tuning tab', () => {
     await expect(page.getByTestId('tuning-input-ACRO_Y_EXPO')).toBeVisible()
   })
 
+  test('Acro shows the trainer setting, and picking one stages ACRO_TRAINER', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-rates').click()
+    const acro = page.locator('details.bf-gui-box', { hasText: 'Acro' }).filter({ has: page.getByTestId('pilot-feel-acro-grid') })
+    if (!(await acro.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await acro.locator('summary').first().click()
+    }
+    const trainer = page.getByTestId('pilot-feel-acro-grid').locator('select').first()
+    // The demo seeds ACRO_TRAINER = 2 (Leveling and Limited).
+    await expect(trainer).toHaveValue('2')
+    await trainer.selectOption('0')
+    await expect(page.getByTestId('global-draft-count')).toContainText('1 staged change')
+  })
+
   test('Alt Hold and Loiter stay collapsible and default collapsed; the stick-feel cards are open', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
@@ -2117,7 +2138,7 @@ test.describe('Files view (MAVFTP browser)', () => {
 
   test('Files tab shows a connect prompt when disconnected', async ({ page }) => {
     await page.goto('/')
-    await page.getByTestId('view-button-files').click()
+    await openView(page, 'files')
     await expect(page.getByTestId('files-disconnected')).toBeVisible()
     await expect(page.getByTestId('files-table')).toHaveCount(0)
   })
@@ -6567,7 +6588,7 @@ test.describe('Inspectors (expert-only)', () => {
     // selector, a start control, and the live bus-traffic read-out once forwarding
     // is up. Expert mode is still on here, but the tab itself is not gated on it.
     await expect(page.getByTestId('view-button-dronecan-inspector')).toHaveCount(0)
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await expect(page.getByTestId('can-bus-select')).toBeVisible()
     await expect(page.getByTestId('can-bus-start')).toBeVisible()
     await page.getByTestId('can-bus-start').click()
@@ -6705,7 +6726,7 @@ test.describe('Inspectors (expert-only)', () => {
     // Start the CAN bus and open the first device's Details box. Identity
     // detail has its own button on the device row now, alongside Params,
     // Messages and Actions.
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
     const firstNode = page.locator('[data-testid^="can-bus-node-toggle-"]').first()
     await expect(firstNode).toBeVisible({ timeout: 12000 })
@@ -6853,7 +6874,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     // Expand node 50 (ap_periph) and read its DroneCAN parameter grid.
@@ -6897,7 +6918,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     // Firmware update lives in the device's Actions box.
@@ -6959,7 +6980,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     const toggle = page.getByTestId('can-bus-node-toggle-50')
@@ -7006,7 +7027,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     const toggle = page.getByTestId('can-bus-node-toggle-50')
@@ -8958,7 +8979,7 @@ test.describe('CAN tab node firmware on the website', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-node-toggle-50')).toBeVisible({ timeout: 12000 })
     await page.getByTestId('can-bus-node-actions-50').click()
@@ -9060,7 +9081,7 @@ test.describe('Config ▸ Power', () => {
 })
 
 test.describe('Find a setting', () => {
-  test('finds a tab, a Config card or a parameter by name, and offers no Expert-only tab outside Expert', async ({ page }) => {
+  test('finds a tab, a Config card or a parameter by name; an Expert-only tab turns Expert on', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     // The index follows the synced parameters: a card gated on a parameter
@@ -9085,18 +9106,19 @@ test.describe('Find a setting', () => {
     await search.press('Enter')
     await expect(page.getByTestId('view-button-failsafe')).toHaveClass(/is-active/)
 
-    // Expert-only tabs are not offered outside Expert: no secret menu. (Cards
-    // and parameters whose text says "parameters" still match, so the list is
-    // not empty; the tab is what must be missing.)
-    await search.fill('parameters')
+    // Rangefinder parameters open Peripherals ▸ Flow & Lidar, not Motors.
+    await search.fill('rangefinder')
     await expect(page.getByTestId('feature-search-results')).toBeVisible()
-    await expect(page.getByTestId('feature-search-result-tab:parameters')).toHaveCount(0)
+    await expect(page.getByTestId('feature-search-results')).not.toContainText('Motors')
+
+    // An Expert-only tab is offered outside Expert, marked; opening it turns
+    // Expert mode on.
     await search.fill('zzz-no-such-setting')
     await expect(page.getByTestId('feature-search-empty')).toBeVisible()
-    await search.fill('')
-    await enableExpertMode(page)
     await search.fill('parameters')
-    await page.getByTestId('feature-search-result-tab:parameters').click()
+    const parametersResult = page.getByTestId('feature-search-result-tab:parameters')
+    await expect(parametersResult.getByTestId('feature-search-needs-expert')).toBeVisible()
+    await parametersResult.click()
     await expect(page.getByTestId('view-button-parameters')).toHaveClass(/is-active/)
   })
 })

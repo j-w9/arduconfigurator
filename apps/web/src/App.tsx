@@ -2717,7 +2717,11 @@ export function App() {
   })
   // Send (Expert-only: it acts on the bus). Repeats stop themselves on arming,
   // on the bus going quiet, on leaving the page, or on the safety box unticked.
-  const canSendVisible = activeViewId === 'can' && canSubTab === 'send' && productMode === 'expert'
+  // Outside Expert the CAN tab is Devices only (see the sub-tab strip); the
+  // bus tools past it never run there.
+  const canExpertTools = productMode === 'expert'
+  const effectiveCanSubTab: CanSubTab = canExpertTools ? canSubTab : 'devices'
+  const canSendVisible = activeViewId === 'can' && effectiveCanSubTab === 'send'
   const canSender = useCanSender({
     sink: canBackend,
     active: canBus.status === 'active',
@@ -6296,7 +6300,8 @@ export function App() {
         yExpo: pilotFeelValue(['ACRO_Y_EXPO'], 'Acro yaw expo', { choices: EXPO_CHOICES }),
         yRateTc: pilotFeelValue(['ACRO_Y_RATE_TC'], 'Acro yaw response', { unit: 's', choices: rateResponseChoices }),
         rpAccel,
-        yAccel: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw accel limit')
+        yAccel: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw accel limit'),
+        trainer: metaFeelValue(byParamId('ACRO_TRAINER'), 'Acro trainer')
       }}
       altHold={{
         climb: pilotFeelValue(['PILOT_SPD_UP', 'PILOT_SPEED_UP'], 'Max climb speed'),
@@ -7416,6 +7421,12 @@ export function App() {
     )
   }, [baseVisibleAppViews, allAppViews, revealedViewIds])
   const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
+  // The ids the vehicle reports, as one string: the search index rebuilds
+  // when the set changes, not on every value.
+  const reportedParameterIdsKey = useMemo(
+    () => snapshot.parameters.map((parameter) => parameter.id).join(','),
+    [snapshot.parameters]
+  )
   const featureSearchIndex = useMemo(
     () =>
       buildFeatureSearchIndex({
@@ -7426,12 +7437,20 @@ export function App() {
           ...FEATURE_SEARCH_INLINE_SECTIONS
         ],
         categoryLabels: Object.fromEntries(CONFIG_CATEGORIES.map((category) => [category.id, category.label])),
-        parameters: Object.values(metadataCatalog.parameters),
+        // Connected: only what this vehicle reports (a fork's parameters do
+        // not show up on a stock board, or in the demo). Before connecting,
+        // the catalog.
+        parameters:
+          reportedParameterIdsKey.length > 0
+            ? reportedParameterIdsKey
+                .split(',')
+                .flatMap((id) => (metadataCatalog.parameters[id] ? [metadataCatalog.parameters[id]] : []))
+            : Object.values(metadataCatalog.parameters),
         parameterCategoryViews: Object.fromEntries(
           Object.entries(metadataCatalog.categoryById).map(([id, definition]) => [id, definition.viewId])
         )
       }),
-    [allAppViews, configSections, peripheralSections, metadataCatalog]
+    [allAppViews, configSections, peripheralSections, metadataCatalog, reportedParameterIdsKey]
   )
   // Peripherals ▸ Compass order (view-models/compass-order.ts). Its PRIO
   // drafts apply from the card, not from the tab's Apply: they are not
@@ -7446,6 +7465,9 @@ export function App() {
   )
   const openFeature = useCallback(
     (entry: FeatureSearchResult) => {
+      // A result on an Expert-only tab, picked outside Expert: the result
+      // said it turns Expert mode on, so it does.
+      if (entry.needsExpert) setProductMode('expert')
       if (entry.configCategory) {
         if (entry.viewId === 'peripherals') {
           setRequestedPeripheralsCategory(entry.configCategory)
@@ -7471,7 +7493,7 @@ export function App() {
         requestAnimationFrame(() => scroll(12))
       }
     },
-    [setParameterSearch]
+    [setParameterSearch, setProductMode]
   )
   function formatCategoryLabel(categoryId: string | undefined): string {
     if (!categoryId) {
@@ -10876,8 +10898,11 @@ export function App() {
           // not to hide them). Restart / firmware stay Expert-only below.
           pages: {
                 // Send hides when Expert mode is left; its page falls back to Devices.
-                page: canSubTab === 'send' && !isExpertMode ? 'devices' : canSubTab,
+                page: effectiveCanSubTab,
                 onPage: setCanSubTab,
+                // Devices (see nodes, set their parameters) for everyone; the
+                // bus tools are Expert-only.
+                allowed: canExpertTools ? undefined : ['devices'],
                 messages: (
                   <CanMessagesPage
                     topics={canBusMonitor.topics()}

@@ -67,6 +67,11 @@ async function connectToPlane(page: Page): Promise<void> {
 }
 
 async function openView(page: Page, viewId: string): Promise<void> {
+  // Files is an Expert-only tab, and so are the CAN tab's bus tools.
+  if (((viewId === 'can' || viewId === 'files') && (await page.getByTestId(`view-button-${viewId}`).count()) === 0) || viewId === 'can') {
+    const expert = page.getByTestId('product-mode-expert')
+    if (!(await expert.isChecked())) await expert.click()
+  }
   await page.getByTestId(`view-button-${viewId}`).click()
 }
 

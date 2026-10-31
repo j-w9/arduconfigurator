@@ -46,8 +46,13 @@ export function useReceiverSupportCatalog(
     () => selectViewCatalog(snapshot.parameters, RECEIVER_SUPPORT_PARAM_IDS),
     [snapshot.parameters]
   )
+  // Rover's mode channel is MODE_CH; a Rover can still report a FLTMODE_CH, so
+  // pick by vehicle rather than by whichever exists (the old Setup ▸ Flight
+  // Modes panel did the same).
   const modeChannelParameter =
-    receiverSupportParameterById.get('FLTMODE_CH') ?? receiverSupportParameterById.get('MODE_CH')
+    snapshot.vehicle?.vehicle === 'ArduRover'
+      ? receiverSupportParameterById.get('MODE_CH') ?? receiverSupportParameterById.get('FLTMODE_CH')
+      : receiverSupportParameterById.get('FLTMODE_CH') ?? receiverSupportParameterById.get('MODE_CH')
   const rssiTypeParameter = receiverSupportParameterById.get('RSSI_TYPE')
   const rssiChannelParameter = receiverSupportParameterById.get('RSSI_CHANNEL')
   const rssiChannelLowParameter = receiverSupportParameterById.get('RSSI_CHAN_LOW')
