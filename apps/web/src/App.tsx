@@ -2717,7 +2717,11 @@ export function App() {
   })
   // Send (Expert-only: it acts on the bus). Repeats stop themselves on arming,
   // on the bus going quiet, on leaving the page, or on the safety box unticked.
-  const canSendVisible = activeViewId === 'can' && canSubTab === 'send' && productMode === 'expert'
+  // Outside Expert the CAN tab is Devices only (see the sub-tab strip); the
+  // bus tools past it never run there.
+  const canExpertTools = productMode === 'expert'
+  const effectiveCanSubTab: CanSubTab = canExpertTools ? canSubTab : 'devices'
+  const canSendVisible = activeViewId === 'can' && effectiveCanSubTab === 'send'
   const canSender = useCanSender({
     sink: canBackend,
     active: canBus.status === 'active',
@@ -10877,8 +10881,11 @@ export function App() {
           // not to hide them). Restart / firmware stay Expert-only below.
           pages: {
                 // Send hides when Expert mode is left; its page falls back to Devices.
-                page: canSubTab === 'send' && !isExpertMode ? 'devices' : canSubTab,
+                page: effectiveCanSubTab,
                 onPage: setCanSubTab,
+                // Devices (see nodes, set their parameters) for everyone; the
+                // bus tools are Expert-only.
+                allowed: canExpertTools ? undefined : ['devices'],
                 messages: (
                   <CanMessagesPage
                     topics={canBusMonitor.topics()}

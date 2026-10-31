@@ -105,6 +105,8 @@ export interface CanBusViewProps {
     pages?: {
       page: CanSubTab
       onPage: (page: CanSubTab) => void
+      /** Sub-tabs on offer; undefined = all. With one, the strip is hidden. */
+      allowed?: readonly CanSubTab[]
       messages: ReactNode
       frames: ReactNode
       plot: ReactNode
@@ -675,9 +677,13 @@ export function CanBusView(props: CanBusViewProps) {
           // Frames (raw traffic, recording, logs) and Plot. Devices is first
           // and the default, so the deeper tools never get in the way.
           <>
-            {workspace.pages ? (
+            {workspace.pages && (workspace.pages.allowed === undefined || workspace.pages.allowed.length > 1) ? (
               <div className="tab-strip can-subtabs" role="tablist" aria-label="CAN views" data-testid="can-subtabs">
-                {CAN_SUB_TABS.filter((tab) => tab.id !== 'send' || workspace.pages!.send !== undefined).map((tab) => (
+                {CAN_SUB_TABS.filter(
+                  (tab) =>
+                    (workspace.pages!.allowed === undefined || workspace.pages!.allowed.includes(tab.id)) &&
+                    (tab.id !== 'send' || workspace.pages!.send !== undefined)
+                ).map((tab) => (
                   <button
                     key={tab.id}
                     type="button"

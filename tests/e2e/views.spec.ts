@@ -211,6 +211,11 @@ async function settlePreviewChunk(page: Page): Promise<void> {
 }
 
 async function openView(page: Page, viewId: string): Promise<void> {
+  // Files is an Expert-only tab, and so are the CAN tab's bus tools.
+  if (((viewId === 'can' || viewId === 'files') && (await page.getByTestId(`view-button-${viewId}`).count()) === 0) || viewId === 'can') {
+    const expert = page.getByTestId('product-mode-expert')
+    if (!(await expert.isChecked())) await expert.click()
+  }
   await page.getByTestId(`view-button-${viewId}`).click()
 }
 
@@ -882,7 +887,7 @@ test.describe('CAN bus enable prompt', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
 
     const prompt = page.getByTestId('can-enable-prompt')
     await expect(prompt).toBeVisible()
@@ -2133,7 +2138,7 @@ test.describe('Files view (MAVFTP browser)', () => {
 
   test('Files tab shows a connect prompt when disconnected', async ({ page }) => {
     await page.goto('/')
-    await page.getByTestId('view-button-files').click()
+    await openView(page, 'files')
     await expect(page.getByTestId('files-disconnected')).toBeVisible()
     await expect(page.getByTestId('files-table')).toHaveCount(0)
   })
@@ -6583,7 +6588,7 @@ test.describe('Inspectors (expert-only)', () => {
     // selector, a start control, and the live bus-traffic read-out once forwarding
     // is up. Expert mode is still on here, but the tab itself is not gated on it.
     await expect(page.getByTestId('view-button-dronecan-inspector')).toHaveCount(0)
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await expect(page.getByTestId('can-bus-select')).toBeVisible()
     await expect(page.getByTestId('can-bus-start')).toBeVisible()
     await page.getByTestId('can-bus-start').click()
@@ -6721,7 +6726,7 @@ test.describe('Inspectors (expert-only)', () => {
     // Start the CAN bus and open the first device's Details box. Identity
     // detail has its own button on the device row now, alongside Params,
     // Messages and Actions.
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
     const firstNode = page.locator('[data-testid^="can-bus-node-toggle-"]').first()
     await expect(firstNode).toBeVisible({ timeout: 12000 })
@@ -6869,7 +6874,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     // Expand node 50 (ap_periph) and read its DroneCAN parameter grid.
@@ -6913,7 +6918,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     // Firmware update lives in the device's Actions box.
@@ -6975,7 +6980,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     const toggle = page.getByTestId('can-bus-node-toggle-50')
@@ -7022,7 +7027,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
 
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
 
     const toggle = page.getByTestId('can-bus-node-toggle-50')
@@ -8974,7 +8979,7 @@ test.describe('CAN tab node firmware on the website', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
-    await page.getByTestId('view-button-can').click()
+    await openView(page, 'can')
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-node-toggle-50')).toBeVisible({ timeout: 12000 })
     await page.getByTestId('can-bus-node-actions-50').click()

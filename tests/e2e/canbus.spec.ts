@@ -1,6 +1,19 @@
 import { expect, test, type Page } from '@playwright/test'
 import { worstViewportOverflow } from './support/overflow'
 
+// The CAN tab is for everyone (devices and their parameters); its bus tools
+// (Messages, Frames, Plot, Send) are Expert-only.
+async function openCanTab(page: import('@playwright/test').Page): Promise<void> {
+  // On a phone the mode switch sits in the header's More sheet.
+  const sheet = page.getByTestId('header-more-toggle')
+  const sheetShown = await sheet.isVisible()
+  if (sheetShown && (await sheet.getAttribute('aria-expanded')) !== 'true') await sheet.click()
+  const expert = page.getByTestId('product-mode-expert')
+  if (!(await expert.isChecked())) await expert.check()
+  if (sheetShown && (await sheet.getAttribute('aria-expanded')) === 'true') await sheet.click()
+  await page.getByTestId('view-button-can').click()
+}
+
 // The DroneCAN inspector was the only main nav view without an e2e smoke test
 // (its decode + node-discovery logic is unit-covered by
 // runtime.dronecan-nodes.test.mjs / dronecan-decoders.test.mjs, but the view
@@ -20,7 +33,7 @@ test.describe('DroneCAN inspector', () => {
   test('CAN tab is reachable and shows its bus controls, no intro text', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
 
     // The inspector panel renders with its bus picker + start control.
     await expect(page.getByRole('heading', { name: 'DroneCAN Bus' })).toBeVisible()
@@ -30,10 +43,21 @@ test.describe('DroneCAN inspector', () => {
     await expect(page.getByText('How it works')).toHaveCount(0)
   })
 
-  test('starting forwarding discovers the simulated DroneCAN nodes + params', async ({ page }) => {
+  test('outside Expert the CAN tab shows devices only; Expert adds the bus tools', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
     await page.getByTestId('view-button-can').click()
+    await expect(page.getByTestId('can-bus-select')).toBeVisible()
+    await expect(page.getByTestId('can-subtabs')).toHaveCount(0)
+    await page.getByTestId('product-mode-expert').click()
+    await expect(page.getByTestId('can-subtab-frames')).toBeVisible()
+    await expect(page.getByTestId('can-subtab-send')).toBeVisible()
+  })
+
+  test('starting forwarding discovers the simulated DroneCAN nodes + params', async ({ page }) => {
+    await page.goto('/')
+    await connectDemo(page)
+    await openCanTab(page)
 
     await page.getByTestId('can-bus-start').click()
     // Forwarding starts (fire-and-forget CAN_FORWARD), so the control flips to Disconnect.
@@ -59,7 +83,7 @@ test.describe('DroneCAN inspector', () => {
   test('edits stage into a comparison panel and Apply all writes them', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
 
     const toggle = page.getByTestId('can-bus-node-toggle-124')
@@ -98,7 +122,7 @@ test.describe('DroneCAN inspector', () => {
   test('a PX4 cannode reads its params from the PX4 catalog; the param table searches', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
 
     // The ARK CAN RTK GPS runs PX4, not AP_Periph: its CANNODE_*/GPS_UBX_*
@@ -135,7 +159,7 @@ test.describe('DroneCAN inspector', () => {
   test('a custom node name persists across reload (keyed by hardware UID)', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
 
     const node = page.getByTestId('can-bus-node-124')
@@ -151,7 +175,7 @@ test.describe('DroneCAN inspector', () => {
     // Reload + reconnect + re-discover: the name sticks (localStorage, by UID).
     await page.reload()
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-node-124').getByText('Front GPS')).toBeVisible()
   })
@@ -162,7 +186,7 @@ test.describe('DroneCAN inspector', () => {
     // Expert mode so the popout carries the device actions that used to live in
     // the separate DroneCAN Inspector tab (restart / firmware update).
     await page.getByTestId('product-mode-expert').check()
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-node-124')).toBeVisible()
 
@@ -205,7 +229,7 @@ test.describe('CAN bus monitor', () => {
   async function openMonitor(page: Page): Promise<void> {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
     // The bus monitor is the Frames sub-tab.
@@ -341,7 +365,7 @@ test.describe('CAN tab on a phone', () => {
     await page.setViewportSize({ width: 390, height: 900 })
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await page.getByTestId('can-subtab-plot').click()
     await page.getByTestId('can-plot-side-expression').click()
@@ -364,7 +388,7 @@ test.describe('CAN tab on a phone', () => {
     await page.setViewportSize({ width: 390, height: 900 })
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('dronecan-esc-table')).toBeVisible({ timeout: 15_000 })
     expect((await worstViewportOverflow(page)).worst, 'devices').toBeLessThanOrEqual(2)
@@ -386,7 +410,7 @@ test.describe('CAN bus monitor: logs and saving', () => {
   async function openLogFile(page: Page, name: string, text: string): Promise<void> {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-subtab-frames').click()
     await page.getByTestId('can-monitor-log-input').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text) })
     await expect(page.getByTestId('can-monitor-log-banner')).toContainText(name)
@@ -433,7 +457,7 @@ test.describe('CAN bus monitor: logs and saving', () => {
   test('Save… keeps the held frames without a recording, filtered on request', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await page.getByTestId('can-subtab-frames').click()
     await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
@@ -460,7 +484,7 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
   async function openCan(page: Page): Promise<void> {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
   }
@@ -577,7 +601,7 @@ test.describe('CAN tab: Send', () => {
     if (expert) await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
     if (expert) await page.getByTestId('can-subtab-send').click()
@@ -676,7 +700,7 @@ test.describe('CAN tab on a USB-CAN adapter (SLCAN)', () => {
   test('with no vehicle, an adapter is the bus: nodes, parameters, messages, and sending', async ({ page }) => {
     await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?canAdapter=demo')
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await expect(page.getByTestId('can-bus-start')).toBeDisabled()
     await page.getByTestId('can-adapter-bitrate').selectOption('1000000')
     await page.getByTestId('can-adapter-connect').click()
@@ -707,7 +731,7 @@ test.describe('CAN node tools: node ID allocation and ID changes', () => {
   test('on an adapter bus, the allocator hands an asking node an ID and it joins the rail', async ({ page }) => {
     await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?canAdapter=demo')
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-adapter-connect').click()
     const allocator = page.getByTestId('can-allocator')
     // The demo bus has an AP_Periph node with CAN_NODE = 0, asking every second.
@@ -721,7 +745,7 @@ test.describe('CAN node tools: node ID allocation and ID changes', () => {
     await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     const allocator = page.getByTestId('can-allocator')
     await expect(allocator.getByTestId('can-allocator-toggle')).toBeDisabled()
@@ -732,7 +756,7 @@ test.describe('CAN node tools: node ID allocation and ID changes', () => {
     await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-node-toggle-124')).toContainText(/Params \([1-9]/, { timeout: 15_000 })
     await page.getByTestId('can-bus-node-actions-124').click()
@@ -749,16 +773,16 @@ test.describe('CAN node tools: node ID allocation and ID changes', () => {
 })
 
 test.describe('CAN tab: frame grouping and plotting vectors', () => {
-  async function openCanTab(page: Page): Promise<void> {
+  async function openCanBusRunning(page: Page): Promise<void> {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
   }
 
   test('a multi-frame transfer\'s frames share a shade and a part tag; selecting one lights up the rest', async ({ page }) => {
-    await openCanTab(page)
+    await openCanBusRunning(page)
     await page.getByTestId('can-subtab-frames').click()
     // esc.Status (1034 = 0x40A) from node 50: three frames per transfer.
     await page.getByTestId('can-monitor-filter-ids').fill('00040A32/00FFFFFF')
@@ -771,7 +795,7 @@ test.describe('CAN tab: frame grouping and plotting vectors', () => {
   })
 
   test('Plot: an expression over ESC fields, XY of a vector, stats, and node-message markers', async ({ page }) => {
-    await openCanTab(page)
+    await openCanBusRunning(page)
     await page.getByTestId('can-subtab-plot').click()
 
     // ESC 0's power, as an expression over its current and voltage.
@@ -865,7 +889,7 @@ test.describe('CAN tab: frame grouping and plotting vectors', () => {
   })
 
   test('Plot picks a device, a message and a field itself, and draws a vector as one chart', async ({ page }) => {
-    await openCanTab(page)
+    await openCanBusRunning(page)
     await page.getByTestId('can-subtab-plot').click()
     const picker = page.getByTestId('can-plot-picker')
     await expect(picker.getByTestId('can-plot-pick-device').locator('option', { hasText: '124' })).toHaveCount(1, { timeout: 15_000 })
@@ -907,7 +931,7 @@ test.describe('CAN bus monitor: name filter', () => {
   test('mag* keeps only the magnetometer frames', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await page.getByTestId('can-subtab-frames').click()
     await page.getByTestId('can-monitor-filter-name').fill('mag*')
@@ -927,7 +951,7 @@ test.describe('CAN tab: node messages and bootloader flashing', () => {
     await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/')
     await connectDemo(page)
-    await page.getByTestId('view-button-can').click()
+    await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
   }

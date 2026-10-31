@@ -26,7 +26,11 @@ export function isExpertOnlyView(viewId: AppViewId): boolean {
     viewId === 'mavlink-inspector' ||
     viewId === 'networking' ||
     viewId === 'lua' ||
-    viewId === 'ai-assistant'
+    viewId === 'ai-assistant' ||
+    // A tool for people who already know what it is (operator call,
+    // 2026-10-30): the rail stays short for getting a build flying. CAN stays
+    // visible; its tools past the device list are Expert-only inside the tab.
+    viewId === 'files'
   )
 }
 
