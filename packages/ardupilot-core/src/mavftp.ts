@@ -92,6 +92,33 @@ export function boardTypeFromBoardVersion(boardVersion: number): number {
   return boardVersion >>> 16
 }
 
+// The errno values ArduPilot's filesystems set (AP_Filesystem_*.cpp). A
+// backend that cannot do the operation at all (the @SYS files cannot be
+// deleted) fails without setting one, which arrives as 0.
+const FTP_ERRNO_TEXT: Record<number, string> = {
+  0: 'the vehicle refused it without giving a reason',
+  1: 'not permitted',
+  2: 'no such file or folder',
+  5: 'input/output error on the card',
+  9: 'the file is not open',
+  12: 'the vehicle is out of memory',
+  13: 'permission denied',
+  17: 'it already exists',
+  20: 'not a folder',
+  21: 'it is a folder',
+  22: 'invalid request',
+  23: 'too many open files',
+  28: 'the card is full',
+  30: 'read-only',
+  39: 'the folder is not empty'
+}
+
+export function describeFtpErrno(errno?: number): string {
+  if (errno === undefined) return 'The vehicle reported a failure'
+  const text = FTP_ERRNO_TEXT[errno]
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)} (errno ${errno})` : `The vehicle reported errno ${errno}`
+}
+
 export function formatMavftpNakError(errorCode: number, errno?: number): string {
   switch (errorCode) {
     case MAV_FTP_ERR.NONE:
@@ -99,7 +126,7 @@ export function formatMavftpNakError(errorCode: number, errno?: number): string 
     case MAV_FTP_ERR.FAIL:
       return 'Unknown FTP failure'
     case MAV_FTP_ERR.FAIL_ERRNO:
-      return errno === undefined ? 'FTP failure with errno' : `FTP failure with errno ${errno}`
+      return describeFtpErrno(errno)
     case MAV_FTP_ERR.INVALID_DATA_SIZE:
       return 'Invalid FTP data size'
     case MAV_FTP_ERR.INVALID_SESSION:

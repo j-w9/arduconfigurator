@@ -30,13 +30,15 @@ import { InfoDot } from './InfoDot'
 // side, the way Mission Planner and the DroneCAN GUI do it.
 
 /** The CAN tab's sub-tabs. */
-export type CanSubTab = 'devices' | 'messages' | 'frames' | 'plot' | 'send'
+export type CanSubTab = 'devices' | 'messages' | 'frames' | 'plot' | 'esc' | 'servo' | 'send'
 
 const CAN_SUB_TABS: { id: CanSubTab; label: string; title: string }[] = [
   { id: 'devices', label: 'Devices', title: 'The nodes on the bus and their configuration' },
   { id: 'messages', label: 'Messages', title: 'Every DroneCAN message stream, decoded and live' },
   { id: 'frames', label: 'Frames', title: 'Every raw frame on the bus: filter, record, open logs' },
   { id: 'plot', label: 'Plot', title: 'Live charts of decoded fields and frame bytes' },
+  { id: 'esc', label: 'ESC', title: 'Spin DroneCAN ESCs for bench tests, with live telemetry' },
+  { id: 'servo', label: 'Servo', title: 'Drive DroneCAN servos for bench tests' },
   { id: 'send', label: 'Send', title: 'Send DroneCAN messages, service requests and raw frames' }
 ]
 
@@ -99,6 +101,8 @@ export interface CanBusViewProps {
     notice?: ReactNode
     /** Shown under All devices: node ID allocation. */
     allocator?: ReactNode
+    /** Shown under All devices: one change across many nodes. */
+    fleet?: ReactNode
     /** Node messages, for the rail's scope: the whole bus, or one node. */
     nodeMessages?: (scope: 'bus' | number) => ReactNode
     /** The sub-tabs: Devices (this view's rail and node cards), Messages, Frames, Plot. */
@@ -112,6 +116,9 @@ export interface CanBusViewProps {
       plot: ReactNode
       /** Send: Expert-only (it acts on the bus), so absent hides the sub-tab. */
       send?: ReactNode
+      /** The ESC and Servo bench tools; absent hides the sub-tab. */
+      esc?: ReactNode
+      servo?: ReactNode
     }
   }
   /**
@@ -682,7 +689,7 @@ export function CanBusView(props: CanBusViewProps) {
                 {CAN_SUB_TABS.filter(
                   (tab) =>
                     (workspace.pages!.allowed === undefined || workspace.pages!.allowed.includes(tab.id)) &&
-                    (tab.id !== 'send' || workspace.pages!.send !== undefined)
+                    ((tab.id !== 'send' && tab.id !== 'esc' && tab.id !== 'servo') || workspace.pages![tab.id] !== undefined)
                 ).map((tab) => (
                   <button
                     key={tab.id}
@@ -749,6 +756,7 @@ export function CanBusView(props: CanBusViewProps) {
                   )}
                   {workspace.nodeMessages ? workspace.nodeMessages(scope) : null}
                   {scope === 'bus' ? workspace.allocator : null}
+                  {scope === 'bus' ? workspace.fleet : null}
                   {scope === 'bus' ? escTable : null}
                 </div>
               </div>
@@ -758,6 +766,10 @@ export function CanBusView(props: CanBusViewProps) {
               workspace.pages.frames
             ) : workspace.pages.page === 'send' && workspace.pages.send !== undefined ? (
               workspace.pages.send
+            ) : workspace.pages.page === 'esc' && workspace.pages.esc !== undefined ? (
+              workspace.pages.esc
+            ) : workspace.pages.page === 'servo' && workspace.pages.servo !== undefined ? (
+              workspace.pages.servo
             ) : (
               workspace.pages.plot
             )}

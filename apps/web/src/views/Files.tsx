@@ -16,6 +16,15 @@ import { DownloadProgressBar } from './DownloadProgressBar'
 // builds. Operators can also type an arbitrary path.
 export const MAVFTP_QUICK_PATHS = ['@SYS', '/APM', '/APM/scripts', '/APM/LOGS'] as const
 
+/**
+ * ArduPilot's virtual filesystems (@SYS, @ROMFS) are read-only: their files
+ * are generated or live in flash, and the backend has no delete. A delete
+ * there fails with errno 0, so the button is not offered.
+ */
+export function isReadOnlyFtpPath(path: string): boolean {
+  return /^\/?@(SYS|ROMFS)(\/|$)/.test(path)
+}
+
 /** The transfer currently streaming off the FC, if any. */
 export interface FilesDownloadProgress {
   /** Full remote path of the file being downloaded. */
@@ -50,7 +59,7 @@ export interface FilesViewProps {
   onDownload: (entry: MavftpDirectoryEntry) => void
   onUpload: (file: File) => void
   onDelete: (entry: MavftpDirectoryEntry) => void
-  /** Fast-delete all non-flight files (logs, terrain, crash dumps). */
+  /** Fast-delete all non-flight files (logs, terrain). The crash dump is in flash and cannot be deleted. */
   onSanitize: () => void
   /** The vehicle is armed: formatting is refused. */
   vehicleArmed?: boolean
@@ -186,7 +195,7 @@ export function FilesView(props: FilesViewProps) {
                   onClick={onSanitize}
                   disabled={isBusy}
                   data-testid="files-sanitize"
-                  title="Delete all logs, terrain, and crash dumps (everything not needed for flight). This is a normal delete — not a secure wipe on SD/flash; destroy the card for that."
+                  title="Delete all logs and terrain data (everything not needed for flight). This is a normal delete, not a secure wipe; destroy the card for that."
                 >
                   {busyAction === 'files:sanitize' ? 'Freeing…' : 'Free storage'}
                 </button>
@@ -277,15 +286,23 @@ export function FilesView(props: FilesViewProps) {
                             {downloading ? `Downloading ${downloadProgress.percent}%` : 'Download'}
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          style={buttonStyle()}
-                          onClick={() => onDelete(entry)}
-                          disabled={isBusy}
-                          data-testid={`files-delete-${entry.name}`}
-                        >
-                          Delete
-                        </button>
+                        {isReadOnlyFtpPath(entry.path) ? (
+                          entry.name === 'crash_dump.bin' ? (
+                            <small className="files-readonly-note" data-testid="files-crash-dump-note">
+                              Read-only. Re-flash the firmware to clear it.
+                            </small>
+                          ) : null
+                        ) : (
+                          <button
+                            type="button"
+                            style={buttonStyle()}
+                            onClick={() => onDelete(entry)}
+                            disabled={isBusy}
+                            data-testid={`files-delete-${entry.name}`}
+                          >
+                            Delete
+                          </button>
+                        )}
                       </td>
                     </tr>
                     {/* The bar gets its own row spanning every column: a MAVFTP
@@ -395,10 +412,6 @@ export function FilesView(props: FilesViewProps) {
               )}
             </div>
 
-            <ul className="output-note-list">
-              <li>@SYS files are virtual status reports (read-only); /APM holds real SD-card files on boards that have one.</li>
-              <li>Deletes are immediate and not recoverable — double-check the path before confirming.</li>
-            </ul>
           </div>
         )}
       </Panel>

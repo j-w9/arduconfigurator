@@ -33,49 +33,91 @@ export interface SetupWizardDetailProps {
    *  control needs the runtime (it streams synthetic GPS_INPUT), which this
    *  presentational component must not import — hence a slot. */
   compassLocationSlot?: ReactNode
+  /** The "read the first flight's log" card, rendered on the maiden step only. */
+  maidenFlightSlot?: ReactNode
+  /** Hover-throttle learning + the throttle-controller card, on the hover step only. */
+  hoverSlot?: ReactNode
+  /** The notch-from-hover-log card, on the filters step only. */
+  filtersSlot?: ReactNode
+  /** The autotune flight card and the after-the-tune card, on the autotune step only. */
+  autotuneSlot?: ReactNode
+  /** The Initial Tune form, on the initial-tune step only. */
+  initialTuneSlot?: ReactNode
 }
 
 export function SetupWizardDetail({
   selectedSetupSection,
   snapshot,
-  compassLocationSlot
+  compassLocationSlot,
+  maidenFlightSlot,
+  hoverSlot,
+  filtersSlot,
+  autotuneSlot,
+  initialTuneSlot
 }: SetupWizardDetailProps): ReactElement {
   // The criteria list is what actually gates the step, but it lived inside a
   // collapsed <details> and the header only showed "2/5 criteria" — never WHICH
   // one was unmet. That is the mechanical reason a blocked step reads as
   // "unclear what's wanted". Name the first unmet criterion up front; the full
   // list is one column over in the aside.
-  const nextUnmetCriterion = selectedSetupSection.criteria.find((criterion) => !criterion.met)
-
   return (
     <div className="setup-wizard__detail">
-      <div>
-        <h4>What to do</h4>
-        <p>{selectedSetupSection.detail}</p>
-      </div>
+      {/* The work: whatever the step does on this page. Rendered only when
+          there is something, so a step without work stays one column. */}
+      {(selectedSetupSection.id === 'compass' && compassLocationSlot) ||
+      (selectedSetupSection.id === 'maiden' && maidenFlightSlot) ||
+      (selectedSetupSection.id === 'hover' && hoverSlot) ||
+      (selectedSetupSection.id === 'filters' && filtersSlot) ||
+      (selectedSetupSection.id === 'autotune' && autotuneSlot) ||
+      (selectedSetupSection.id === 'initial-tune' && initialTuneSlot) ||
+      selectedSetupSection.id === 'accelerometer' ? (
+        <div className="setup-wizard__work">
+          {selectedSetupSection.id === 'compass' && compassLocationSlot ? (
+            <div className="setup-wizard__compass-location" data-testid="setup-wizard-compass-location">
+              {compassLocationSlot}
+            </div>
+          ) : null}
 
-      {nextUnmetCriterion ? (
-        <p className="setup-wizard__next-criterion" data-testid="setup-wizard-next-criterion">
-          <strong>Still needed:</strong> {nextUnmetCriterion.label}
-        </p>
-      ) : null}
+          {selectedSetupSection.id === 'maiden' && maidenFlightSlot ? (
+            <div className="setup-wizard__maiden-log" data-testid="setup-wizard-maiden-log">
+              {maidenFlightSlot}
+            </div>
+          ) : null}
 
-      {selectedSetupSection.id === 'compass' && compassLocationSlot ? (
-        <div className="setup-wizard__compass-location" data-testid="setup-wizard-compass-location">
-          {compassLocationSlot}
+          {selectedSetupSection.id === 'hover' && hoverSlot ? (
+            <div className="setup-wizard__hover" data-testid="setup-wizard-hover">
+              {hoverSlot}
+            </div>
+          ) : null}
+
+          {selectedSetupSection.id === 'filters' && filtersSlot ? (
+            <div className="setup-wizard__filters" data-testid="setup-wizard-filters">
+              {filtersSlot}
+            </div>
+          ) : null}
+
+          {selectedSetupSection.id === 'initial-tune' && initialTuneSlot ? (
+            <div className="setup-wizard__initial-tune" data-testid="setup-wizard-initial-tune">
+              {initialTuneSlot}
+            </div>
+          ) : null}
+
+          {selectedSetupSection.id === 'autotune' && autotuneSlot ? (
+            <div className="setup-wizard__autotune" data-testid="setup-wizard-autotune">
+              {autotuneSlot}
+            </div>
+          ) : null}
+
+          {selectedSetupSection.id === 'accelerometer' ? (
+            <AccelerometerPoseGuide
+              currentPose={accelerometerPoseFromAction(snapshot)}
+              rollDeg={snapshot.liveVerification.attitudeTelemetry.rollDeg}
+              pitchDeg={snapshot.liveVerification.attitudeTelemetry.pitchDeg}
+              attitudeVerified={snapshot.liveVerification.attitudeTelemetry.verified}
+            />
+          ) : null}
         </div>
       ) : null}
-
-      {selectedSetupSection.id === 'accelerometer' ? (
-        <AccelerometerPoseGuide
-          currentPose={accelerometerPoseFromAction(snapshot)}
-          rollDeg={snapshot.liveVerification.attitudeTelemetry.rollDeg}
-          pitchDeg={snapshot.liveVerification.attitudeTelemetry.pitchDeg}
-          attitudeVerified={snapshot.liveVerification.attitudeTelemetry.verified}
-        />
-      ) : null}
-
-      {selectedSetupSection.blockingReason ? <p className="setup-flow__blocking-copy">{selectedSetupSection.blockingReason}</p> : null}
     </div>
   )
 }

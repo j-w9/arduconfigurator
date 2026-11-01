@@ -1,11 +1,10 @@
 Power & Battery
 ===============
 
-Battery setup lives under **Config ▸ Power**. It selects the battery monitor,
-sets pack capacity and arming thresholds, and shows live pack telemetry. It has
-its own Apply for the battery parameters. The OSD readout, the
-remaining-capacity estimate and the battery failsafe all depend on the monitor
-being set up correctly.
+Battery setup lives under **Setup ▸ System**, as one **Battery** card. It
+selects the battery monitor, sets pack capacity and arming thresholds, and shows
+live pack telemetry. The OSD readout, the remaining-capacity estimate and the
+battery failsafe all depend on the monitor being set up correctly.
 
 Battery monitor
 ---------------
@@ -24,14 +23,15 @@ smart-battery and many others.
 Capacity & arming thresholds
 ----------------------------
 
-The tab exposes the pack's ``BATT_CAPACITY`` (mAh) and two arming gates that block
-arming on a depleted pack: ``BATT_ARM_VOLT`` (minimum voltage to arm) and
+The card exposes the pack's ``BATT_CAPACITY`` (mAh) and two arming gates that
+block arming on a depleted pack: ``BATT_ARM_VOLT`` (minimum voltage to arm) and
 ``BATT_ARM_MAH`` (minimum remaining capacity to arm). Edits are staged as drafts
-and applied with **Apply Power Changes**.
+and applied with Setup's single **Apply Setup** bar, together with anything
+else staged on the Setup tab.
 
-A live readout panel shows measured voltage, current, remaining percentage, and
-capacity, with a health badge. Check that the monitor reads a sensible voltage
-before you trust the calibration.
+The card starts with the live readout: voltage, current, remaining percentage
+and capacity, with a health badge and the monitor type in words. Check that the
+monitor reads a sensible voltage before you trust the calibration.
 
 .. note::
 

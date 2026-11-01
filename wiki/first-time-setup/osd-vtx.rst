@@ -1,11 +1,11 @@
 OSD and VTX
 ===========
 
-The **OSD** tab lays out the on-screen-display overlay drawn on your FPV video,
-and the **VTX** sub-tab beside it configures the video transmitter. Both use
-staged drafts: edits accumulate until you write them. On OSD, **Save** writes
-them and **Revert** discards them. On VTX, the changes bar at the top writes
-them (**Write all**) or discards them.
+The **OSD & VTX** tab has two sub-tabs. **OSD** lays out the on-screen-display
+overlay drawn on your FPV video. **VTX** configures the video transmitter. Both
+use staged drafts: edits accumulate until you write them. On OSD, **Save OSD
+(n)** writes them and **Revert** discards them. On VTX, the changes bar at the
+top writes them (**Write all**) or discards them. The tab opens on the layout.
 
 OSD layout
 ----------
@@ -24,11 +24,12 @@ control battery voltage on screen 1.
 
 The tab works like Betaflight's OSD editor:
 
-- An **element matrix** toggles each element on or off per screen. The enable
-  checkbox writes ``OSDn_<ELEM>_EN``.
+- An **Elements** list, grouped (Power, Speed, Attitude, Navigation, Status,
+  RC / Link, ESC / Motors, Misc), toggles each element on or off per screen. The
+  enable checkbox writes ``OSDn_<ELEM>_EN``. An enabled element's **X** / **Y**
+  fields sit on their own line, where you can type an exact column/row.
 - A **live preview** lets you drag elements to reposition them. Dragging stages
   the ``OSDn_<ELEM>_X`` / ``OSDn_<ELEM>_Y`` values as you cross cell boundaries.
-  Number fields let you type an exact column/row instead.
 - A **Screen** selector switches which of OSD1–OSD4 you are editing and
   previewing. **Copy Layout** / **Paste Layout** copies a whole screen's layout
   to another.
@@ -47,9 +48,21 @@ default, because the backend is the first thing to confirm:
   between screens.
 
 Per-screen options (``OSDn_ENABLE``, ``OSDn_TXT_RES``, ``OSDn_FONT``,
-``OSDn_CHAN_MIN`` / ``OSDn_CHAN_MAX``) are in the **Screen Options** strip. An
-MSP / DisplayPort card shows ``MSP_OSD_NCELLS`` and the ``MSP_OPTIONS`` bitmask
+``OSDn_CHAN_MIN`` / ``OSDn_CHAN_MAX``, ``OSDn_ESC_IDX`` and the message level
+``OSDn_MSG_LVL``) are in the **Screen n Options** strip. An **MSP /
+DisplayPort** card shows ``MSP_OSD_NCELLS`` and the ``MSP_OPTIONS`` bitmask
 for DJI/Walksnail-style digital systems.
+
+Status messages
+~~~~~~~~~~~~~~~
+
+On firmware that has it (the app detects the parameter), a **Messages** panel
+controls the ``MESSAGE`` element. ``OSD_MSG_ABBR`` abbreviates the firmware's
+status text, ``OSD_MSG_STYLE`` chooses blink or invert, and ``OSD_MSG_CAT`` is a
+bitmask of message categories (PreArm, EKF/AHRS, GPS, Battery, …) to show.
+**Custom abbreviations** edits the shorthand table the firmware applies (**Add
+row**, then **Save to FC**; **Reset** restores the built-in list). The table is
+a file on the board, not a parameter.
 
 .. note::
 

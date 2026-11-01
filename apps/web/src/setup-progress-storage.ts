@@ -39,6 +39,12 @@ export interface StoredSetupExercises {
 export interface StoredSetupProgress {
   version: 1
   savedAtMs: number
+  /**
+   * The vehicle type (ArduCopter / ArduPlane / ...) the progress was made on.
+   * The storage key carries it too; this is the second line of defence, so a
+   * record that somehow lands under the wrong key is still refused on load.
+   */
+  vehicle: string
   confirmations: Record<string, SetupConfirmationRecord>
   exercises: StoredSetupExercises
 }
@@ -63,6 +69,12 @@ const MAX_STORED_PROGRESS_AGE_MS = 30 * 24 * 60 * 60 * 1000
  * arrives). Prefers the board uid (per-unit unique). The composite
  * fallback can collide between two identical board models — acceptable
  * because confirmations stay signature-gated against the actual params.
+ *
+ * Both forms carry the vehicle type. The uid identifies the BOARD, and one
+ * board is routinely re-flashed between vehicle types; keyed by uid alone, a
+ * Copter's sign-offs came back on the Plane that board became. The generic
+ * non-Copter steps have no parameter signature to catch that, so those
+ * sign-offs were held for good.
  */
 export function deriveSetupProgressKey(snapshot: ConfiguratorSnapshot): string | undefined {
   if (snapshot.connection.kind !== 'connected' || snapshot.vehicle === undefined) {
@@ -75,7 +87,7 @@ export function deriveSetupProgressKey(snapshot: ConfiguratorSnapshot): string |
   }
 
   if (board.uid) {
-    return `${STORAGE_KEY_PREFIX}uid:${board.uid}`
+    return `${STORAGE_KEY_PREFIX}uid:${board.uid}:${snapshot.vehicle.vehicle}`
   }
 
   return `${STORAGE_KEY_PREFIX}board:${snapshot.vehicle.vehicle}:${board.boardType}:${board.vendorId}:${board.productId}`
@@ -120,8 +132,15 @@ function resolveStorage(storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeI
   }
 }
 
+/**
+ * The stored progress under `key`, if it is well-formed, fresh, and was made
+ * on `vehicle`. A record for a different vehicle type — or one written before
+ * the vehicle was recorded at all — is discarded and removed: it describes a
+ * craft this board no longer is.
+ */
 export function loadStoredSetupProgress(
   key: string,
+  vehicle: string,
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 ): StoredSetupProgress | undefined {
   const store = resolveStorage(storage)
@@ -147,7 +166,7 @@ export function loadStoredSetupProgress(
       return undefined
     }
 
-    if (Date.now() - parsed.savedAtMs > MAX_STORED_PROGRESS_AGE_MS) {
+    if (parsed.vehicle !== vehicle || Date.now() - parsed.savedAtMs > MAX_STORED_PROGRESS_AGE_MS) {
       store.removeItem(key)
       return undefined
     }

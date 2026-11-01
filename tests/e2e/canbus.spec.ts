@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { worstViewportOverflow } from './support/overflow'
 
 // The CAN tab is for everyone (devices and their parameters); its bus tools
-// (Messages, Frames, Plot, Send) are Expert-only.
+// (Messages, Frames, Plot, ESC, Servo, Send) are Expert-only.
 async function openCanTab(page: import('@playwright/test').Page): Promise<void> {
   // On a phone the mode switch sits in the header's More sheet.
   const sheet = page.getByTestId('header-more-toggle')
@@ -596,17 +596,124 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
   })
 })
 
+test.describe('CAN tab: ESC and Servo bench tools', () => {
+  async function openTool(page: Page, tool: 'esc' | 'servo'): Promise<void> {
+    await page.goto('/')
+    await connectDemo(page)
+    await openCanTab(page)
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-node-toggle-50')).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId(`can-subtab-${tool}`).click()
+  }
+
+  test('ESC: blocked until the safety box, then the sliders drive the ESCs and telemetry follows', async ({ page }) => {
+    await openTool(page, 'esc')
+    await expect(page.getByTestId('can-esc-blocked')).toHaveText('Tick the safety box first.')
+    await expect(page.getByTestId('can-esc-start')).toBeDisabled()
+    await page.getByTestId('can-esc-ack').check()
+    await page.getByTestId('can-esc-start').click()
+    await expect(page.getByTestId('can-esc-running')).toBeVisible()
+
+    // 10 % of RawCommand's full scale: the demo ESC reports RPM in proportion (24 000 at full).
+    await page.getByTestId('can-esc-slider-0').fill('10')
+    await expect(page.getByTestId('can-esc-rpm-0')).toHaveText('2400', { timeout: 10_000 })
+    // The master slider sets every ESC; lowering the limit pulls them down to it.
+    await page.getByTestId('can-esc-all').fill('15')
+    await expect(page.getByTestId('can-esc-row-1')).toContainText('15.0%')
+    await page.getByTestId('can-esc-limit').fill('10')
+    await expect(page.getByTestId('can-esc-row-1')).toContainText('10.0%')
+
+    await page.getByTestId('can-esc-stop').click()
+    await expect(page.getByTestId('can-esc-start')).toBeVisible()
+  })
+
+  test('ESC: leaving the page stops the run and says why', async ({ page }) => {
+    await openTool(page, 'esc')
+    await page.getByTestId('can-esc-ack').check()
+    await page.getByTestId('can-esc-start').click()
+    await expect(page.getByTestId('can-esc-running')).toBeVisible()
+    await page.getByTestId('can-subtab-devices').click()
+    await page.getByTestId('can-subtab-esc').click()
+    await expect(page.getByTestId('can-esc-start')).toBeVisible()
+    await expect(page.getByTestId('can-esc-stop-note')).toContainText('left')
+  })
+
+  test('Servo: start, move, stop; one tool runs at a time', async ({ page }) => {
+    await openTool(page, 'servo')
+    await page.getByTestId('can-servo-ack').check()
+    await page.getByTestId('can-servo-start').click()
+    await expect(page.getByTestId('can-servo-running')).toBeVisible()
+    await page.getByTestId('can-servo-slider-0').fill('1800')
+    await expect(page.getByTestId('can-servo-row-0')).toContainText('1800 µs')
+    await page.getByTestId('can-servo-stop').click()
+    await expect(page.getByTestId('can-servo-start')).toBeEnabled()
+  })
+})
+
+test.describe('CAN tab: Fleet (one change, many nodes)', () => {
+  async function openFleet(page: Page): Promise<void> {
+    await page.goto('/')
+    await connectDemo(page)
+    await openCanTab(page)
+    await page.getByTestId('can-bus-start').click()
+    for (const nodeId of [124, 50]) {
+      await expect(page.getByTestId(`can-bus-node-toggle-${nodeId}`)).toContainText(/Params \([1-9]/, { timeout: 15_000 })
+    }
+    await expect(page.getByTestId('can-fleet')).toBeVisible()
+  }
+
+  test('a parameter is set on every node that needs it, and each reads it back', async ({ page }) => {
+    await openFleet(page)
+    await page.getByTestId('can-fleet-param').click()
+    await page.getByTestId('can-fleet-param-search').fill('CAN_TERMINATE')
+    await page.getByTestId('can-fleet-param-panel').locator('li[role=option]').first().click()
+    // The node ID is never offered: one value on several nodes is an ID clash.
+    await page.getByTestId('can-fleet-param').click()
+    await page.getByTestId('can-fleet-param-search').fill('CAN_NODE')
+    await expect(page.getByTestId('can-fleet-param-panel')).toContainText('No match')
+    await page.keyboard.press('Escape')
+
+    await page.getByTestId('can-fleet-value-select').click()
+    await page.getByTestId('can-fleet-value-select-option-1').click()
+    await expect(page.getByTestId('can-fleet-param-state-124')).toHaveText('will change')
+    await expect(page.getByTestId('can-fleet-param-state-50')).toHaveText('already set')
+    await page.getByTestId('can-fleet-param-apply').click()
+    await expect(page.getByTestId('can-fleet-param-state-124')).toHaveText('✓ set', { timeout: 15_000 })
+  })
+
+  test('firmware: one image only to one board, then the queue updates node by node', async ({ page }) => {
+    await openFleet(page)
+    // The demo's Here3 and AP_Periph node are different boards.
+    await page.getByTestId('can-fleet-fw-include-124').check()
+    await page.getByTestId('can-fleet-fw-include-50').check()
+    await expect(page.getByTestId('can-fleet-fw-blocked')).toContainText('different boards')
+    await page.getByTestId('can-fleet-fw-include-50').uncheck()
+    await page.getByTestId('can-fleet-fw-file').setInputFiles({ name: 'here3.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(4096, 0x5a) })
+    await expect(page.getByTestId('can-fleet-fw-blocked')).toHaveText('Tick the box first.')
+    await page.getByTestId('can-fleet-fw-ack').check()
+    await page.getByTestId('can-fleet-fw-start').click()
+    await expect(page.getByTestId('can-fleet-fw-state-124')).toHaveText(/updating|✓ updated/)
+    await expect(page.getByTestId('can-fleet-fw-state-124')).toHaveText(/✓ updated/, { timeout: 60_000 })
+  })
+})
+
 test.describe('CAN tab: Send', () => {
-  // Send, like every bus tool, is Expert-only: the test outside Expert is
-  // 'outside Expert the CAN tab shows devices only'. openCanTab turns it on.
-  async function openSend(page: Page): Promise<void> {
+  async function openSend(page: Page, { expert = true } = {}): Promise<void> {
+    if (expert) await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/')
     await connectDemo(page)
     await openCanTab(page)
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
-    await page.getByTestId('can-subtab-send').click()
+    if (expert) await page.getByTestId('can-subtab-send').click()
   }
+
+  test('Send is there for every role', async ({ page }) => {
+    // It was an Expert tool; roles pick tabs, not features (2026-10-21).
+    await openSend(page, { expert: false })
+    await expect(page.getByTestId('can-subtab-plot')).toBeVisible()
+    await expect(page.getByTestId('can-subtab-send')).toBeVisible()
+  })
 
   test('a service request is built from its DSDL and its reply lands under Sent', async ({ page }) => {
     await openSend(page)

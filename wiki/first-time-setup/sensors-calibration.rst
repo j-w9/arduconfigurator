@@ -1,25 +1,29 @@
 Sensors and Calibration
 =======================
 
-The **Sensors** (Calibration) tab calibrates the inertial sensors and compass so
-the autopilot knows which way is up and where it is pointing. Each calibration
-runs as a *guided action*: you press one button and the app walks the flight
+**Setup ▸ Calibration** calibrates the inertial sensors and compass so the
+autopilot knows which way is up and where it is pointing. Each calibration runs
+as a *guided action*: you press one button and the app walks the flight
 controller through the procedure live, sending the MAVLink commands and watching
 the vehicle's replies.
 
-The tab has three **sub-tabs**:
+It is one page with two **expandable sections**. **Sensors** starts open.
+Click a section's title row to open or fold it:
 
 - **Sensors:** bench calibration of the airframe's own sensors:
-  **Accelerometer**, **Level**, **Compass**, **thermal calibration (TCAL)** (IMU
+  **Accelerometer**, **Level**, **Compass**, **Thermal calibration (TCAL)** (IMU
   and barometer), and airspeed on Plane.
-- **Power:** **Battery voltage**, **Battery current**, and **ESC** throttle
-  range.
-- **Flight:** calibrations that need a flight and a reconnect afterwards:
-  **Hover throttle learning**, **Hover throttle from a log**, **Autotune
-  flight**, **Accelerometer Z-bias**, and **Baro thrust (VALT)**, left to right
-  in the order a new build flies them.
+- **Power:** **Battery voltage**, **Battery current**, and **ESC calibration**
+  (throttle range).
 
-The Flight cards all work the same way. You set something up, fly, land and plug
+The calibrations that need a flight and a reconnect afterwards are on
+:doc:`../tuning`: **Hover throttle learning**, **Hover throttle from a log**,
+on its **Hover** task, the **Autotune flight** card on its **Autotune** task,
+and the fork's **Accelerometer Z-bias** and **Baro thrust calibration (VALT)**
+on its **SFD** task (shown only on SmallFastDrone firmware). They
+are described below.
+
+The flight cards all work the same way. You set something up, fly, land and plug
 back in, and the card tells you what the vehicle came back with. None of them
 can run on the bench. The firmware does the learning in the air and saves it on
 disarm.
@@ -52,9 +56,8 @@ Poses confirm themselves
 
 After the level pose you do not need to keep clicking. When the pose graphic
 reads **aligned** (the frame is within about 17° of the requested posture), hold
-it still and accept the step when it reads aligned. Only moving out of the pose
-restarts the timer, so you can hold the frame in your hand. You do not need to
-put it down.
+it still and the step is accepted. Only moving out of the pose restarts the
+timer, so you can hold the frame in your hand. You do not need to put it down.
 
 The level pose does not auto-confirm. A vehicle on the bench is already level
 when the calibration starts, so auto-confirm would fire before you had placed
@@ -166,8 +169,8 @@ build often reads a 6S pack as 21 V, or claims 55 A in a hover. The OSD, the
 remaining-capacity estimate and the battery failsafe on the :doc:`failsafe` tab
 all depend on these two numbers.
 
-The **Battery voltage** and **Battery current** cards on this tab calibrate
-them against a meter.
+The **Battery voltage** and **Battery current** cards under **Power** calibrate
+them against a meter. Both are available in basic mode.
 
 Voltage
 ~~~~~~~
@@ -177,8 +180,8 @@ ArduPilot computes pack voltage as the sensing pin's voltage multiplied by
 
 #. Connect a charged pack and read its voltage at the balance lead or the XT
    connector with a multimeter.
-#. In **Calibration → Battery voltage**, compare the meter against the *FC
-   reads* pill and enter the meter's figure in **Measured voltage (V)**.
+#. In **Setup → Calibration → Power → Battery voltage**, compare the meter against the
+   *FC reads* pill and enter the meter's figure in **Measured voltage (V)**.
 #. The card shows the **new multiplier** it will write (your current multiplier
    scaled by measured ÷ reported). **Apply voltage calibration** writes
    :param:`BATT_VOLT_MULT`.
@@ -214,31 +217,35 @@ smart battery reports amps directly and needs none of this.
    vehicle is armed. Do not work around that.
 
 The card has three numbered steps, in the order the procedure must happen:
+**1 · Zero it at no load**, **2 · Put a real load on it**, **3 · Match your
+meter**.
 
 #. **Zero the offset.** With the pack connected and nothing drawing current,
-   enter what your meter reads (0 A with the pack off) and press **Set offset**.
-   It writes the :param:`BATT_AMP_OFFSET` that makes the present reading match.
+   enter what your meter reads in **Meter reads (A)** (0 A with the pack off)
+   and press **Set offset**. It writes the :param:`BATT_AMP_OFFSET` that makes
+   the present reading match.
 #. **Draw a known load.** Clamp an ammeter on the pack lead. On Copter the card
-   can generate the load for you: set a **Load throttle** between 1 % and 35 %
-   and press **Spin motors** (after the acknowledgements). Any other steady,
+   can generate the load for you: set a load throttle and **Load seconds**, then
+   press **Spin motors for n s** (after the acknowledgement). Any other steady,
    measurable current draw works too. While the motors run, the card shows what
-   the vehicle reports and **how many seconds are left**, since this is the one
-   time-critical part and you are holding a meter in the other hand. When the
-   spin ends, it says what it captured, from how many readings, and how that
-   compares with what the aircraft draws at idle.
+   the vehicle reports and **how many seconds are left**, since you are holding
+   a meter in the other hand. When the spin ends, it says what it captured, from
+   how many readings, and how that compares with what the aircraft draws at
+   idle.
 #. **Enter what the meter says.** The field gets focus as soon as the capture
    lands, so you can type the number you just read straight in. The value stays
-   usable after the motors stop. Type the clamp meter's amps into **Calibrate
-   from measured current**. The card scales :param:`BATT_AMP_PERVLT` by measured
-   ÷ reported and writes it. The reported value is the **median of readings
-   sampled across the settled part of the spin**, not one instantaneous sample.
-   Current telemetry is noisy, and any noise in that number ends up in the gain
-   permanently. The preview line shows what the vehicle would read at the load
-   it just measured.
+   usable after the motors stop. Type the clamp meter's amps into **Measured
+   current (A)** and press **Calibrate from meter**. The card scales
+   :param:`BATT_AMP_PERVLT` by measured ÷ reported and writes it. The reported
+   value is the **median of readings sampled across the settled part of the
+   spin**. Current telemetry is noisy, and any noise in that number ends up in
+   the gain permanently. The preview line shows what the vehicle would read at
+   the load it just measured.
 
-A **manual override** block below lets you type :param:`BATT_AMP_OFFSET` and
-:param:`BATT_AMP_PERVLT` directly, to copy known-good values from an identical
-build or from a power module's datasheet.
+A **Manual offset / per-volt** block below lets you type
+:param:`BATT_AMP_OFFSET` and :param:`BATT_AMP_PERVLT` directly, to copy
+known-good values from an identical build or from a power module's datasheet.
+**Apply current calibration** writes them.
 
 .. important::
 
@@ -253,8 +260,8 @@ build or from a power module's datasheet.
 
    Calibrate at a current you fly at. A gain fitted at 2 A can be several amps
    out at hover current, and hover current is what the capacity estimate and the
-   battery failsafe use. Re-check after changing the
-   power module, the ESC, or the battery lead.
+   battery failsafe use. Re-check after changing the power module, the ESC, or
+   the battery lead.
 
 Thermal calibration (TCAL)
 --------------------------
@@ -262,8 +269,9 @@ Thermal calibration (TCAL)
 **Thermal calibration** learns per-IMU gyro and accelerometer offsets *across
 temperature*, so the estimator stays stable from a cold boot to warm. It removes
 the drift you would otherwise see as the board heats up after power-on. It is on
-**Calibration → Sensors**, is **not** gated behind Expert mode, and appears only
-on firmware that exposes the ``INS_TCALn_*`` parameters.
+**Setup → Calibration → Sensors** behind a **Set up thermal calibration ▸** fold, is
+**not** gated behind Expert mode, and appears only on firmware that exposes the
+``INS_TCALn_*`` parameters.
 
 ArduPilot learns the fit **online**, from the moment learning is switched on
 (``AP_InertialSensor_tempcal.cpp``):
@@ -319,9 +327,8 @@ The barometer has a **separate** temperature calibration, with its own
 parameters and procedure: ``TCAL_*`` (ArduPilot's ``AP_TempCalibration``, a
 Copter feature), not the per-IMU ``INS_TCALn_*`` above. It learns how the
 barometer's pressure reading drifts as the board heats, and corrects for it. It
-does for altitude what the IMU calibration does for attitude. It shares the TCAL
-card because it uses the same bench session: a cold board, left still, warming
-up.
+shares the TCAL card because it uses the same bench session: a cold board, left
+still, warming up.
 
 #. Start cold, props off, on the bench. The vehicle must stay **disarmed and
    completely still**. The firmware restarts the learn as soon as the IMUs
@@ -343,29 +350,26 @@ The correction applies to the **first barometer** only.
 Hover calibration
 -----------------
 
-Three cards on **Calibration → Flight** cover this: **Hover throttle learning**,
-**Hover throttle from a log**, and **Accelerometer Z-bias**. Only the Z-bias
-card needs the fork's ``ACC_ZBIAS_LEARN``. Hover throttle is stock ArduCopter
-and offered on any copter.
+Three cards cover this, on **Tuning → Hover** and **Tuning → SFD**: *Hover throttle learning*,
+*Hover throttle from a log* and *Accelerometer Z-bias*. Only Z-bias needs the
+fork's ``ACC_ZBIAS_LEARN``. Hover throttle is stock ArduCopter and offered on any
+copter.
 
 You fly two flights, in order. The second is meaningless until the first is
-right. Where **tuning** fits between them depends on the build:
+right. Where tuning fits between them depends on the build:
 
-- **A copy-and-paste build** (parameters carried over from a frame that already
-  flies well) already has its tune. Fly hover throttle, then Z-bias, back to
-  back.
-- **A new build** flies the hover throttle first, then **tunes** (filters, then
-  the :ref:`autotune flight <autotune-flight>`), and learns the Z-bias **last**.
-  The bias is the vibration the airframe puts into AccZ at the hover you will
-  fly. An untuned copter hovers with oscillation and vibration the tune will
-  remove, so a bias learned before the tune describes a hover you will not fly
-  again.
+- **A copy-and-paste build** (parameters from a frame that already flies well)
+  already has its tune. Fly hover throttle, then Z-bias, back to back.
+- **A new build** flies hover throttle first, then tunes (filters, then the
+  :ref:`autotune flight <autotune-flight>`), and learns the Z-bias last. The
+  bias is the vibration the airframe puts into AccZ at the hover you will fly.
+  A bias learned before the tune describes a hover the tune removes.
 
 Re-learn the Z-bias after anything that changes vibration: props, motors,
 mounts, a frame change, or a new tune.
 
 Flight 1: hover throttle
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``MOT_THST_HOVER`` is the controller's **vertical feedforward**: the throttle it
 expects to need to hold altitude. Nothing that holds altitude behaves properly
@@ -373,29 +377,27 @@ until it is right. Once it is, set the vertical accel gains from it: **Tuning �
 Pilot → Alt Hold** checks them against ArduPilot's rule (see
 :ref:`tuning-althold-controller`).
 
-The firmware learns it in the air when ``MOT_HOVER_LEARN`` is 2 (its default),
-but only while every gate is open. ``Copter::update_throttle_hover`` returns
-early in any **manual-throttle mode** (Stabilize, Acro, SystemID, Turtle) and in
-Drift, while a climb or descent is commanded, without a vertical-velocity
-estimate, or past 5° of tilt. **A perfect hover flown in Stabilize learns
-nothing**: ``MOT_THST_HOVER`` stays at exactly its 0.35 default, as if you had
-never flown.
+The firmware learns it in the air when ``MOT_HOVER_LEARN`` is 2 (the default).
+It does not learn in a manual-throttle mode (Stabilize, Acro, SystemID, Turtle)
+or Drift, while a climb or descent is commanded, without a vertical-velocity
+estimate, or past 5° of tilt. A perfect hover in Stabilize learns nothing:
+``MOT_THST_HOVER`` stays at its 0.35 default, as if you had never flown.
 
-Fly it in a mode that **holds altitude**: AltHold, Loiter, PosHold, or VALT on
-firmware that has it. Climb to about 5 m, **centre the throttle stick**, and let
-it sit level with as little input as you can. Twenty seconds of steady hover is
+Fly it in a mode that holds altitude: AltHold, Loiter, PosHold, or VALT where
+the firmware has it. Climb to about 5 m, centre the throttle stick and let it
+sit level with as little input as you can. Twenty seconds of steady hover is
 enough; a minute is better. Land and disarm. The value is saved on disarm.
 
-Accepting that flight also stages ``MOT_HOVER_LEARN = 0``, which freezes what you
-signed off. Left at 2, the Z-bias flight would re-learn and overwrite it with a
-number you did not approve. **Re-learn on the next hover** puts it back.
+Accepting the flight also stages ``MOT_HOVER_LEARN = 0``, so the Z-bias flight
+cannot re-learn and overwrite what you signed off. **Re-learn on the next
+hover** sets it back to 2.
 
 When the firmware will not learn it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Hover throttle from a log** measures it from a flight you have already flown.
-It is a once-per-airframe job. Do it when a new frame and powertrain first fly,
-or when the firmware's own learner came back with nothing.
+Use it when a new frame and powertrain first fly, or when the learner came back
+with nothing.
 
 Upload that flight's ``.bin``. The card finds the steady-hover segments using
 the firmware's own gates, averages ``CTUN.ThO`` (the same quantity the learner
@@ -404,63 +406,60 @@ ever moved and which mode the hover was flown in.
 
 .. note::
 
-   ``MOT_THST_HOVER`` clamps to a minimum of **0.125**
-   (``AP_MOTORS_THST_HOVER_MIN``). A light, overpowered build can hover below
-   that. The parameter then records the floor, not a measurement, and the card
-   says so.
+   ``MOT_THST_HOVER`` clamps at 0.125 (``AP_MOTORS_THST_HOVER_MIN``). A light,
+   overpowered build can hover below that. The parameter then records the
+   floor, not a measurement, and the card says so.
 
 Flight 2: accelerometer Z-bias
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``ACC_ZBIAS_LEARN`` compensates for the DC offset that motor vibration puts into
-AccZ. **EKF3 only:** the correction is applied inside EKF3, so the card warns you
-if another estimator is in use, before you waste a flight.
+AccZ. The correction is applied inside EKF3, so the card warns you if another
+estimator is in use, before you waste a flight.
 
-The firmware reads its two bits independently, so they are states, not a
-sequence: **3** is the learning flight (learn *and* apply) and **2** is finished
-(apply, learning off). Accepting the flight stages 2, which freezes the accepted
-bias the same way flight 1 freezes the hover throttle.
+The firmware reads its two bits independently: **3** is the learning flight
+(learn and apply) and **2** is finished (apply, learning off). Accepting the
+flight stages 2, which freezes the bias the same way flight 1 froze the hover
+throttle.
 
-Fly the same hover again (on a new build, only once the copter is tuned; see
-above). Answering **no** clears the learned bias first, so the retry starts from
-zero.
+Fly the same hover again (on a new build, only once the copter is tuned).
+Answering **no** clears the learned bias first, so a retry starts from zero.
 
-Progress is read from the **values the flights left behind**, not from the enable
-parameters. It survives an unplug, and it shows when a vehicle arrives with
+Progress is read from the values the flights left behind, not from the enable
+parameters. It survives an unplug, and it shows when a vehicle arrived with
 someone else's calibration.
 
-**Clear Z-Bias Cal** starts the Z-bias over: it zeroes every learned bias, clears
-the enable and re-arms hover learning. It **leaves ``MOT_THST_HOVER`` alone**.
-Writing the 0.35 default back to a quad that hovers at 0.118 would tell the
-controller to expect roughly three times the thrust it needs, and the next
-AltHold takeoff would leap. Replace a measured hover throttle only from a log or
-another flight.
+**Clear Z-Bias Cal** zeroes every learned bias, clears the enable and re-arms
+hover learning. It leaves ``MOT_THST_HOVER`` alone. Writing the 0.35 default
+back to a quad that hovers at 0.118 would make the next AltHold takeoff leap.
+Replace a measured hover throttle only from a log or another flight.
 
 .. _autotune-flight:
 
 Autotune flight
 ---------------
 
-Also on **Calibration → Flight**, and **not** gated behind Expert mode.
-Autotune is stock ArduCopter and how most pilots get a tune. It runs in the air
-and saves on disarm, so the app cannot watch it. The card records the gains
-before the flight and compares them after.
+On **Tuning → Autotune**, in both modes. Autotune is stock ArduCopter
+and how most pilots get a tune. It runs in the air and saves on disarm, so the
+app cannot watch it. The card records the gains before the flight and compares
+them after.
 
 #. Pick the **axes** (``AUTOTUNE_AXES`` is a bitmask: roll, pitch, yaw, yaw-D).
    One axis at a time converges faster while you are searching. Two is usual
    once you are close.
-#. Press **Stage autotune**, apply, and fly autotune as normal.
+#. Press **Stage autotune for …** (the button names the axes), apply, and fly
+   autotune as normal.
 #. Come back, plug in, and the card reports **per axis** what got tuned.
 
 Results are per axis because autotune can finish roll and give up on yaw. An
 axis counts as tuned when any of its gains moved, because autotune does not
 rewrite every term.
 
-**Zeroize Tune** returns the selected axes to ArduCopter's stock gains (back to
-*default*, not to zero; a zero P gain is unflyable). It is Copter-only, stages
-only what differs, and says how many gains it would move. Take a snapshot first
-if you may want the tune back. Nothing else on this card reverts anything,
-because autotune saved its gains on the vehicle.
+**Zeroize Tune (…)** returns the selected axes to ArduCopter's default gains
+(not zero; a zero P gain is unflyable). It is Copter-only, stages only what
+differs, and says how many gains it would move. Take a snapshot first if you may
+want the tune back. Nothing else on this card reverts anything, because autotune
+saved its gains on the vehicle.
 
 Baro thrust calibration (VALT)
 ------------------------------
@@ -471,7 +470,7 @@ work. ArduPilot compensates for this linearly with ``BARO1_THST_SCALE`` (in
 Pascals, subtracted per unit of normalized throttle). **Baro thrust calibration
 (VALT)** fits that scale from a flight log.
 
-It is a log-based card on **Calibration → Flight**. The app connects on the
+It is a log-based card on **Tuning → SFD**. The app connects on the
 bench, not in flight, so you fly first and the card reads the log afterwards.
 
 The card appears when the **firmware carries** ``BARO1_THST_SCALE``. Baro thrust
@@ -533,9 +532,10 @@ you hovered at and it fits against that.
    as constant as you can for several seconds. Repeat at **2–3 different heights**
    so the fit has more than one point.
 #. Download that flight's ``.bin`` log.
-#. In **Calibration → Baro thrust calibration (VALT)**, upload the log. The app
-   pairs the barometer altitude (``CTUN.BAlt``) with the rangefinder ground truth
-   (``RFND.Dist``) over the steady windows and fits
+#. In **Tuning → SFD → Baro thrust calibration (VALT)**, pick **Hover vs
+   height** and upload the log. The app pairs the barometer altitude
+   (``CTUN.BAlt``) with the rangefinder ground truth (``RFND.Dist``) over the
+   steady windows and fits
 
    .. math::
 

@@ -181,6 +181,55 @@ test('IN_PROGRESS beats reset the ack timeout (command protocol timeout rule)', 
   }
 })
 
+test('a stale MAG_CAL_REPORT in the same chunk as — but before — the DO_START_MAG_CAL ack does not finalize the new run', async () => {
+  // Wire order inside one transport chunk: [stale SUCCESS report from the
+  // previous run, ACCEPTED ack, first progress]. The sendCommand promise
+  // settles a microtask AFTER all three were dispatched, so a gate that
+  // flipped on the promise would still have been 'requested' for the stale
+  // report (pre-fix: accepted it and declared the new run complete) and for
+  // the progress (then dropped as "not active"). The gate flips on the ack
+  // message itself, in wire order.
+  const sentMessages = []
+  // A usable compass, or the runtime refuses to start the cal at all.
+  const session = createAckScriptSession([], sentMessages, { COMPASS_USE: 1, COMPASS_DEV_ID: 97539 })
+  const baseSend = session.send.bind(session)
+  const report = (calStatus) => ({
+    type: 'MAG_CAL_REPORT',
+    compassId: 0,
+    calMask: 1,
+    calStatus,
+    autosaved: 1,
+    fitness: 1,
+    ofsX: 0, ofsY: 0, ofsZ: 0, diagX: 1, diagY: 1, diagZ: 1, offdiagX: 0, offdiagY: 0, offdiagZ: 0,
+    orientationConfidence: 1, oldOrientation: 0, newOrientation: 0, scaleFactor: 1
+  })
+  session.send = async (message) => {
+    await baseSend(message)
+    if (message.type === 'COMMAND_LONG' && message.command === MAV_CMD.DO_START_MAG_CAL) {
+      session.emit(report(4))
+      session.emit({ type: 'COMMAND_ACK', command: MAV_CMD.DO_START_MAG_CAL, result: MAV_RESULT.ACCEPTED, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 })
+      session.emit({ type: 'MAG_CAL_PROGRESS', compassId: 0, calMask: 1, calStatus: 2, attempt: 1, completionPct: 50, completionMask: new Uint8Array(10), directionX: 0, directionY: 0, directionZ: 0 })
+    }
+  }
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 200 })
+    await runtime.waitForParameterSync({ timeoutMs: 200 })
+    await runtime.runGuidedAction('calibrate-compass')
+
+    const mid = runtime.getSnapshot().guidedActions['calibrate-compass']
+    assert.equal(mid.status, 'running', 'the stale report must not finalize the run')
+    assert.equal(mid.progressPct, 50, 'progress right behind the ack belongs to this run')
+
+    session.emit(report(4))
+    assert.equal(runtime.getSnapshot().guidedActions['calibrate-compass'].status, 'succeeded')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
 test('after a successful level calibration the runtime re-reads AHRS_TRIM_X/Y by name and the snapshot picks the new trim up', async () => {
   // Without this the snapshot kept the pre-cal trim (and every verdict the
   // UI derives from it) until the next full parameter sync.
@@ -202,4 +251,58 @@ test('after a successful level calibration the runtime re-reads AHRS_TRIM_X/Y by
   const reads = sentMessages.filter((m) => m.type === 'PARAM_REQUEST_READ').map((m) => m.paramId).sort()
   assert.deepEqual(reads, ['AHRS_TRIM_X', 'AHRS_TRIM_Y'])
   void snapshot
+})
+
+test('runGuidedAction refuses a second guided action while one is in flight, with the UI\'s own reason text', async () => {
+  // Mutual exclusion at the runtime, not only on the web button gate: two
+  // calibrations share one COMMAND_ACK stream and one write gate.
+  const session = createAckScriptSession([{ delayMs: 120, ack: levelCalAck(MAV_RESULT.ACCEPTED) }], [], {
+    COMPASS_USE: 1,
+    COMPASS_DEV_ID: 97539
+  })
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 200 })
+    await runtime.waitForParameterSync({ timeoutMs: 200 })
+
+    const level = runtime.runGuidedAction('calibrate-level')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(runtime.getSnapshot().guidedActions['calibrate-level'].status, 'requested')
+
+    await assert.rejects(() => runtime.runGuidedAction('calibrate-compass'), /^Error: Calibrate Level is already in progress\.$/)
+    await assert.rejects(() => runtime.runGuidedAction('calibrate-level'), /^Error: Calibrate Level is already in progress\.$/)
+    await assert.rejects(() => runtime.runGuidedAction('reboot-autopilot'), /^Error: Calibrate Level is already in progress\.$/)
+    assert.equal(runtime.getSnapshot().guidedActions['calibrate-compass'].status, 'idle', 'the refused action was never started')
+
+    await level
+    assert.equal(runtime.getSnapshot().guidedActions['calibrate-level'].status, 'succeeded')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('runGuidedAction refuses to start a calibration while a parameter batch write is in flight', async () => {
+  // The scripted session never echoes PARAM_SET, so the batch stays in flight
+  // until its (short) verify timeout.
+  const session = createAckScriptSession([{ delayMs: 5, ack: levelCalAck(MAV_RESULT.ACCEPTED) }])
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 200 })
+    await runtime.waitForParameterSync({ timeoutMs: 200 })
+
+    const batch = runtime.setParameters([{ paramId: 'FLTMODE1', paramValue: 5 }], { verifyTimeoutMs: 80 }).catch(() => {})
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await assert.rejects(() => runtime.runGuidedAction('calibrate-level'), /^Error: Finish the parameter write in progress first\.$/)
+    await batch
+
+    // Once the batch has settled the calibration is allowed again.
+    await runtime.runGuidedAction('calibrate-level')
+    assert.equal(runtime.getSnapshot().guidedActions['calibrate-level'].status, 'succeeded')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
 })

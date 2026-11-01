@@ -4,7 +4,6 @@
 // calibration cards. ~470 lines of inline JSX moved verbatim.
 
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
-import { detectSfdBaroThrustCompensation } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS, MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
@@ -29,12 +28,7 @@ import { CalibrationLocationButton } from './CalibrationLocationCard'
 import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
 import type { TcalWrite } from '../view-models/tcal-plan'
-import { ValtCalibrationCard, type ValtCalibrationCardProps } from './ValtCalibrationCard'
-import { HoverThrottleLearnCard } from './HoverThrottleLearnCard'
 import { accelerometerCalibrationVerdict } from '../view-models/accel-calibration-state'
-import { AccelZBiasCard } from './AccelZBiasCard'
-import { HoverThrottleFromLogCard } from './HoverThrottleFromLogCard'
-import { AutotuneFlightCard } from './AutotuneFlightCard'
 import {
   accelerometerPoseFromAction,
   guidedActionBlockingReason,
@@ -52,12 +46,11 @@ import type { UseCalibrationNoticesResult } from '../hooks/use-calibration-notic
 import type { UseSafetyAcksResult } from '../hooks/use-safety-acks'
 import { readParameterValue, readRoundedParameter } from '../selectors/parameter-read'
 
-type CalibrationSectionId = 'sensors' | 'power' | 'flight'
+type CalibrationSectionId = 'sensors' | 'power'
 
 const CALIBRATION_SECTIONS: ReadonlyArray<{ id: CalibrationSectionId; label: string; summary: string }> = [
   { id: 'sensors', label: 'Sensors', summary: 'Accelerometer, level, compass, thermal' },
-  { id: 'power', label: 'Power', summary: 'Battery voltage; current and ESCs in Expert' },
-  { id: 'flight', label: 'Flight', summary: 'Hover, autotune, Z-bias' }
+  { id: 'power', label: 'Power', summary: 'Battery voltage, current, ESCs' }
 ]
 
 export interface CalibrationSectionProps {
@@ -68,7 +61,6 @@ export interface CalibrationSectionProps {
   airframe: AirframeSummary
   isCopterVehicle: boolean
   /** Expert product-mode — gates the advanced Thermal Calibration (TCAL) card. */
-  isExpertMode: boolean
   uiParameterWriteOptions: ParameterWriteOptions
   editedValues: Record<string, string>
   calibrationNotices: UseCalibrationNoticesResult
@@ -76,16 +68,12 @@ export interface CalibrationSectionProps {
   setDraft: (paramId: string, value: string) => void
   /** Thermal calibration's ordered, verified writes (target before enable). */
   onTcalWrite: (writes: TcalWrite[], description: string) => void
-  /** Signed in to a log server: the baro thrust (VALT) calibration is gated on it. */
-  logServerSignedIn: boolean
-  /** The vehicle's own logs, so a calibration can fit a flight without a download. */
-  onboardLogs?: ValtCalibrationCardProps['onboardLogs']
-  /** Where they are signed in, shown on the VALT card. */
-  logServerLabel?: string
   clearDraft: (paramId: string) => void
   setParameterNotice: (notice: ParameterNotice | undefined) => void
   handleGuidedAction: (actionId: GuidedActionId) => void | Promise<void>
   handleCancelGuidedAction: (actionId: GuidedActionId) => void
+  /** Rendered inside a Setup category card: no panel of its own. */
+  embedded?: boolean
 }
 
 /**
@@ -315,21 +303,18 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     canApplyDraftParameters,
     airframe,
     isCopterVehicle,
-    isExpertMode,
     uiParameterWriteOptions: UI_PARAMETER_WRITE_OPTIONS,
     editedValues,
     calibrationNotices,
     safetyAcks,
     setDraft,
     onTcalWrite,
-    logServerSignedIn,
-    onboardLogs,
 
-    logServerLabel,
     clearDraft,
     setParameterNotice,
     handleGuidedAction,
-    handleCancelGuidedAction
+    handleCancelGuidedAction,
+    embedded = false
   } = props
 
   /*
@@ -363,12 +348,6 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     })
   }
 
-  // Baro thrust compensation is compiled out of stock ArduPilot, so the
-  // parameter's presence is the only durable signal that this board supports
-  // the calibration at all.
-  const baroThrustSupported = detectSfdBaroThrustCompensation(
-    snapshot.parameters.map((parameter) => parameter.id)
-  )
   // A load sampler left running after the card unmounts would keep pushing
   // into a ref nobody reads, and would fire setState on a dead component.
   useEffect(() => () => window.clearInterval(loadSamplerRef.current), [])
@@ -812,9 +791,10 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   // to set it up; this card belongs hidden until then.
                   return null
                 }
-                // Expert only (operator request): a clamp-meter calibration of
-                // the current sensor, not a first-setup step.
-                return calibrationTab !== 'power' || !isExpertMode ? null : (
+                // A clamp-meter calibration of the current sensor, not a
+                // first-setup step. Was Expert-only; roles pick tabs, not
+                // features (operator call 2026-10-21).
+                return calibrationTab !== 'power' ? null : (
                   <article className="calibration-card" data-testid="calibration-card-battery-current">
                     <div className="calibration-card__header">
                       <strong>Battery current</strong>
@@ -1097,7 +1077,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                         // meter. Every other guard -- props
                                         // off, test area, disarmed, connected,
                                         // outputs mapped -- still applies.
-                                        { expertMode: isExpertMode, uncappedDuration: true }
+                                        { expertMode: true, uncappedDuration: true }
                                       )
                                       // Sample throughout the run and take the
                                       // median of the settled window, rather
@@ -1469,11 +1449,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       * startCompassMotCalibration() in case a guided flow
                       * needs it later. */}
 
-                    {/* Expert only (operator request) -- except while
-                        ESC_CALIBRATION is armed for the next boot: that
-                        warning is a safety notice and shows in Basic too. */}
-                    {calibrationTab !== 'power' ||
-                    !(isExpertMode || (escCalPending !== undefined && escCalPending !== 0 && escCalPending !== 9)) ? null : (
+                    {/* Was Expert-only except while ESC_CALIBRATION was armed
+                        for the next boot; roles pick tabs, not features
+                        (operator call 2026-10-21), so the card is here for
+                        everyone and the armed warning with it. */}
+                    {calibrationTab !== 'power' ? null : (
                     <article className="calibration-card" data-testid="calibration-card-esc">
                       <div className="calibration-card__header">
                         <strong>ESC calibration</strong>
@@ -1632,75 +1612,6 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 * a manually-entered hover height, so it does not require a
                 * rangefinder to be configured. Shows n/a on firmware without
                 * BARO1_THST_SCALE. */}
-              {/* Ordered by what depends on what.
-                  The two MOT_THST_HOVER cards sit together -- learning it in
-                  the air, and measuring it from a log when the firmware's own
-                  learner will not run -- and the Z-bias flight, which needs an
-                  accepted hover throttle before it means anything, comes after
-                  both and after autotune. They stay SEPARATE cards because they are separate
-                  flights with separate outcomes; one card only ever showed
-                  whichever half the vehicle happened to be on. */}
-              {calibrationTab === 'flight' ? (
-                <HoverThrottleLearnCard
-                  snapshot={snapshot}
-                  canApplyDraftParameters={canApplyDraftParameters}
-                  busyAction={busyAction}
-                  setDraft={setDraft}
-                  editedValues={editedValues}
-                />
-              ) : null}
-              {/* Measured once, when a new frame and powertrain first fly --
-                  or whenever the firmware's learner came back with nothing. */}
-              {calibrationTab === 'flight' ? (
-                <HoverThrottleFromLogCard
-                  snapshot={snapshot}
-                  canApplyDraftParameters={canApplyDraftParameters}
-                  busyAction={busyAction}
-                  setDraft={setDraft}
-                  onboardLogs={onboardLogs}
-                />
-              ) : null}
-              {/* After hover throttle and before the Z-bias, in the order a new
-                  build flies them (wiki: sensors-calibration, "Where tuning
-                  fits"): the bias is learned at the hover the tune leaves.
-                  Operators read this row left to right as a sequence.
-
-                  Autotune is NOT Expert-gated. It is stock ArduCopter, it is
-                  how an ordinary operator gets a tuned aircraft, and the card
-                  is safer than the alternative it replaces — flying AUTOTUNE
-                  from memory with no record of the gains it started from.
-                  Expert mode is for surfaces that can hurt someone who does
-                  not already know what they are; this is the opposite. */}
-              {calibrationTab === 'flight' ? (
-                <AutotuneFlightCard
-                  snapshot={snapshot}
-                  canApplyDraftParameters={canApplyDraftParameters}
-                  busyAction={busyAction}
-                  setDraft={setDraft}
-                />
-              ) : null}
-              {calibrationTab === 'flight' ? (
-                <AccelZBiasCard
-                  snapshot={snapshot}
-                  canApplyDraftParameters={canApplyDraftParameters}
-                  busyAction={busyAction}
-                  setDraft={setDraft}
-                  editedValues={editedValues}
-                />
-              ) : null}
-              {baroThrustSupported && calibrationTab === 'flight' ? (
-                <ValtCalibrationCard
-                  snapshot={snapshot}
-                  canApplyDraftParameters={canApplyDraftParameters}
-                  busyAction={busyAction}
-                  setDraft={setDraft}
-                  // Signing in is no longer required to SEE the card; when the
-                  // operator is signed in the card still names the server it
-                  // would pull logs from.
-                  logServerLabel={logServerSignedIn ? logServerLabel : undefined}
-                  onboardLogs={onboardLogs}
-                />
-              ) : null}
             </div>
   )
 
@@ -1710,6 +1621,34 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
         // Calibration for accel/level/compass via the guided panel, but the ESC
         // and battery calibration cards on this tab had no route from the flow at
         // all -- the Power step pointed at Config's power category instead.
+        embedded ? (
+          // Setup ▸ Calibration: the Setup card supplies the heading.
+          <div id="setup-panel-calibration" className="calibration-embedded">
+            {CALIBRATION_SECTIONS.map((section) => {
+              const open = openCalibrationSections.has(section.id)
+              return (
+                <div
+                  key={section.id}
+                  className={`calibration-section${open ? ' is-open' : ''}`}
+                  data-testid={`calibration-section-${section.id}`}
+                >
+                  <button
+                    type="button"
+                    className="calibration-section__bar"
+                    data-testid={`calibration-tab-${section.id}`}
+                    aria-expanded={open}
+                    onClick={() => toggleCalibrationSection(section.id)}
+                  >
+                    <span className="calibration-section__chevron" aria-hidden="true">▸</span>
+                    <strong>{section.label}</strong>
+                    <small>{section.summary}</small>
+                  </button>
+                  {open ? renderCalibrationGrid(section.id) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
         <section className="grid one-up" id="setup-panel-calibration">
           <Panel
             title="Calibration"
@@ -1739,6 +1678,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
             })}
           </Panel>
         </section>
+        )
 
   )
 }

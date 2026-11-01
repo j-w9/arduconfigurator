@@ -125,6 +125,8 @@ import {
   parseBoardNameFromBanner,
   parseFirmwareStringFromBanner,
   parsePwmOutputCountFromBanner,
+  guidedActionLabel,
+  GUIDED_ACTION_IDS,
   cloneLiveVerification,
   cloneMotorTestState,
   clonePreArmStatus,
@@ -203,6 +205,8 @@ export interface ArduPilotConfiguratorRuntimeOptions {
   accelerometerInitialWarmupMs?: number
   accelerometerStepAdvanceMs?: number
   accelerometerCompletionFallbackMs?: number
+  /** Test override for the accel-cal no-prompt watchdog (default 15 s). */
+  accelerometerPromptWatchdogMs?: number
   compassGuidanceTimeoutMs?: number
   /**
    * Test-injectable override for the param-sync stall-retry timer
@@ -571,6 +575,8 @@ export class ArduPilotConfiguratorRuntime {
   // per-frame rAF) so the heavy snapshot render can't starve inbound-frame
   // processing and crawl the batch on slow links/large apps.
   private batchEmitMode = false
+  /** True while setParameters() is applying a batch (and any rollback). */
+  private parameterBatchWriteActive = false
   /**
    * Depth of in-flight BULK TRANSFERS (log download over MAVFTP burst or the
    * LOG_* stream).
@@ -792,7 +798,8 @@ export class ArduPilotConfiguratorRuntime {
       accelerometerInitialWarmupMs: options.accelerometerInitialWarmupMs,
       accelerometerStepAdvanceMs: options.accelerometerStepAdvanceMs,
       accelerometerCompletionFallbackMs: options.accelerometerCompletionFallbackMs,
-      compassGuidanceTimeoutMs: options.compassGuidanceTimeoutMs
+      compassGuidanceTimeoutMs: options.compassGuidanceTimeoutMs,
+      accelerometerPromptWatchdogMs: options.accelerometerPromptWatchdogMs
     })
     this.subscriptions = [
       this.session.onStatus((status: TransportStatus) => {
@@ -1315,6 +1322,7 @@ export class ArduPilotConfiguratorRuntime {
     // onProgress, which is independent of the snapshot). A final flush below
     // pushes the terminal state.
     this.batchEmitMode = true
+    this.parameterBatchWriteActive = true
     try {
     for (const request of requests) {
       const known = this.parameters.get(request.paramId)
@@ -1413,6 +1421,7 @@ export class ArduPilotConfiguratorRuntime {
     } finally {
       // Restore normal per-frame emits and push the terminal snapshot now.
       this.batchEmitMode = false
+      this.parameterBatchWriteActive = false
       this.cancelScheduledEmit()
       this.flushEmit()
     }
@@ -1758,7 +1767,42 @@ export class ArduPilotConfiguratorRuntime {
       return
     }
 
+    // Mutual exclusion lives here, not only in the web layer's button gate:
+    // two calibrations, or a calibration over a motor test or a batch write,
+    // share one COMMAND_ACK stream and one write gate. The reason texts are
+    // the ones the UI shows for the same condition
+    // (apps/web/src/guided-action-helpers.ts guidedActionBlockingReason).
+    const blockReason = this.guidedActionBlockReason(actionId)
+    if (blockReason) {
+      throw new Error(blockReason)
+    }
+
     await this.guidedActionService.runCalibrationAction(actionId)
+  }
+
+  private guidedActionBlockReason(actionId: GuidedActionId): string | undefined {
+    const actions = this.guidedActionService.getActions()
+    const isActive = (state: GuidedActionState): boolean => state.status === 'requested' || state.status === 'running'
+    const current = actions[actionId]
+    // The accelerometer's "Confirm <posture>" click re-enters its own
+    // running action on purpose.
+    const canContinueCurrentAction = actionId === 'calibrate-accelerometer' && isActive(current) && current.ctaLabel !== undefined
+
+    for (const otherId of GUIDED_ACTION_IDS) {
+      if (otherId !== actionId && isActive(actions[otherId])) {
+        return `${guidedActionLabel(otherId)} is already in progress.`
+      }
+    }
+    if (isActive(current) && !canContinueCurrentAction) {
+      return `${guidedActionLabel(actionId)} is already in progress.`
+    }
+    if (this.motorTestService.hasActiveTest()) {
+      return 'Finish the current motor test first.'
+    }
+    if (this.parameterBatchWriteActive) {
+      return 'Finish the parameter write in progress first.'
+    }
+    return undefined
   }
 
   /**
@@ -1769,12 +1813,14 @@ export class ArduPilotConfiguratorRuntime {
    * 'request-parameters' (owned by the parameter-sync state machine) and
    * for actions that aren't active.
    */
-  cancelGuidedAction(actionId: GuidedActionId): void {
+  async cancelGuidedAction(actionId: GuidedActionId): Promise<void> {
     if (actionId === 'request-parameters') {
       return
     }
 
-    this.guidedActionService.cancelAction(actionId)
+    // Resolves once the cancel is settled (compass: the DO_CANCEL_MAG_CAL
+    // ack, or its failure). Never rejects.
+    await this.guidedActionService.cancelAction(actionId)
   }
 
   async runMotorTest(request: MotorTestRequest, options: MotorTestEligibilityOptions = {}): Promise<void> {
@@ -2574,9 +2620,10 @@ export class ArduPilotConfiguratorRuntime {
         })
       }
       // Carry the prior body forward so consumers can difference the counters.
-      // Only a body that actually differs is worth keeping: re-reading fast
-      // enough that nothing moved would otherwise replace a useful earlier
-      // sample with a zero-length window.
+      // An IDENTICAL re-read is a valid pair too: nothing moved on any port in
+      // the window, which is a zero-error, zero-traffic verdict, not a missing
+      // sample. Keeping only a differing body left the decode check "waiting
+      // for a second sample" forever on a quiet bench.
       const previous = this.uartsFile.rawText
       const previousFetchedAtMs = this.uartsFile.fetchedAtMs
       this.uartsFile = {
@@ -2584,20 +2631,33 @@ export class ArduPilotConfiguratorRuntime {
         path: UARTS_FILE_PATH,
         mappings: parseUartsFile(rawText),
         rawText,
-        previousRawText: previous !== undefined && previous !== rawText ? previous : this.uartsFile.previousRawText,
-        previousFetchedAtMs:
-          previous !== undefined && previous !== rawText ? previousFetchedAtMs : this.uartsFile.previousFetchedAtMs,
+        previousRawText: previous !== undefined ? previous : this.uartsFile.previousRawText,
+        previousFetchedAtMs: previous !== undefined ? previousFetchedAtMs : this.uartsFile.previousFetchedAtMs,
         fetchedAtMs: Date.now()
       }
       this.appendStatusEntry('info', `Fetched ${UARTS_FILE_PATH} via MAVFTP.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown MAVFTP error.'
       const status = /file not found/i.test(message) ? 'missing' : 'error'
+      // A failed REFRESH keeps the last good counters (the 'loading' branch
+      // above already does). Dropping them turned a detected port mismatch
+      // into "counters unavailable" for one MAVFTP timeout, which completed
+      // the Ports step, lit "Continue", and relocked everything 20 s later
+      // when the next read re-flagged it.
+      const hadBody = this.uartsFile.rawText !== undefined
       this.uartsFile = {
         status,
         path: UARTS_FILE_PATH,
-        mappings: [],
-        error: message
+        mappings: hadBody ? this.uartsFile.mappings : [],
+        error: message,
+        ...(hadBody
+          ? {
+              rawText: this.uartsFile.rawText,
+              fetchedAtMs: this.uartsFile.fetchedAtMs,
+              previousRawText: this.uartsFile.previousRawText,
+              previousFetchedAtMs: this.uartsFile.previousFetchedAtMs
+            }
+          : {})
       }
       this.appendStatusEntry('warning', `Unable to fetch ${UARTS_FILE_PATH}: ${message}`)
     }
@@ -2792,6 +2852,9 @@ export class ArduPilotConfiguratorRuntime {
       this.lastHeartbeatAtMs - previousHeartbeatAtMs > VEHICLE_RESTART_HEARTBEAT_GAP_MS
     ) {
       this.liveTelemetryRequestsIssued = false
+      // A fresh boot runs none of our calibrations and will never report
+      // one; a pending reboot request just got its proof.
+      this.guidedActionService.handleVehicleRestart()
     }
 
     if (!this.liveTelemetryRequestsIssued) {
@@ -3941,6 +4004,9 @@ export class ArduPilotConfiguratorRuntime {
     if (foreign) {
       return
     }
+    // Before the waiters: the guided-action gate must flip in wire order,
+    // ahead of any frame that shared this chunk (see handleCommandAck).
+    this.guidedActionService.handleCommandAck(message, systemId, componentId)
     this.resolveCommandAckWaiters(message)
 
     if (message.result === MAV_RESULT.ACCEPTED || message.result === MAV_RESULT.IN_PROGRESS) {
@@ -4505,7 +4571,7 @@ export class ArduPilotConfiguratorRuntime {
    * Targeted by-name PARAM_REQUEST_READ for every synced (non-mirror)
    * parameter whose id matches one of `patterns`. The PARAM_VALUE replies
    * flow through processParamValue like any other arrival, so the snapshot
-   * picks the fresh values up. Used after a calibration stores new values.
+   * picks the fresh values up. Used after a calibration stores new offsets.
    */
   private async rereadParametersMatching(patterns: readonly RegExp[]): Promise<void> {
     if (!this.vehicle || this.connection.kind !== 'connected') {

@@ -81,10 +81,6 @@ export function AutotuneFlightCard({
 
       {!flight ? (
         <>
-          <p>
-            Pick the axes, fly autotune, then come back and plug in — this remembers the gains you
-            started from and tells you which axes actually got tuned.
-          </p>
           <div className="autotune-axis-picker" data-testid="autotune-axis-picker">
             {AUTOTUNE_AXES.map((axis) => (
               <label key={axis.bit} className="initial-tune__check">
@@ -101,10 +97,7 @@ export function AutotuneFlightCard({
               </label>
             ))}
           </div>
-          <small data-testid="autotune-axis-hint">
-            One axis at a time converges faster when you are searching; two is usual once you are close.
-            Selected: {describeAxisMask(mask)}.
-          </small>
+          <small data-testid="autotune-axis-hint">Selected: {describeAxisMask(mask)}.</small>
           <button
             type="button"
             style={buttonStyle('primary')}

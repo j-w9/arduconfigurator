@@ -528,8 +528,8 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     },
     {
       id: 'config',
-      label: 'Config',
-      description: 'Baseline misc — board orientation, arming behavior, system identity, statistics.',
+      label: 'Setup',
+      description: 'Setup — airframe, RC, flight modes, arming, battery, and system settings.',
       order: 13.5
     },
     {
@@ -4277,40 +4277,49 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     {
       id: 'link',
       title: 'Vehicle Link',
-      description: 'Bring the Plane online and pull the first parameter snapshot.',
+      description: 'Connect and pull the parameters.',
       requiredParameters: [],
       actions: ['request-parameters']
     },
     {
       id: 'airframe',
       title: 'Airframe',
-      description: 'Confirm Q_ENABLE for QuadPlane builds; pure fixed-wing builds can leave the QuadPlane parameters at 0.',
+      description: 'Set Q_ENABLE = 1 for a QuadPlane. A fixed wing leaves it at 0.',
       requiredParameters: ['Q_ENABLE']
     },
     {
       id: 'sensors',
       title: 'Sensors',
-      description: 'Verify board orientation and compass selection before tuning or arming.',
+      description: 'Check the board orientation and compass.',
       requiredParameters: ['AHRS_ORIENTATION', 'COMPASS_USE'],
       actions: ['calibrate-accelerometer', 'calibrate-level', 'calibrate-compass']
     },
     {
       id: 'radio',
       title: 'Radio',
-      description: 'Inspect primary RC input and verify the flight-mode channel.',
+      description: 'Check the sticks and the mode channel.',
       requiredParameters: ['FLTMODE_CH'],
+      requiredLiveSignals: ['rc-input'],
+    },
+    {
+      // Plane has FLTMODE_CH / FLTMODE1-6 like Copter, and the Radio step's
+      // description promised a flight-mode check that no step performed.
+      id: 'modes',
+      title: 'Flight Modes',
+      description: 'Confirm the flight-mode switch selects the modes you expect.',
+      requiredParameters: ['FLTMODE_CH', 'FLTMODE1', 'FLTMODE2', 'FLTMODE3', 'FLTMODE4', 'FLTMODE5', 'FLTMODE6'],
       requiredLiveSignals: ['rc-input'],
     },
     {
       id: 'outputs',
       title: 'Outputs',
-      description: 'Review control-surface and propulsion output assignments before any props-on testing. Plane output mapping will be expanded in a follow-up PR.',
+      description: 'Check which output drives each surface and motor. Props off.',
       requiredParameters: [],
     },
     {
       id: 'power',
       title: 'Battery',
-      description: 'Validate battery monitoring before flight.',
+      description: 'Check the battery monitor reads right.',
       requiredParameters: ['BATT_MONITOR', 'BATT_CAPACITY'],
       // BATT_MONITOR=0 disables battery monitoring entirely (no voltage,
       // current, or battery failsafe). Same present-but-unset trap that
@@ -4322,7 +4331,7 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     {
       id: 'failsafe',
       title: 'Failsafe',
-      description: 'Review Plane short/long failsafe and battery failsafe behavior.',
+      description: 'Review the short, long and battery failsafes.',
       requiredParameters: [
         'THR_FAILSAFE',
         'THR_FS_VALUE',
@@ -4339,7 +4348,7 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     {
       id: 'verify',
       title: 'Verify',
-      description: 'Final pre-flight review and reboot before any powered testing.',
+      description: 'Final check and reboot before power-on.',
       requiredParameters: [],
       actions: ['reboot-autopilot']
     }

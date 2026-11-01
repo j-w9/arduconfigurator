@@ -49,7 +49,7 @@ export interface MavftpBrowser {
   download: (entry: MavftpDirectoryEntry) => void
   upload: (file: File) => void
   remove: (entry: MavftpDirectoryEntry) => void
-  /** Fast-delete all non-flight files (logs, terrain, crash dumps). */
+  /** Fast-delete all non-flight files (logs, terrain). The crash dump is in flash and cannot be deleted. */
   sanitize: () => void
   /** Format the SD card. The view has already taken the typed confirmation. */
   formatStorage: () => void
@@ -214,8 +214,9 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     [runtime, path, load, setBusyAction]
   )
 
-  // Sanitize — fast-delete everything not needed for flight (logs, terrain,
-  // crash dumps) across the known dataflash/terrain dirs. Keeps params (they
+  // Sanitize: fast-delete everything not needed for flight (logs, terrain)
+  // across the known dataflash/terrain dirs. The crash dump is read-only flash
+  // and only a firmware flash clears it. Keeps params (they
   // live in storage/FRAM, not files), scripts, and missions. Deliberately a
   // plain delete: on an SD card / FC flash, wear-leveling means overwriting
   // wouldn't reliably scrub the physical cells, so we don't pretend to — the
@@ -226,7 +227,7 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
       typeof window !== 'undefined' &&
       !window.confirm(
         'Free storage on the SD card?\n\n' +
-          'Deletes ALL logs, terrain data, and crash dumps — everything not needed for flight. ' +
+          'Deletes ALL logs and terrain data: everything not needed for flight. ' +
           'Parameters, scripts, and missions are kept.\n\n' +
           'Note: this is a normal delete. On an SD card / FC flash, wear-leveling can leave the ' +
           'old data physically recoverable — for a guaranteed wipe, pull the card and destroy it.\n\n' +
@@ -259,14 +260,6 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     try {
       for (const dir of ['/APM/LOGS', '/logs', '/APM/TERRAIN']) {
         await wipeDir(dir)
-      }
-      for (const dump of ['/APM/crash_dump.bin', '/crash_dump.bin']) {
-        try {
-          await runtime.deleteRemotePath(dump, 'file')
-          deleted += 1
-        } catch {
-          // no crash dump present — fine
-        }
       }
       await load(path)
       setError(

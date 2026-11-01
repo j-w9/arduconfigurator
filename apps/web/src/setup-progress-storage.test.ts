@@ -45,14 +45,27 @@ const exerciseStates = (over: Partial<SetupExerciseStates> = {}): SetupExerciseS
 const progress = (over: Partial<StoredSetupProgress> = {}): StoredSetupProgress => ({
   version: 1,
   savedAtMs: Date.now(),
+  vehicle: 'ArduCopter',
   confirmations: { radio: { signature: 'sig', confirmedAtMs: 1, outcome: 'complete' } },
   exercises: {},
   ...over
 })
 
 describe('deriveSetupProgressKey', () => {
-  it('prefers the per-unit board uid', () => {
-    expect(deriveSetupProgressKey(snapshot())).toBe('arduconfig:setup-progress:uid:0123456789abcdef')
+  it('prefers the per-unit board uid, qualified by the vehicle type', () => {
+    expect(deriveSetupProgressKey(snapshot())).toBe('arduconfig:setup-progress:uid:0123456789abcdef:ArduCopter')
+  })
+
+  it('gives one board two keys when it is flashed between vehicle types', () => {
+    // The uid names the BOARD. Re-flashed Copter -> Plane, the same uid must
+    // not bring the Copter sign-offs along: the generic Plane steps have no
+    // parameter signature that could catch them, so they would be held for
+    // good.
+    const copter = deriveSetupProgressKey(snapshot())
+    const plane = deriveSetupProgressKey(snapshot({ vehicle: { vehicle: 'ArduPlane', systemId: 1, componentId: 1 } }))
+    expect(copter).toBeDefined()
+    expect(plane).toBeDefined()
+    expect(copter).not.toBe(plane)
   })
 
   it('falls back to a vehicle+board composite when the uid is absent', () => {
@@ -95,25 +108,45 @@ describe('save/load round-trip', () => {
     const storage = memoryStorage()
     const stored = progress()
     saveStoredSetupProgress(KEY, stored, storage)
-    expect(loadStoredSetupProgress(KEY, storage)).toEqual(stored)
+    expect(loadStoredSetupProgress(KEY, 'ArduCopter', storage)).toEqual(stored)
   })
 
   it('returns undefined for missing, corrupt, or wrong-version entries', () => {
     const storage = memoryStorage({
       corrupt: '{not json',
-      wrongVersion: JSON.stringify({ version: 2, savedAtMs: Date.now(), confirmations: {}, exercises: {} }),
+      wrongVersion: JSON.stringify({
+        version: 2,
+        savedAtMs: Date.now(),
+        vehicle: 'ArduCopter',
+        confirmations: {},
+        exercises: {}
+      }),
       notObject: JSON.stringify('hello')
     })
-    expect(loadStoredSetupProgress('absent', storage)).toBeUndefined()
-    expect(loadStoredSetupProgress('corrupt', storage)).toBeUndefined()
-    expect(loadStoredSetupProgress('wrongVersion', storage)).toBeUndefined()
-    expect(loadStoredSetupProgress('notObject', storage)).toBeUndefined()
+    expect(loadStoredSetupProgress('absent', 'ArduCopter', storage)).toBeUndefined()
+    expect(loadStoredSetupProgress('corrupt', 'ArduCopter', storage)).toBeUndefined()
+    expect(loadStoredSetupProgress('wrongVersion', 'ArduCopter', storage)).toBeUndefined()
+    expect(loadStoredSetupProgress('notObject', 'ArduCopter', storage)).toBeUndefined()
+  })
+
+  it('refuses a record made on another vehicle type, and one made before the vehicle was recorded', () => {
+    const storage = memoryStorage()
+    saveStoredSetupProgress(KEY, progress({ vehicle: 'ArduCopter' }), storage)
+    expect(loadStoredSetupProgress(KEY, 'ArduPlane', storage)).toBeUndefined()
+    // ...and it is gone, not merely skipped — it describes a craft this board
+    // no longer is.
+    expect(storage.data.has(KEY)).toBe(false)
+
+    // Records written before `vehicle` existed have no way to prove which
+    // vehicle they belong to, so they are refused too.
+    storage.setItem(KEY, JSON.stringify({ version: 1, savedAtMs: Date.now(), confirmations: {}, exercises: {} }))
+    expect(loadStoredSetupProgress(KEY, 'ArduCopter', storage)).toBeUndefined()
   })
 
   it('expires entries older than the max age and removes them', () => {
     const storage = memoryStorage()
     saveStoredSetupProgress(KEY, progress({ savedAtMs: Date.now() - 31 * 24 * 60 * 60 * 1000 }), storage)
-    expect(loadStoredSetupProgress(KEY, storage)).toBeUndefined()
+    expect(loadStoredSetupProgress(KEY, 'ArduCopter', storage)).toBeUndefined()
     expect(storage.data.has(KEY)).toBe(false)
   })
 

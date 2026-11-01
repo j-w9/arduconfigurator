@@ -62,11 +62,13 @@ export function ReceiverView(props: ReceiverViewProps) {
     <div id="setup-panel-rc">
       <Panel title="Receiver">
         <div className="telemetry-stack telemetry-stack--receiver receiver-page">
+          {/* The arm switch and flight modes are slim and easy to miss at the
+              foot of the channel table, so they lead the page. */}
+          {flightModesSlot}
           {mapSlot}
           {directionSlot}
 
           {channelsSlot}
-          {flightModesSlot}
           {advancedSlot}
 
           {helpDockSlot}

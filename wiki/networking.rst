@@ -10,21 +10,13 @@ Where it is
 -----------
 
 Networking is Expert-only and appears only when the flight controller reports
-networking parameters (the ``NET_*`` family). Most boards have no Ethernet or
-PPP hardware, so the tab is hidden on them. Switch on Expert mode (top-right)
-and, if the board supports networking, the **Networking** tab appears in the
-sidebar.
+``NET_*`` parameters. Most boards have no Ethernet or PPP hardware, so the tab
+is hidden on them.
 
 The tab has two sub-tabs:
 
 - **IP setup**: the flight controller's own networking (below).
 - **DroneNet**: a DroneCAN peripheral's networking (further below).
-
-.. note::
-
-   Not every flight controller is Ethernet/PPP-capable. If the Networking tab
-   is not shown, your board does not expose ``NET_`` parameters and there is
-   nothing to configure here.
 
 IP configuration
 ----------------
@@ -64,11 +56,12 @@ A **DroneNet** node (for example an AP_Periph Ethernet-switch peripheral) provid
 a network on the CAN bus side of the vehicle. Open the **DroneNet** sub-tab and the
 configurator **auto-connects over the CAN bus** to look for peripherals. You do not
 need to press "Start". Discovered nodes are listed. Expand one, edit its network
-(``NET_*``) parameters, then press **Apply & Save** to write them to the node over
-DroneCAN and save them to its flash. You do not need to open the CAN tab.
+(``NET_*``) parameters, then press **Apply All** to write them to the node over
+DroneCAN. Once the writes are acknowledged, the app saves them to the node's flash
+with a DroneCAN SAVE. You do not need to open the CAN tab.
 
 The full peripheral network parameter set is supported and labelled: IP addressing,
 network endpoints (``NET_Pn_*``), the PPP link (``NET_PPP_*``), and serial↔network
 **passthrough** (``NET_PASSn_*``, which bridges a node UART to a TCP/UDP endpoint on
 the LAN). These are ordinary DroneCAN parameter writes, the same as on the CAN
-tab, shown as plain network settings.
+tab.

@@ -46,3 +46,13 @@ export {
   type ValtPoint,
   type ValtOptions
 } from './valt-analysis.js'
+
+export {
+  analyzeMaidenFlightLog,
+  analyzeMaidenFlightBuffer,
+  MAIDEN_MIN_AIRBORNE_S,
+  STABILIZE_MODE,
+  type MaidenFlightResult
+} from './maiden-flight-analysis.js'
+
+export { planNotchFromLog, planNotchFromBuffer, type NotchPlanFromLog } from './notch-plan.js'

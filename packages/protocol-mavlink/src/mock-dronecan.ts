@@ -59,6 +59,28 @@ import {
 } from './dronecan.js'
 
 const MAV_CMD_CAN_FORWARD = 32000
+/** uavcan.equipment.esc.RawCommand (DSDL 1030). */
+const ESC_RAW_COMMAND_DT_ID = 1030
+
+/**
+ * DroneCAN's bit packing for an int14 array with tail-array optimisation
+ * (libcanard canardDecodeScalar): bits are read MSB-first; a value longer
+ * than a byte is stored little-endian with its last partial byte right-aligned.
+ */
+export function decodeInt14Array(payload: Uint8Array): number[] {
+  const values: number[] = []
+  const bitAt = (bit: number): number => (payload[bit >> 3] >> (7 - (bit & 7))) & 1
+  for (let offset = 0; offset + 14 <= payload.length * 8; offset += 14) {
+    // Copy 14 bits MSB-first into two bytes, right-align the second, read little-endian.
+    let low = 0
+    for (let bit = 0; bit < 8; bit += 1) low = (low << 1) | bitAt(offset + bit)
+    let high = 0
+    for (let bit = 0; bit < 6; bit += 1) high = (high << 1) | bitAt(offset + 8 + bit)
+    const raw = low | (high << 8)
+    values.push(raw & 0x2000 ? raw - 0x4000 : raw)
+  }
+  return values
+}
 /** uavcan.protocol.debug.LogMessage (DSDL 16383). */
 const LOG_MESSAGE_DT_ID = 16383
 const LOG_MESSAGE_SIGNATURE = 0xd654a48e0c049d75n
@@ -118,7 +140,8 @@ const NODES: MockDronecanNode[] = [
       { name: 'CAN_NODE', value: int(124), default: int(0), min: int(0), max: int(127) },
       { name: 'GPS_TYPE', value: int(1), default: int(0), min: int(0), max: int(26) },
       { name: 'MAG_ENABLE', value: int(1), default: int(1), min: int(0), max: int(1) },
-      { name: 'NTF_LED_OVERRIDE', value: int(0), default: int(0), min: int(0), max: int(1) }
+      { name: 'NTF_LED_OVERRIDE', value: int(0), default: int(0), min: int(0), max: int(1) },
+      { name: 'CAN_TERMINATE', value: int(0), default: int(0), min: int(0), max: int(1) }
     ]
   },
   // A PX4 "cannode" peripheral (ARK CAN RTK GPS): PX4 params, not AP_Periph
@@ -158,7 +181,8 @@ const NODES: MockDronecanNode[] = [
       { name: 'CAN_NODE', value: int(50), default: int(0), min: int(0), max: int(127) },
       { name: 'BATT_MONITOR', value: int(4), default: int(0), min: int(0), max: int(20) },
       { name: 'BATT_CAPACITY', value: real(5200), default: real(0), min: real(0), max: real(64000) },
-      { name: 'FLASH_BOOTLOADER', value: int(0), default: int(0), min: int(0), max: int(1) }
+      { name: 'FLASH_BOOTLOADER', value: int(0), default: int(0), min: int(0), max: int(1) },
+      { name: 'CAN_TERMINATE', value: int(1), default: int(0), min: int(0), max: int(1) }
     ]
   },
   {
@@ -526,22 +550,28 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
     escTransferId.set(escIndex, next + 1)
     return next
   }
+  // The last esc.RawCommand the GCS sent (the CAN tab's ESC tool): while one
+  // keeps arriving, the ESCs report RPM, current and load from it, so the
+  // tool's telemetry follows its sliders; otherwise the fixed demo readings.
+  let escCommand: { cmd: number[]; atMs: number } | undefined
   const emitEscStatus = (): CanFrameMessage[] => {
     if (!active) {
       return []
     }
     const tick = uptimeSec()
     const out: CanFrameMessage[] = []
+    const commanded = escCommand && Date.now() - escCommand.atMs < 1000 ? escCommand.cmd : undefined
     for (let escIndex = 0; escIndex < 4; escIndex += 1) {
+      const fraction = commanded ? Math.max(0, commanded[escIndex] ?? 0) / 8191 : undefined
       // Gently varying values so the UI looks alive across ticks.
-      const rpm = 4800 + escIndex * 150 + (tick % 7) * 20
+      const rpm = fraction !== undefined ? Math.round(fraction * 24000) : 4800 + escIndex * 150 + (tick % 7) * 20
       const payload = encodeDronecanEscStatus({
         errorCount: 0,
         voltage: 16.2 - escIndex * 0.05,
-        current: 7.5 + escIndex * 0.4,
+        current: fraction !== undefined ? 0.3 + fraction * 30 : 7.5 + escIndex * 0.4,
         temperature: 305 + escIndex, // Kelvin (~32-35C)
         rpm,
-        powerRatingPct: 40 + escIndex * 3,
+        powerRatingPct: fraction !== undefined ? Math.round(fraction * 100) : 40 + escIndex * 3,
         escIndex
       })
       const frames = dronecanBuildBroadcastFrames(
@@ -590,6 +620,14 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
         return []
       }
       const canId = message.id >>> 0
+      if (!dronecanIsServiceFrame(canId) && dronecanMessageTypeId(canId) === ESC_RAW_COMMAND_DT_ID) {
+        // A single-frame RawCommand (up to 4 ESCs): the cmd values, then the tail byte.
+        const frame = message.data.subarray(0, message.len)
+        if (frame.length >= 2 && dronecanParseTailByte(frame[frame.length - 1]).sot && dronecanParseTailByte(frame[frame.length - 1]).eot) {
+          escCommand = { cmd: decodeInt14Array(frame.subarray(0, frame.length - 1)), atMs: Date.now() }
+        }
+        return emitEscStatus()
+      }
       if (!dronecanIsServiceFrame(canId)) {
         // An allocator's answer to the unallocated node.
         const waiting = nodes.find((node) => node.nodeId === 0)

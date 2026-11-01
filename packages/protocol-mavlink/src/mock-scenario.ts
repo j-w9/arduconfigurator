@@ -24,6 +24,7 @@ import type {
   EscTelemetryMessage,
   GlobalPositionIntMessage,
   LogRequestDataMessage,
+  MagCalReportMessage,
   MavlinkEnvelope,
   MavlinkMessage,
   ParamRequestReadMessage,
@@ -87,6 +88,26 @@ export interface MockScenarioOptions {
    * their owning subsystem is disabled.
    */
   parameterOverrides?: Record<string, number | null>
+  /**
+   * Mirror what a real autopilot keeps streaming AFTER a calibration ends.
+   * Off by default so demo/e2e traffic is unchanged; the guided-action engine
+   * tests turn it on to prove the runtime ignores this aftermath:
+   *
+   *  - Compass: ArduPilot sends a MAG_CAL_REPORT for every calibrator in a
+   *    terminal state on each EXTRA3 tick until something stop()s it, and
+   *    the autosave path never does — so the previous run's SUCCESS report
+   *    keeps arriving, including once more BEFORE the next
+   *    DO_START_MAG_CAL is acknowledged (the restart is applied by the
+   *    calibrator thread after the ack is queued).
+   *  - Accelerometer: once any cal has finished, AP_AccelCal re-sends the
+   *    SUCCESS / FAILED sentinel ACCELCAL_VEHICLE_POS every second for the
+   *    rest of the boot.
+   *
+   * The mock has no clock of its own for these, so it rides the GCS 1 Hz
+   * HEARTBEAT the session emits: each outbound heartbeat answers with the
+   * stale report / sentinel.
+   */
+  calibrationAftermath?: boolean
 }
 
 type ParameterState = Record<string, number>
@@ -616,6 +637,7 @@ const mockParameters: ParameterState = {
   // libraries/AC_AutoTune/AC_AutoTune_Multi.cpp var_info[]).
   AUTOTUNE_AXES: 7,
   AUTOTUNE_AGGR: 0.075,
+  ATC_THR_MIX_MAX: 0.5,
   AUTOTUNE_MIN_D: 0.0005,
   AUTOTUNE_GMBK: 0.25,
   // Gyro/accel filters and the harmonic notch. Without these the Filter
@@ -675,6 +697,9 @@ const mockParameters: ParameterState = {
   INS_HNTC2_OPTS: 0,
   INS_HNTC2_FM_RAT: 1,
   MOT_THST_HOVER: 0.35,
+  // Vertical acceleration controller, 4.6 names (the demo reports 4.6.0).
+  PSC_ACCZ_P: 0.5,
+  PSC_ACCZ_I: 1,
   ATC_RAT_RLL_FLTT: 35,
   ATC_RAT_RLL_FLTE: 0,
   ATC_RAT_RLL_FLTD: 35,
@@ -1411,6 +1436,32 @@ function buildLogDataFrames(id: number, startOffset: number): Uint8Array[] {
 // flow (DO_START_MAG_CAL -> progress -> report) without hardware.
 const MOCK_MAG_CAL_PROGRESS_PCT = [10, 40, 70, 100] as const
 
+function buildMagCalReportMessage(): MagCalReportMessage {
+  return {
+    type: 'MAG_CAL_REPORT',
+    compassId: 0,
+    calMask: 1,
+    calStatus: 4,
+    // The runtime requests autosave (DO_START_MAG_CAL param3=1), so a real
+    // autopilot writes the fit itself and reports it as auto-saved.
+    autosaved: 1,
+    fitness: 2.5,
+    ofsX: 12,
+    ofsY: -8,
+    ofsZ: 4,
+    diagX: 1,
+    diagY: 1,
+    diagZ: 1,
+    offdiagX: 0,
+    offdiagY: 0,
+    offdiagZ: 0,
+    orientationConfidence: 1,
+    oldOrientation: 0,
+    newOrientation: 0,
+    scaleFactor: 1
+  }
+}
+
 function buildMagCalFrames(): Uint8Array[] {
   const codec = new TruncatingMavlinkV2Codec()
   const frames: Uint8Array[] = []
@@ -1441,33 +1492,7 @@ function buildMagCalFrames(): Uint8Array[] {
     )
   })
 
-  frames.push(
-    codec.encode(
-      envelope(baseSequence + MOCK_MAG_CAL_PROGRESS_PCT.length, {
-        type: 'MAG_CAL_REPORT',
-        compassId: 0,
-        calMask: 1,
-        calStatus: 4,
-        // The runtime requests autosave (DO_START_MAG_CAL param3=1), so a real
-        // autopilot writes the fit itself and reports it as auto-saved.
-        autosaved: 1,
-        fitness: 2.5,
-        ofsX: 12,
-        ofsY: -8,
-        ofsZ: 4,
-        diagX: 1,
-        diagY: 1,
-        diagZ: 1,
-        offdiagX: 0,
-        offdiagY: 0,
-        offdiagZ: 0,
-        orientationConfidence: 1,
-        oldOrientation: 0,
-        newOrientation: 0,
-        scaleFactor: 1
-      })
-    )
-  )
+  frames.push(codec.encode(envelope(baseSequence + MOCK_MAG_CAL_PROGRESS_PCT.length, buildMagCalReportMessage())))
 
   return frames
 }
@@ -1783,6 +1808,12 @@ for (const key of Object.keys(arduplaneMockParameters)) {
     delete arduplaneMockParameters[key]
   }
 }
+// A real ArduPlane has none of these (its throttle failsafe is THR_FAILSAFE /
+// THR_FS_VALUE, its frame is Q_FRAME_*, its return altitude RTL_ALTITUDE).
+// Carrying them made the Plane demo pass checks a real Plane would not.
+for (const key of ['FS_THR_ENABLE', 'FS_THR_VALUE', 'FRAME_CLASS', 'FRAME_TYPE', 'RTL_ALT', 'RTL_ALT_M']) {
+  delete arduplaneMockParameters[key]
+}
 
 // Copter-only params that must NOT leak into the Rover/Sub overlays.
 // Real ArduRover/ArduSub do not expose these (Rover uses MODE_CH /
@@ -1949,7 +1980,10 @@ export const ardusubMockParameters: ParameterState = {
   FS_TEMP_ENABLE: 1,
   FS_GCS_ENABLE: 2,
   FS_PILOT_INPUT: 1,
-  FS_CRASH_CHECK: 1
+  FS_CRASH_CHECK: 1,
+  // ArduSub/Parameters.cpp default. A tethered, joystick-driven ROV leaves it
+  // there; inheriting the Copter base's 1 hid a failsafe-step deadlock.
+  FS_THR_ENABLE: 0
 }
 
 export function createArduCopterMockScenario(options: MockScenarioOptions = {}): MockScenario {
@@ -2018,6 +2052,11 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
   // mock emits the calibration-complete STATUSTEXT and resets the counter.
   let nextAccelPoseCommandValue = 0
   let accelSequence = 300
+  // Post-calibration aftermath (see MockScenarioOptions.calibrationAftermath):
+  // which terminal streams the "autopilot" would still be emitting.
+  const calibrationAftermath = options.calibrationAftermath === true
+  let magCalReportStreaming = false
+  let accelSentinelStreaming = false
 
   // Dynamic state machine — see attachDynamicEmitter below. State lives on
   // the scenario closure so the demo's slow transitions (battery sag, RC
@@ -2316,6 +2355,9 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             // for the level step, then wait for the configurator's
             // COMMAND_ACK confirms.
             nextAccelPoseCommandValue = 1
+            // AP_AccelCal::start() resets _last_result, which ends the
+            // previous run's sentinel stream.
+            accelSentinelStreaming = false
             responses.push(
               codec.encode(
                 envelope(101, {
@@ -2375,6 +2417,14 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             // stream rising-percentage MAG_CAL_PROGRESS frames followed by a
             // SUCCESS MAG_CAL_REPORT so the guided action can run to
             // completion against the mock.
+            if (calibrationAftermath && magCalReportStreaming) {
+              // The previous run's terminal report, still streaming, lands
+              // once more ahead of this start's ack — the calibrator thread
+              // restarts the fit only after the command handler has queued
+              // the ack.
+              responses.push(codec.encode(envelope(200, buildMagCalReportMessage())))
+            }
+            magCalReportStreaming = true
             responses.push(
               codec.encode(
                 envelope(201, {
@@ -2405,6 +2455,12 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             // The runtime persists a non-autosaved fit with DO_ACCEPT_MAG_CAL
             // and tears down an in-flight cal with DO_CANCEL_MAG_CAL on reset;
             // both just need a plain accepted ack from the mock.
+            if (outbound.message.command === MAV_CMD.DO_CANCEL_MAG_CAL) {
+              // cancel → CompassCalibrator::stop() → NOT_STARTED: the only
+              // thing that ends the terminal report stream. Accept does not
+              // (Compass::_accept_calibration saves and returns).
+              magCalReportStreaming = false
+            }
             responses.push(
               codec.encode(
                 envelope(206, {
@@ -2586,6 +2642,7 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             } else {
               // Sixth pose confirmed — finish the calibration.
               nextAccelPoseCommandValue = 0
+              accelSentinelStreaming = true
               responses.push(
                 codec.encode(
                   envelope(accelSequence++, {
@@ -2622,6 +2679,17 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
           }
           break
         }
+        case 'HEARTBEAT':
+          // The GCS heartbeat is the mock's 1 Hz clock for the aftermath
+          // streams (see MockScenarioOptions.calibrationAftermath). Off by
+          // default: a heartbeat answers with nothing, as before.
+          if (calibrationAftermath && magCalReportStreaming) {
+            responses.push(codec.encode(envelope(nextDynamicSequence(), buildMagCalReportMessage())))
+          }
+          if (calibrationAftermath && accelSentinelStreaming) {
+            responses.push(codec.encode(envelope(nextDynamicSequence(), buildAccelPosePromptMessage(16777215))))
+          }
+          break
         case 'LOG_REQUEST_LIST':
           responses.push(...buildLogEntryFrames())
           break
@@ -3565,6 +3633,9 @@ function createMockFtpFiles(): MockFtpFileMap {
     // "Table not available" preview fallback.
     ['@VTX/vtxtable.dat', createMockVtxTableBytes()],
     ['@SYS/timers.txt', mockTimersBytes.slice()],
+    // A hard-fault crash dump (AP_HAL_ChibiOS crashdump.c, exposed read-only
+    // as @SYS/crash_dump.bin). Contents do not matter to the browser.
+    ['@SYS/crash_dump.bin', new Uint8Array(256)],
     // Bootloader identity pair — see createMockEmbeddedBootloaderBytes.
     ['@ROMFS/bootloader.bin', createMockEmbeddedBootloaderBytes()],
     ['@SYS/flash.bin', createMockFlashRegionBytes()],

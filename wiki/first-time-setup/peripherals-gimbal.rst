@@ -12,8 +12,12 @@ only the parameters the connected firmware reports.
 .. note::
 
    GPS and compass are documented in detail on :doc:`../config` and
-   :doc:`sensors-calibration`. The rest of this page covers the sections unique
-   to this tab. The servo output map is on :doc:`servos-relays`.
+   :doc:`sensors-calibration`. The compass order table is below, and the rest
+   of this page covers the sections unique to this tab. The servo output map
+   is on :doc:`servos-relays`.
+
+As on Setup, one **Apply Peripherals** / **Revert** bar covers every staged change
+across the groups. Relays have their own **Apply relay changes**.
 
 The **GPS** sub-tab holds the **Primary** and **Secondary GPS** cards. They
 report whether a configured driver is talking, not only selected. It also has a
@@ -29,6 +33,26 @@ second-receiver and antenna-offset settings (``GPS_TYPE2``, ``GPS_GNSS_MODE2``,
    must be on a UART with TX/RX the right way round, the port protocol must be
    GPS, and the module must have power. A module that reports but has no fix
    needs a view of the sky.
+
+Compass order
+-------------
+
+Under the Compass card, the **Compass** group has a **Compass order** table. It
+decodes ArduPilot's three compass lists into one table with a row per priority:
+the stored priorities ``COMPASS_PRIO1_ID`` … ``PRIO3_ID``, the devices found this
+boot ``COMPASS_DEV_ID1`` … ``3``, and the unused ``DEV_ID4`` … ``8``. Each row
+names the device (*AK09916*, *IST8310*, *DroneCAN* …) and lists the settings that
+go with it. It also shows one of three states:
+
+- **found** this boot;
+- **not found**: a priority kept for a compass that no longer answers (the usual
+  ghost after a GPS mast is swapped);
+- **empty**.
+
+**Move up** / **Move down** reorder the priorities, and the row's **×** removes a
+compass from the order. All three stage ``COMPASS_PRIOn_ID`` drafts through the
+normal apply. The PRIO parameters need a reboot, so the apply ends with the
+usual reboot prompt. Nothing here writes a ``DEV_ID``; the firmware sets those.
 
 Rangefinder / LiDAR
 -------------------

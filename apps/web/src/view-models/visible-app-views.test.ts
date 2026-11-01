@@ -39,9 +39,9 @@ const byId = (views: AppViewDescriptor[], id: string): AppViewDescriptor => {
 }
 
 describe('buildVisibleAppViews', () => {
-  it('appends the non-metadata descriptors (guided-setup, calibration, can, flash, files)', () => {
+  it('appends the non-metadata descriptors (guided-setup, can, flash, files); Calibration is a Setup category, not a tab', () => {
     const result = ids(buildVisibleAppViews(baseInputs()))
-    for (const extra of ['guided-setup', 'calibration', 'can', 'flash', 'files']) {
+    for (const extra of ['guided-setup', 'can', 'flash', 'files']) {
       expect(result).toContain(extra)
     }
   })
@@ -73,10 +73,9 @@ describe('buildVisibleAppViews', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasNetworkingParams: false })))).not.toContain('networking')
   })
 
-  it('gates the AI Assistant view behind Expert mode alone (no FC capability)', () => {
-    // Unlike Networking/Lua it needs no capability flag — Expert mode is the
-    // only gate, since it is useful even before a vehicle is connected.
-    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).toContain('ai-assistant')
+  it('hides the AI Assistant view for everyone, Expert included (AI_ASSISTANT_ENABLED)', () => {
+    // Operator call 2026-10-21: the tab stays in the build but is on no rail.
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).not.toContain('ai-assistant')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))).not.toContain('ai-assistant')
   })
 
@@ -104,12 +103,11 @@ describe('buildVisibleAppViews', () => {
     const result = ids(
       buildVisibleAppViews(baseInputs({ appViews: [view('modes'), view('setup'), view('mystery-view')] }))
     )
-    // setup leads, then Peripherals and Calibration, modes before the tools
-    // cluster, Guided Setup after every listed tab, unknown id last. (Config
-    // is absent from this input, so Peripherals lands second.)
+    // setup leads; modes and tuning come before peripherals (flying
+    // first), modes before the tools cluster, unknown id last.
     expect(result[0]).toBe('setup')
-    expect(result[1]).toBe('peripherals')
-    expect(result[2]).toBe('calibration')
+    expect(result).not.toContain('calibration')
+    expect(result.indexOf('modes')).toBeLessThan(result.indexOf('peripherals'))
     expect(result.indexOf('modes')).toBeLessThan(result.indexOf('can'))
     expect(result[result.length - 1]).toBe('mystery-view')
   })
@@ -133,10 +131,8 @@ describe('buildVisibleAppViews', () => {
   it('reflects connection state in the Files and Calibration badges', () => {
     const connected = buildVisibleAppViews(baseInputs({ connectionKind: 'connected' }))
     expect(byId(connected, 'files').badge).toBe('live')
-    expect(byId(connected, 'calibration').badge).toBe('ready')
 
     const disconnected = buildVisibleAppViews(baseInputs({ connectionKind: 'disconnected' }))
     expect(byId(disconnected, 'files').badge).toBe('idle')
-    expect(byId(disconnected, 'calibration').badge).toBe('idle')
   })
 })

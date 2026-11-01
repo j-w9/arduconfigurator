@@ -723,7 +723,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             most operators pick the axes from the rows below. */}
         {rcMappingSession.status !== 'running' ? (
           <div className="receiver-map__hint">
-            <span>Pick each stick from its channel&rsquo;s Function below, or let guided mapping find them.</span>
             <button
               type="button"
               style={buttonStyle()}
@@ -964,8 +963,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
       })
     : []
 
-  // The arm switch and the flight modes: what the switches do, at the foot
-  // of the table whose rows show them moving. The slot the mode switch is in
+  // The arm switch and the flight modes: what the switches do, at the top of
+  // the page, above the table whose rows show them moving. The slot the mode switch is in
   // right now is lit, so flicking it through its positions confirms each
   // mode. Config ▸ Flight Modes edits the same parameters (one draft pool).
   const modeChannelConflict = ((): number | undefined => {
@@ -1402,13 +1401,18 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
           <p className="receiver-endpoints-line">{rcCalibrationSummary}</p>
         ) : null}
       </div>
-      {armLine}
-      {flightModesLine}
-
     </div>
   )
 
-  const flightModesSlot = null
+  // The arm switch and the flight modes lead the page: slim lines that were
+  // easy to miss at the foot of the channel table.
+  const flightModesSlot =
+    armLine || flightModesLine ? (
+      <div className="rc-calibration-card receiver-switches" data-testid="receiver-switches">
+        {armLine}
+        {flightModesLine}
+      </div>
+    ) : null
 
   // RSSI, RC options, protocols and input rate are under Config ▸ RC.
   const advancedSlot = null

@@ -717,9 +717,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 	              </div>
 	            ) : null}
 
-	            <p className="telemetry-note">
-	              Use the header session strip to reboot and refresh after changing serial roles, GPS drivers, or flow-control settings.
-	            </p>
 	          </div>
 	          </Panel>	          
 	          <MavlinkSigningPanel runtime={runtime} connected={snapshot.connection.kind === 'connected'} />

@@ -88,8 +88,8 @@ const DEFAULT_APP_VIEWS: AppViewDefinition[] = [
   },
   {
     id: 'config',
-    label: 'Config',
-    description: 'Baseline misc — board orientation, arming behavior, system identity, statistics.',
+    label: 'Setup',
+    description: 'Setup — airframe, RC, flight modes, arming, battery, and system settings.',
     order: 12.5
   },
   {

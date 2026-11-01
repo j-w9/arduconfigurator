@@ -64,7 +64,7 @@ export function flightCalibrationBlockedReason(
   return (
     parameterApplyBlockedReason(snapshot) ??
     (busyAction !== undefined
-      ? 'Another action is still running — wait for it to finish.'
+      ? 'Another action is running. Wait for it to finish.'
       : 'Changes cannot be staged right now.')
   )
 }

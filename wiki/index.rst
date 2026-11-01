@@ -9,7 +9,8 @@ shell reuses the same app.
 This wiki mirrors the structure of the `ArduPilot wiki <https://ardupilot.org/>`__
 and the order of the app: connect, run the guided setup, then work through
 each tab. If you are new, start with :doc:`introduction` and
-:doc:`getting-connected`, then follow :doc:`guided-setup`.
+:doc:`getting-connected`, then follow :doc:`guided-setup` (an Expert-mode tab)
+or work through :doc:`first-time-setup/index` tab by tab.
 
 .. note::
 

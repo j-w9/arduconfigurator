@@ -54,11 +54,13 @@ export function AdvancedSensorCard({ card }: { card: AdvancedSensorCardViewModel
             </div>
           ))}
         </div>
-        {/* Detail is duplicated as body copy, not left to the tooltip alone —
-         *  it is the "what do I do about it" half of the diagnosis. */}
-        <p className="setup-gui-box__note" data-testid={`${card.testId}-detail`}>
-          {card.detail}
-        </p>
+        {/* In a fault state the detail is the "what do I do about it" half of
+         *  the diagnosis, so it is body copy. A healthy card says nothing. */}
+        {card.state === 'reporting' ? null : (
+          <p className="setup-gui-box__note" data-testid={`${card.testId}-detail`}>
+            {card.detail}
+          </p>
+        )}
       </div>
     </article>
   )

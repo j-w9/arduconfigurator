@@ -8,7 +8,7 @@
 // the FC-spinning intent lives in App.tsx. Gated by motorReorderDialogOpen at
 // the call site, so this renders unconditionally. Behavior-preserving.
 
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { InfoDot } from '../views/InfoDot'
 import { ParamIdHint } from '../views/ScopedField'
 
@@ -90,6 +90,12 @@ export interface MotorReorderDialogProps {
   /** Render inline (no lightbox backdrop / Close) for embedding directly in the
    *  Motor Setup tab instead of as a popout. */
   inline?: boolean
+  /** Rendered under the motor diagram (the Motors tab puts "Want props out?"
+   *  here, next to the picture it changes). */
+  diagramFooter?: ReactNode
+  /** Under the left box on both tabs (the Motors tab's spin thresholds), so
+   *  the left column is one block the right column cannot push down. */
+  leftFooter?: ReactNode
 }
 
 export function MotorReorderDialog({
@@ -132,7 +138,9 @@ export function MotorReorderDialog({
   canApplyMotorDrafts,
   rebootRecommended,
   onApplyAndRebootMotorDrafts,
-  inline = false
+  inline = false,
+  diagramFooter,
+  leftFooter
 }: MotorReorderDialogProps): ReactElement {
   const motorTestBusy =
     snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'
@@ -380,6 +388,8 @@ export function MotorReorderDialog({
                   <p>No mapped motor outputs are available to reorder yet.</p>
                 </div>
               )}
+              {diagramFooter}
+              {leftFooter}
             </div>
           </section>
 
@@ -532,6 +542,9 @@ export function MotorReorderDialog({
                 </div>
               ) : null}
 
+              {/* Inline, Cancel and Stage only mean something once a reorder is
+                  under way; idle they were two dead buttons. */}
+              {!inline || guidedReorderActive || guidedReorderCompleted || motorReorderChangedCount > 0 ? (
               <div className="switch-exercise-controls">
                 <button type="button" style={buttonStyle()} onClick={onClose}>
                   Cancel
@@ -573,6 +586,7 @@ export function MotorReorderDialog({
                   </button>
                 )}
               </div>
+              ) : null}
             </div>
           </section>
         </div>
@@ -649,6 +663,7 @@ export function MotorReorderDialog({
               ) : (
                 <p className="bf-note">No mapped motor outputs are available to spin yet.</p>
               )}
+              {leftFooter}
             </div>
           </section>
           <section className="bf-gui-box">

@@ -29,6 +29,8 @@ export interface RelaysViewProps {
   isApplying: boolean
   isBusy: boolean
   onApply: () => void
+  /** False on a page that has its own Apply bar (Peripherals): the drafts go through that one. */
+  showActions?: boolean
   onRevert: () => void
 }
 
@@ -46,7 +48,8 @@ export function RelaysView(props: RelaysViewProps) {
     isApplying,
     isBusy,
     onApply,
-    onRevert
+    onRevert,
+    showActions = true
   } = props
 
   return (
@@ -146,6 +149,7 @@ export function RelaysView(props: RelaysViewProps) {
           </div>
         )}
 
+        {showActions ? (
         <div className="servo-mapping__toolbar">
           <div className="servo-mapping__toolbar-status">
             <span>{stagedCount} staged</span>
@@ -170,6 +174,7 @@ export function RelaysView(props: RelaysViewProps) {
             Revert
           </button>
         </div>
+        ) : null}
       </div>
     </Panel>
   )

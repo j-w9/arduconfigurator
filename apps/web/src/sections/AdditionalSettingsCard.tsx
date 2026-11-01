@@ -70,7 +70,6 @@ export function AdditionalSettingsCard({
         <details key={group.categoryId} className="metadata-settings-section" open data-testid={`metadata-settings-section-${group.categoryId}`}>
           <summary className="metadata-settings-section__header">
             <strong>{group.categoryLabel}</strong>
-            <p>{group.categoryDescription}</p>
           </summary>
           <div className="scoped-editor-grid">{group.parameters.map((parameter) => renderField(parameter))}</div>
         </details>

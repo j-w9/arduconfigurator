@@ -150,7 +150,7 @@
   /* Wide enough that every nav label ("Status & Info", "Calibration")
    * renders in full next to its widest badge ("11 SECTIONS") — labels
    * must never be ellipsized (field feedback: no shortened words). */
-  /* An icon and a label: wide enough for the longest one on one line,
+  /* Labels only (the letter codes went): wide enough for the longest one,
      "MAVLink Inspector", at each viewport's type step. */
   --sidebar-width: 216px;
   background: var(--bg-app);
@@ -5012,12 +5012,24 @@ body.is-status-dash-dragging {
   padding: 7px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--primary-500);
-  background: color-mix(in srgb, var(--primary-500) 12%, transparent);
+  /* Opaque: the bar is sticky and content passes under it. The translucent
+     mix it had is layered over the main surface instead. */
+  background:
+    color-mix(in srgb, var(--primary-500) 12%, transparent),
+    var(--surface-100);
   color: var(--text-primary);
   font-size: var(--text-lg);
   font-weight: 600;
   cursor: pointer;
   text-align: left;
+  /* Stays in view while the operator works on the other tab. A deep link from
+     the wizard scrolls the destination panel to just under the app header, and
+     a static bar at the top of the column scrolled off with everything above
+     it -- the way back existed and was out of sight. Sticks under the app
+     header (which is sticky at top:0, z-index 100), above the page content. */
+  position: sticky;
+  top: var(--header-height);
+  z-index: 30;
 }
 
 .setup-return-bar span {
@@ -5026,7 +5038,9 @@ body.is-status-dash-dragging {
 }
 
 .setup-return-bar:hover {
-  background: color-mix(in srgb, var(--primary-500) 20%, transparent);
+  background:
+    color-mix(in srgb, var(--primary-500) 20%, transparent),
+    var(--surface-100);
 }
 
 .setup-wizard__reset {
@@ -5419,6 +5433,17 @@ body.is-status-dash-dragging {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+/* ...but not on a phone. Four tiles across 390px left each ~75px wide, and
+   the captions clipped mid-word ("quaternion interpolatio"). The generic
+   phone rule below (1024px block) is out-specified by the row above, so this
+   restates it at wizard specificity: two-up, like compact mode everywhere
+   else. */
+@media (max-width: 640px) {
+  .setup-wizard__task-visual .flight-deck--compact .flight-deck__readout-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .setup-wizard__task-copy {
   display: grid;
   gap: var(--space-3);
@@ -5489,6 +5514,19 @@ body.is-status-dash-dragging {
   gap: var(--space-3);
 }
 
+/* A disabled wizard button looked exactly like an enabled one: the buttons are
+   styled inline (buttonStyle), which sets cursor: pointer and no disabled
+   state, so a locked Continue and a live one were pixel-identical. Scoped to
+   the wizard's own buttons; !important because inline styles win otherwise. */
+.setup-wizard__primary-button:disabled,
+.setup-wizard__continue-button:disabled,
+.setup-wizard__action-card button:disabled,
+.setup-wizard__nav button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
 .setup-wizard__primary-button--target {
   box-shadow:
     0 0 0 1px rgba(218, 178, 84, 0.18),
@@ -5527,6 +5565,41 @@ body.is-status-dash-dragging {
   .setup-wizard__support-actions {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* "More…" for the support actions past the two in view, and for evidence past
+   four lines. A disclosure, not a hidden list: everything is still one click
+   away, and the aside fits one desktop screen. */
+.setup-wizard__more > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  list-style: none;
+}
+
+.setup-wizard__more > summary::before {
+  content: '▸ ';
+}
+
+.setup-wizard__more[open] > summary::before {
+  content: '▾ ';
+}
+
+.setup-wizard__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.setup-wizard__more > * + * {
+  margin-top: var(--space-2);
+}
+
+/* The one line under the hero that says what comes after this step. */
+.setup-wizard__next {
+  margin: -4px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: 1.5;
 }
 
 .setup-wizard__context-hint {
@@ -10850,85 +10923,6 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: var(--space-4);
 }
 
-.snapshots-page__hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.75fr);
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: var(--radius-2xl);
-  background:
-    radial-gradient(circle at top right, rgba(93, 121, 163, 0.14), transparent 36%),
-    linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 0.98));
-  box-shadow:
-    inset 0 1px 0 rgba(var(--edge-rgb), 0.045),
-    inset 0 0 0 1px rgba(var(--edge-rgb), 0.03),
-    0 12px 24px rgba(0, 0, 0, 0.16);
-}
-
-.snapshots-page__hero-copy {
-  display: grid;
-  gap: 10px;
-  max-width: 780px;
-}
-
-.snapshots-page__eyebrow {
-  color: rgba(var(--ink-rgb), 0.54);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.snapshots-page__hero-copy h3 {
-  margin: 0;
-  font-size: var(--font-title);
-  line-height: 1.08;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.snapshots-page__hero-copy p {
-  margin: 0;
-  max-width: 60ch;
-  color: rgba(var(--ink-rgb), 0.66);
-  font-size: var(--text-lg);
-  line-height: 1.68;
-}
-
-.snapshots-page__hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-  align-self: end;
-}
-
-.snapshots-page__hero-metric {
-  display: grid;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(180deg, rgba(var(--fill-rgb), 0.92), rgba(var(--fill-rgb), 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(var(--edge-rgb), 0.045),
-    inset 0 0 0 1px rgba(var(--edge-rgb), 0.03);
-}
-
-.snapshots-page__hero-metric span {
-  color: rgba(var(--ink-rgb), 0.52);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.snapshots-page__hero-metric strong {
-  font-size: var(--text-3xl);
-  line-height: 1;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-}
-
 .snapshots-slab {
   display: grid;
   gap: 14px;
@@ -11687,7 +11681,6 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 @media (max-width: 1180px) {
-  .snapshots-page__hero,
   .snapshots-workspace {
     grid-template-columns: 1fr;
   }
@@ -16089,6 +16082,49 @@ details.bf-gui-box:not([open]) > summary::after {
   .config-grid--cat-system:has(.config-section--id-fast-loop-rate) .config-section--id-system-rates .config-section__editors > :first-child {
     grid-column: 1 / -1;
   }
+}
+
+/* Config ▸ Arming is one card: the pre-arm checks take two thirds of the width
+   (their chips in two or three lines rather than a five-line wall), the rudder
+   and legacy arming fields stack in the last third beside them, everything
+   top-aligned. The raw value sits on the checks' title line. While "All checks"
+   is set the individual checks are dimmed: they are covered, and still
+   clickable. */
+.config-grid .config-section--id-arming .config-section__editors,
+.config-section--id-arming .config-section__field-row {
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .config-grid .config-section--id-arming .config-section__editors {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+  .config-section--id-arming .config-section__editors > :first-child {
+    grid-row: span 2;
+  }
+}
+
+.config-section--id-arming .scoped-editor-field--bitmask {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+.config-section--id-arming .scoped-editor-field--bitmask > .scoped-bitmask-bits,
+.config-section--id-arming .scoped-editor-field--bitmask > .scoped-editor-field__was {
+  grid-column: 1 / -1;
+}
+.config-section--id-arming .scoped-editor-field--bitmask > .scoped-bitmask-raw {
+  grid-row: 1;
+  grid-column: 2;
+  margin-top: 0;
+}
+.config-section--id-arming .scoped-editor-field--bitmask > .scoped-bitmask-raw input {
+  width: 7rem;
+}
+.config-section--id-arming
+  [data-testid='scoped-bitmask-ARMING_CHECK']
+  .scoped-bitmask-bits:has(> .scoped-bitmask-bit.is-set:first-child)
+  > .scoped-bitmask-bit:not(:first-child) {
+  opacity: 0.45;
 }
 
 /* Board orientation: the picture sits beside the dropdown, not under it, so the
@@ -20620,6 +20656,7 @@ button.mavlink-inspector__sent-row {
   }
 }
 
+
 /* Calibration: one page, three expandable full-width sections. */
 .calibration-section {
   border: 1px solid rgba(var(--edge-rgb), 0.06);
@@ -20698,271 +20735,6 @@ button.mavlink-inspector__sent-row {
   grid-area: button;
 }
 
-
-/* Flash ▸ Find firmware: search + Board dropdown over ArduPilot's builds. */
-.firmware-finder {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 8px 0 12px;
-  padding: 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  background: var(--bg-panel-raised);
-}
-.firmware-finder__controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
-  align-items: flex-end;
-}
-.firmware-finder label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-.firmware-finder__search {
-  flex: 1 1 280px;
-}
-.firmware-finder input,
-.firmware-finder select {
-  height: 32px;
-  min-width: 0;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: var(--text-md);
-}
-.firmware-finder__board-pick select {
-  width: min(100%, 560px);
-}
-.firmware-finder__board,
-.firmware-finder__detail,
-.firmware-finder__empty {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-.firmware-finder__board strong {
-  color: var(--text);
-}
-.firmware-finder__tag {
-  margin-left: 8px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: var(--text-xs);
-}
-.firmware-finder__tag--running {
-  border-color: var(--success);
-  color: var(--success);
-}
-.firmware-finder__pick {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-.firmware-finder__warning {
-  margin: 0;
-  padding: 6px 10px;
-  border-left: 3px solid var(--warning);
-  background: rgba(var(--warning-rgb, 255, 187, 0), 0.08);
-  color: var(--text);
-  font-size: var(--text-sm);
-}
-.firmware-finder__error {
-  margin: 0;
-  color: var(--danger);
-  font-size: var(--text-sm);
-}
-.firmware-wizard__manual summary {
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-/* Flash ▸ finder: a loaded build stays visibly done; step 2's confirm box
-   asks to be ticked next. */
-.firmware-finder__done {
-  padding: 8px 14px;
-  border: 1px solid var(--success);
-  border-radius: 8px;
-  background: rgba(62, 207, 142, 0.14);
-  color: var(--success);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: default;
-}
-.firmware-wizard__confirm.is-nudged {
-  padding: 6px 10px;
-  border-radius: var(--radius-md, 6px);
-  outline: 2px solid var(--primary-500, #ffbb00);
-  outline-offset: 2px;
-  animation: firmware-confirm-nudge 1.2s ease-in-out infinite;
-}
-@keyframes firmware-confirm-nudge {
-  0%, 100% { outline-color: rgba(255, 187, 0, 0.95); }
-  50% { outline-color: rgba(255, 187, 0, 0.3); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .firmware-wizard__confirm.is-nudged { animation: none; }
-}
-
-/* Flash: the one line that says it worked, big. */
-.firmware-done {
-  margin: 12px 0 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--success);
-  border-radius: var(--radius-lg);
-  background: rgba(62, 207, 142, 0.12);
-  color: var(--success);
-  font-size: var(--text-3xl);
-  font-weight: 700;
-}
-
-/* Status & Info ▸ Vehicle actions: big buttons, no prose. */
-.setup-bench__buttons {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.setup-bench__button-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.setup-bench__button {
-  width: 100%;
-  min-height: 44px;
-  font-size: var(--text-xl) !important;
-  font-weight: 700 !important;
-}
-.setup-bench__button.is-failed {
-  border-color: var(--danger) !important;
-}
-.setup-bench__failed {
-  margin: 0;
-  color: var(--danger);
-  font-size: var(--text-sm);
-}
-.setup-bench__status {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-md);
-}
-.setup-bench__status.is-complete {
-  color: var(--success);
-}
-@media (max-width: 640px) {
-  /* No room for the X / Y column on a phone: they take their own line again. */
-  .osd-matrix--align .osd-matrix__row {
-    grid-template-columns: minmax(110px, 1fr) repeat(4, 40px);
-  }
-  .osd-matrix--align .osd-matrix__align {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-  .osd-matrix--align .osd-matrix__align:empty,
-  .osd-matrix--align .osd-matrix__align-head {
-    display: none;
-  }
-}
-
-/* Sidebar: an icon per tab, more room between rows, a faint line between
-   them, and the hover / active highlight filling the row. */
-.workspace-nav--flat {
-  gap: 0;
-}
-/* Room for the longest label ("MAVLink Inspector") on one line in the
-   widest common fallback font (DejaVu Sans on Linux): the right padding and
-   the icon gap give it up, the label keeps its indent. */
-.workspace-nav--flat .workspace-nav__item {
-  gap: 8px;
-  min-height: 36px;
-  padding: 6px 4px 6px 12px;
-  border-radius: var(--radius-md, 6px);
-}
-.workspace-sidebar__shell:has(.workspace-nav--flat) {
-  padding-right: 6px;
-}
-.workspace-nav--flat .workspace-nav__item + .workspace-nav__item {
-  margin-top: 4px;
-  box-shadow: 0 -3px 0 -2px var(--border-soft);
-}
-.workspace-nav--flat .workspace-nav__item:hover {
-  background: var(--primary-transparent-1);
-}
-.workspace-nav__icon {
-  flex: 0 0 auto;
-  color: var(--text-dim);
-}
-.workspace-nav__item:hover .workspace-nav__icon {
-  color: var(--accent);
-}
-.workspace-nav__item.is-active .workspace-nav__icon {
-  color: var(--primary-400);
-}
-
-/* Config card title badges (ported from beta with the Power card). */
-.config-section__badge {
-  margin-left: auto;
-}
-
-.config-section__badges {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.power-panel {
-  display: grid;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-@media (max-width: 720px) {
-  /* Back to a single column where 210px tracks would overflow. */
-  #setup-panel-power .scoped-editor-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* Snapshot restore groups fold on their heading (field request): the label is
-   the toggle, styled as the plain heading it replaces. */
-.parameter-diff-group__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.parameter-diff-group__toggle:hover strong {
-  text-decoration: underline;
-}
-
-/* Logs ▸ Logging for tuning: the one-click setup and what it will change. */
-.logs-tuning-setup__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.logs-tuning-setup__row small {
-  color: var(--text-muted);
-}
 /* ── CAN bus monitor ──────────────────────────────────────────────────────
    A drawer docked at the foot of the CAN tab (sticky to the bottom of the
    workspace), resizable from its top edge like a browser's devtools. Dense,
@@ -23060,6 +22832,40 @@ button.mavlink-inspector__sent-row {
   letter-spacing: var(--tracking-label);
 }
 
+/* Sidebar: an icon per tab, more room between rows, a faint line between
+   them, and the hover / active highlight filling the row. */
+.workspace-nav--flat {
+  gap: 0;
+}
+/* Room for the longest label ("MAVLink Inspector") on one line in the
+   widest common fallback font (DejaVu Sans on Linux): the right padding and
+   the icon gap give it up, the label keeps its indent. */
+.workspace-nav--flat .workspace-nav__item {
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 4px 6px 12px;
+  border-radius: var(--radius-md, 6px);
+}
+.workspace-sidebar__shell:has(.workspace-nav--flat) {
+  padding-right: 6px;
+}
+.workspace-nav--flat .workspace-nav__item + .workspace-nav__item {
+  margin-top: 4px;
+  box-shadow: 0 -3px 0 -2px var(--border-soft);
+}
+.workspace-nav--flat .workspace-nav__item:hover {
+  background: var(--primary-transparent-1);
+}
+.workspace-nav__icon {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+.workspace-nav__item:hover .workspace-nav__icon {
+  color: var(--accent);
+}
+.workspace-nav__item.is-active .workspace-nav__icon {
+  color: var(--primary-400);
+}
 
 /* CAN ▸ a node card's header: the name block takes what is left and wraps its
    own text; the badge + buttons keep their place. The ticking "seen …" age
@@ -24073,6 +23879,12 @@ button.plot-side-list__name {
   color: var(--text);
 }
 
+/* The raw "Value" entry under a bitmask chip group is for pasting a number
+   out of a param file; outside Expert the chips are the editor. */
+:root:not([data-product-mode="expert"]) .scoped-bitmask-raw {
+  display: none;
+}
+
 /* Servos: the FUNCTION column header names the field, so the per-row
    "Output n Function" label is for screen readers only. */
 .servo-mapping__function .scoped-editor-field > span:first-of-type {
@@ -24681,9 +24493,6 @@ button.plot-side-list__name {
   justify-content: flex-start;
   align-items: center;
 }
-.tuning-control .tuning-control__footer small {
-  margin-left: auto;
-}
 
 /* Tuning ▸ Pilot: stick-feel cards (views/PilotFeel.tsx). Curve colours pass
    the dataviz palette checks (lightness band, CVD separation) per theme. */
@@ -24980,6 +24789,64 @@ button.plot-side-list__name {
 }
 .tuning-profile-save--extra {
   margin-top: var(--space-2);
+}
+.files-readonly-note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Motors, two columns (operator call 2026-10-30): the diagram and the order /
+   direction work stacked on the left, the motor test with the spin thresholds
+   under it on the right, the safety box across the top. */
+.spin-wizard-launcher {
+  flex-wrap: wrap;
+}
+.spin-wizard-launcher__fields {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+@media (min-width: 1200px) {
+  /* Order and Direction: the picture box (with the spin thresholds inside it)
+     on the left, the wizard (or Reverse direction) and the motor test on the
+     right. The left box spans both right-hand rows, so nothing on the right
+     moves it; the motor test follows the wizard down. */
+  .outputs-tab-body--single-page {
+    grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+    grid-template-rows: auto min-content 1fr;
+    align-content: start;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid,
+  .outputs-tab-body--single-page .motor-reorder-lightbox__direction {
+    display: contents;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid > :first-child,
+  .outputs-tab-body--single-page .motor-reorder-lightbox__direction > :first-child {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    align-self: start;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid > :nth-child(2),
+  .outputs-tab-body--single-page .motor-reorder-lightbox__direction > :nth-child(2) {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] {
+    grid-column: 2;
+    grid-row: 3;
+    align-self: start;
+  }
+  /* Three thresholds to a row in the narrower left column. */
+  .outputs-tab-body--single-page .scoped-editor-grid.spin-wizard-launcher__fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* The spin thresholds inside the picture box, set off from what is above. */
+.bf-gui-box__body > .spin-wizard-launcher {
+  margin-top: var(--space-3);
 }
 
 .feature-search__expert {

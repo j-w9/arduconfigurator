@@ -152,7 +152,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
       <Panel
         showTitle
         title="MAVLink signing"
-        subtitle="Authenticate the link with a shared MAVLink v2 signing key. The key is derived from a passphrase (SHA-256) or pasted as a 32-byte hex key, kept in memory only, and never logged."
+        subtitle="A shared MAVLink v2 signing key, kept in memory only."
         actions={
           <StatusBadge tone={enabled ? 'success' : 'neutral'}>
             <span data-testid="signing-status">{enabled ? 'Signing on' : 'Signing off'}</span>
@@ -267,10 +267,6 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
             </p>
           ) : null}
 
-          <p className="mavlink-signing__note">
-            The flight controller must hold the same key. Use "Send key to vehicle" over a trusted link (USB / wired) to
-            provision it via SETUP_SIGNING, or set a matching passphrase on the FC from another GCS.
-          </p>
         </div>
       </Panel>
     </div>

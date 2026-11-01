@@ -124,7 +124,7 @@ export function LogsSection(props: LogsSectionProps) {
             if (draft?.status === 'staged') {
               return `Staged ${describeBitmaskSelections(draft.nextValue, ARDUCOPTER_LOG_BITMASK_LABELS, 'No categories')}`
             }
-            return draft?.reason ?? `Current ${describeBitmaskSelections(logBitmask, ARDUCOPTER_LOG_BITMASK_LABELS, 'No categories')}`
+            return draft?.reason ?? ''
           })(),
           onToggleBit: (bit, on) => {
             updateDrafts((existing) => {

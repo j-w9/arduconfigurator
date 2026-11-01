@@ -41,9 +41,24 @@ where Web Serial is restricted.
 Demo mode
 ---------
 
-Selecting **Demo** as the connection source loads a built-in mock vehicle. Every
-tab, the guided setup and the inspectors work with no flight controller
-attached. The screenshots in this wiki come from it.
+**Demo (Copter)** or **Demo (Plane)** as the connection source loads a built-in
+mock vehicle. Every tab, the guided setup and the inspectors work with no flight
+controller attached. The screenshots in this wiki come from it.
+
+Finding your way around
+-----------------------
+
+The tabs sit in a rail down the left, in the order a build gets flying:
+**Status & Info**, Setup (with Calibration), Ports, Receiver, Motors, Failsafe,
+Tuning, then OSD & VTX, Servos, Peripherals, Presets, Snapshots, Logs, CAN,
+Files, Flash. A **Find a setting** box at the top of the rail searches tabs, cards and
+parameters by name and opens the match.
+
+**Expert mode** (the *Enable Expert Mode* switch in the header, behind ``···``
+on a phone) adds the raw :doc:`Parameters <parameters>` editor,
+the :doc:`MAVLink Inspector <logs-inspectors>`, :doc:`Networking <networking>`
+and :doc:`Lua Scripts <lua>` when the firmware supports them, and the
+:doc:`guided-setup` tab. Everything else is available in both modes.
 
 Next steps
 ----------

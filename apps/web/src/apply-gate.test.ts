@@ -95,6 +95,6 @@ describe('flightCalibrationBlockedReason', () => {
       vehicle: { firmware: 'ArduPilot', vehicle: 'ArduCopter', systemId: 1, componentId: 1, armed: true, flightMode: 'LOITER' }
     })
     expect(flightCalibrationBlockedReason(armed, undefined)).toMatch(/disarm/i)
-    expect(flightCalibrationBlockedReason(snapshot(), 'receiver:apply')).toMatch(/another action is still running/i)
+    expect(flightCalibrationBlockedReason(snapshot(), 'receiver:apply')).toMatch(/another action is running/i)
   })
 })

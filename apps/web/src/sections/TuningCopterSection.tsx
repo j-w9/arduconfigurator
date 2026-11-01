@@ -66,9 +66,11 @@ export interface TuningCopterSectionProps {
   /** The ArduCopter AUTOTUNE surface, rendered in the task body when the
    *  'autotune' tab is active (kept a slot so App owns its disjoint draft scope). */
   autotuneSlot?: ReactNode
+  /** The hover throttle flights. */
+  hoverSlot?: ReactNode
+  /** SmallFastDrone fork features (Z-bias, VALT, fork failsafe options). */
+  sfdSlot?: ReactNode
   logTuningSlot?: ReactNode
-  /** Starting-point tuning, rendered in the task body on the 'initial-tune' tab. */
-  initialTuneSlot?: ReactNode
   /** Notch suggestions and warnings, rendered under the Filters grid. */
   filterNotchSlot?: ReactNode
   /** The FILTn bank, when the firmware has one. Expert-only: raw per-slot
@@ -84,17 +86,16 @@ export interface TuningCopterSectionProps {
   filterManualSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
-  isExpertMode: boolean
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
   const {
     parameterNotice,
     autotuneSlot,
+    hoverSlot,
+    sfdSlot,
     logTuningSlot,
-    initialTuneSlot,
     filterNotchSlot,
-    isExpertMode,
     pilotFeelSlot,
     pidGainsSlot,
     notchesSlot,
@@ -124,7 +125,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     activeTuningTaskId,
     activeTuningTask,
     tuningTaskCards,
-    tuningFilterParameters,
     tuningProfileSourceUsesStaged,
     canCreateTuningProfile,
     savedTuningProfiles,
@@ -192,9 +192,11 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                               </InfoDot>
                             </span>
                           </div>
-                          <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
-                            {tuningFilterParameters.length} filters
-                          </StatusBadge>
+                          {tuningFilterInvalidDrafts.length > 0 || tuningFilterStagedDrafts.length > 0 ? (
+                            <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
+                              {tuningFilterInvalidDrafts.length > 0 ? `${tuningFilterInvalidDrafts.length} invalid` : `${tuningFilterStagedDrafts.length} staged`}
+                            </StatusBadge>
+                          ) : null}
                         </div>
 
                         {/* Derived first, raw second.
@@ -225,7 +227,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           * gate. */}
                         {filterNotchSlot}
 
-                        {isExpertMode ? filterManualSlot : null}
+                        {filterManualSlot}
                       </div>
                     </section>
                   </div>
@@ -481,6 +483,18 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   </div>
                 ) : null}
 
+                {activeTuningTaskId === 'hover' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-hover-panel">
+                    {hoverSlot}
+                  </div>
+                ) : null}
+
+                {activeTuningTaskId === 'sfd' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-sfd-panel">
+                    {sfdSlot}
+                  </div>
+                ) : null}
+
                 {activeTuningTaskId === 'autotune' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-autotune-panel">
                     {autotuneSlot}
@@ -493,11 +507,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   </div>
                 ) : null}
 
-                {activeTuningTaskId === 'initial-tune' ? (
-                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-initial-tune-panel">
-                    {initialTuneSlot}
-                  </div>
-                ) : null}
           </>
         }
       />
