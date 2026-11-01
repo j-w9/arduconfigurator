@@ -7,15 +7,23 @@ parameters, so you can rough in a tune without the raw parameter tree. Every
 change is staged as a local draft and reviewed before it is written to the
 controller. You can save known-good tunes as reusable profiles.
 
-By default the tab shows **four tasks**: **Pilot**, **Filters**, **Autotune**
-and **Initial Tune**. Together they cover setting stick feel, handling noise,
-letting the vehicle find its gains, and getting a starting point for a new
-airframe.
+The tasks run left to right in the order a tune is worked through:
 
-**Expert mode** adds four more: **PID Gains** (the attitude gains, axis by axis),
-**Notches** (the two harmonic notches and the ``FILTn`` bank), **Profiles** (a
-local library of saved tunes) and **Log Tuning** (post-flight log analysis).
-They are for working on a tune you already have.
+#. **Hover**: the hover throttle, learned in the air or measured from a log
+   (:doc:`first-time-setup/sensors-calibration`).
+#. **Filters** and **Notches**: noise, then the two harmonic notches and the
+   ``FILTn`` bank.
+#. **Autotune**: the autotune flight card and the ``AUTOTUNE_*`` settings.
+#. **PID Gains**: the attitude gains, axis by axis, by hand.
+#. **Pilot**: stick feel, last.
+#. **SFD**: SmallFastDrone fork features (the accelerometer Z-bias, baro thrust
+   (VALT), and the failsafe options the fork extends). It appears only when the
+   firmware reports one of them.
+#. **Profiles** (a local library of saved tunes) and **Log Tuning** (post-flight
+   log analysis), for a tune you already have.
+
+A new airframe starts from :ref:`Initial Tune <initial-tune>` on the
+:doc:`config` tab.
 
 There is no separate review step. Whatever a task stages lands in the **draft
 bar** at the foot of the page, and **Write all** there sends it (see
@@ -285,12 +293,12 @@ ArduPilot documents that as not recommended.
    Change roll D to **35** before staging and it is flagged: 35 is above
    0.75 × 40 = 30 Hz.
 
-Manual (Expert)
-~~~~~~~~~~~~~~~
+Manual
+~~~~~~
 
-Expert mode adds **Manual** below the derived panel: every smoothing parameter,
-the gyro and accel filters, then a Roll | Pitch | Yaw grid of target, error and D
-filters, all in Hz.
+Below the derived panel, **Manual** lists every smoothing parameter: the gyro
+and accel filters, then a Roll | Pitch | Yaw grid of target, error and D filters,
+all in Hz.
 
 Use it for a value the derived panel does not set, or one that departs from
 ArduPilot's ratios. A few parameters appear only here, because there is no
@@ -430,7 +438,7 @@ before you take off. It does not tune on the bench:
 
 Set these here. They stage like every other setting and are written from the
 draft bar. Then switch to the AutoTune flight mode in the air and let it fly
-the test motions. (The :ref:`autotune-flight` card on Calibration → Flight
+the test motions. (The :ref:`autotune-flight` card at the top of this task
 records the before-and-after values for that flight.)
 
 .. warning::
@@ -471,85 +479,6 @@ on the aircraft until you write it.
    responsiveness higher, and check every change with a short hover or
    line-of-sight test before stacking more. Treat a connected aircraft as a real
    aircraft.
-
-.. _initial-tune:
-
-Initial Tune
-------------
-
-**Initial Tune** works out a starting point for a *new* airframe from three
-facts about it: prop diameter, battery cell count and cell chemistry. It stages
-the parameters that follow from them. Start a fresh build here, before there is
-anything worth autotuning. The preview lists each change by name (raw id beside
-it) in the same units as the Pilot task, grouped Stick feel, Filters, Motors,
-Battery, and Failsafes & fence.
-
-It uses the same formulas as Mission Planner's *Initial Parameters* screen, so
-the numbers match what that tool gives, with two corrections noted below.
-
-In the default mode it asks only those three questions and then stages the
-result. The parameter-by-parameter working is an **Expert** view, as are the
-two option checkboxes (**T-Motor ESCs**, **Failsafes & fence**). The button
-shows the count of what will be staged in either mode (**Stage n changes**).
-Nothing is written until you **Write all** from the draft bar.
-
-What it sets, all driven by prop size or the pack:
-
-- ``INS_GYRO_FILTER`` and ``INS_ACCEL_FILTER``, plus the matching
-  ``ATC_RAT_*_FLT*`` rate-loop filters. Bigger props get lower cutoffs.
-- ``ATC_ACCEL_{R,P,Y}_MAX`` acceleration limits and the acro yaw rate.
-  ArduCopter 4.2 replaced ``ACRO_YAW_P`` with ``ACRO_Y_RATE`` (converted with a
-  ×45 factor), so ``ACRO_Y_RATE`` is what gets staged. The old name is used
-  only on a vehicle that still reports it.
-- ``MOT_THST_EXPO`` and a ``MOT_THST_HOVER`` starting guess.
-- ``BATT_ARM_VOLT`` / ``BATT_CRT_VOLT`` / ``BATT_LOW_VOLT`` and
-  ``MOT_BAT_VOLT_MIN`` / ``MAX`` from the cell count and chemistry. Four
-  chemistries are offered: **LiPo** (4.2 V/cell full, 3.3 V empty), **LiPo
-  HV** (4.35 / 3.3), **Li-ion** (4.2 / 2.7) and **Li-ion HV** (4.35 / 2.7).
-  Mission Planner's 4.1 V / 2.8 V for Li-ion is neither the cell's charge
-  voltage nor its discharge floor. These values set the range the thrust
-  compensation scales across, so a tenth of a volt per cell matters from the
-  moment the pack comes off the charger.
-
-Two options change the result. **T-Motor ESCs** flattens the thrust curve to a
-fixed expo and pins the PWM range. **Failsafes & fence** adds the suggested
-battery-failsafe actions plus a 120 m / 150 m fence.
-
-.. important::
-
-   **It sets no PID gains.** Prop diameter says nothing about P, I or D, so
-   ``ATC_RAT_*_P/I/D`` are left as they are. This gets an airframe to a first
-   hover that is safe to fly. **Autotune** and **Log Tuning** do the tuning
-   from there.
-
-.. admonition:: Example: a 9-inch quad on 4S LiPo
-
-   Prop **9**, cells **4**, **LiPo**, against the demo vehicle's values (nine of
-   the fourteen rows):
-
-   ==================  =========================  ========  ========
-   Group               Setting                    Now       New
-   ==================  =========================  ========  ========
-   Stick feel          Roll / pitch accel limit   1409      1259 °/s²
-   Stick feel          Yaw accel limit            293       279 °/s²
-   Stick feel          Acro yaw rate              240       139.5 °/s
-   Filters             Gyro filter                40        46 Hz
-   Filters             Roll / pitch D filter      35        23 Hz
-   Filters             Yaw D filter               0         11.5 Hz
-   Motors              Hover throttle             0.35      0.2
-   Battery             Arm voltage                13.8      14.7 V
-   Battery             Critical voltage           13.8      14 V
-   ==================  =========================  ========  ========
-
-   **Stage 14 changes** puts them in the draft bar. Nothing is written until
-   **Write all**.
-
-The table lists only the values that would change. Each row shows what the
-vehicle has now next to what it would become, with the reasoning on hover. A
-parameter the connected vehicle does not report is left out, because it could
-only stage as invalid, and one invalid row blocks the whole batch. Nothing is
-written here: **Stage n changes** puts the batch into the same draft bar as
-every other tuning change, and you write it there.
 
 Log Tuning
 ----------

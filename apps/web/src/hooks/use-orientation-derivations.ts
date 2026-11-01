@@ -26,7 +26,7 @@ export function useOrientationDerivations(input: {
 
   const orientationExerciseSummary = (() => {
     if (orientationExercise.status === 'passed') {
-      return 'Observed level, forward pitch, and right-roll horizon responses from the live attitude stream.'
+      return 'Level, pitch forward and roll right all matched the live horizon.'
     }
     if (orientationExercise.status === 'failed') {
       return orientationExercise.failureReason ?? 'Orientation exercise failed.'
@@ -35,9 +35,9 @@ export function useOrientationDerivations(input: {
       return orientationStepInstruction(orientationExercise.currentTargetStep)
     }
     if (!snapshot.liveVerification.attitudeTelemetry.verified) {
-      return 'Waiting for live attitude telemetry before starting orientation verification.'
+      return 'Waiting for attitude data from the vehicle.'
     }
-    return 'Run the orientation exercise to confirm that the live horizon responds correctly to pitch and roll movement.'
+    return 'Run the check, then tilt the vehicle; the horizon on screen should follow.'
   })()
 
   const orientationExerciseInstructions =
@@ -47,10 +47,10 @@ export function useOrientationDerivations(input: {
           `Completed ${orientationExercise.completedSteps.length} of ${orientationExercise.targetSteps.length} orientation checks.`
         ]
       : orientationExercise.status === 'passed'
-        ? ['The live attitude stream matched the expected level, forward-pitch, and right-roll behavior.']
+        ? ['Level, pitch forward and roll right all matched.']
         : orientationExercise.status === 'failed'
-          ? ['Check AHRS_ORIENTATION and board mounting, then rerun the orientation exercise.']
-          : ['The app will verify level, forward pitch, and right roll against the live ATTITUDE stream.']
+          ? ['Check AHRS_ORIENTATION and how the board is mounted, then run the check again.']
+          : ['Level, pitch forward, roll right: each pose is checked against the live horizon.']
 
   return { orientationExerciseSummary, orientationExerciseInstructions }
 }

@@ -11,7 +11,9 @@ Keyboard shortcuts
 ArduConfigurator is **mouse-driven**. There are no global keyboard shortcuts
 for navigation or editing. The only key with a function is **Escape**, which
 closes transient dialogs and overlays (the motor-reorder dialog and the
-board-media lightbox).
+board-media lightbox). To get somewhere fast, type in the **Find
+a setting** box at the top of the navigation rail: it matches tabs, cards and
+parameters by name and opens the match.
 
 Troubleshooting
 ---------------
@@ -20,8 +22,7 @@ Troubleshooting
 The receiver isn't being seen by the flight controller yet. Check that the
 serial port the receiver is wired to has its protocol set to RCIN (serial
 protocol **23**, see :doc:`first-time-setup/ports-serial`), and that the
-receiver is bound to your transmitter. The Receiver tab has an in-app bind
-button for ELRS/CRSF (see :doc:`first-time-setup/receiver`).
+receiver is bound to your transmitter (see :doc:`first-time-setup/receiver`).
 
 **Wrong or silent serial port at connect.**
 Flight controllers usually expose **two** USB serial ports, and only one

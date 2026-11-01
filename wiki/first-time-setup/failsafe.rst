@@ -7,9 +7,10 @@ failsafe is a small set of ArduPilot parameters.
 
 The tab has one **sub-tab per kind of failsafe**: **RC** · **Battery** ·
 **Fence** · **GCS** · **EKF** · **Advanced**. You set up one behaviour at a
-time. Status summaries for RC and battery stay above the tabs. **Save
-Failsafe** is global to the tab. It applies every staged change across the
-sub-tabs in one press. A dot marks any tab holding an unsaved edit.
+time. If the firmware exposes another failsafe family, such as a GPS one, it
+gets its own tab before Advanced. **Save Failsafe (n)** is global to the tab. It
+applies every staged change across the sub-tabs in one press. A dot marks any
+tab holding an unsaved edit.
 
 .. warning::
 
@@ -51,7 +52,7 @@ Battery failsafe
 The battery failsafe watches pack voltage and consumed capacity against two
 tiers of threshold, *low* and *critical*, each with its own action. It only
 appears once a battery monitor is configured. If ``BATT_MONITOR`` is 0 the tab
-shows a single notice pointing you to :doc:`power-battery` (Config ▸ Power) to
+shows a single notice pointing you to :doc:`power-battery` (Setup ▸ System) to
 enable it.
 
 Low tier:
@@ -81,9 +82,8 @@ Both action parameters share the same options, shown in the app as: *None*,
 
 The app also shows ``BATT_FS_VOLTSRC`` (whether the threshold compares against
 raw or sag-compensated voltage). Other battery settings such as
-``BATT_LOW_TIMER`` are in the **Additional failsafe settings** card. You can
-also edit the same voltage and capacity thresholds on :doc:`power-battery`
-(Config ▸ Power). Both tabs share one staged-write model.
+``BATT_LOW_TIMER`` are on the **Advanced** sub-tab. The battery monitor itself
+and its arming thresholds are on :doc:`power-battery` (Setup ▸ System).
 
 Geofence
 --------
@@ -134,11 +134,11 @@ Editing and saving
 
 Each card has an inline editor: a dropdown for the action/enable parameters and
 a number field for thresholds. Edits stage as drafts, as on the other parameter
-tabs, and a footer shows the staged and invalid counts. **Save Failsafe** writes
-them with verified ``PARAM_SET`` → ``PARAM_VALUE`` confirmation, and **Revert**
-discards them. The **Additional failsafe settings** card below holds any other
-metadata-backed failsafe parameters (advanced battery, EKF, and pre-arm options)
-not already shown above.
+tabs. **Save Failsafe (n)** writes the staged edits with verified
+``PARAM_SET`` → ``PARAM_VALUE`` confirmation, and **Revert** discards them. The
+**Advanced** sub-tab holds any other metadata-backed failsafe parameters
+(advanced battery, EKF, and pre-arm options) not already shown on the named
+tabs.
 
 .. note::
 

@@ -19,6 +19,7 @@ import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import type { RcMappingSessionState } from '../app-types'
 import { readParameterValue, readRoundedParameter } from '../selectors/parameter-read'
 import { RC_CALIBRATION_AXIS_ORDER } from '../setup-exercise-helpers'
+import { buildSetupPortsEvidence } from './setup-ports-evidence'
 
 export interface SetupConfirmationSignatureInputs {
   airframe: ReturnType<typeof deriveAirframe>
@@ -51,7 +52,56 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
     throttleFailsafe
   } = inputs
 
+  // Per-vehicle additions. Copter gets `{}` spread in, so its JSON -- and
+  // every stored Copter sign-off -- is byte-identical.
+  const vehicle = snapshot.vehicle?.vehicle
+  const airframeVehicleKeys =
+    vehicle === 'ArduPlane'
+      ? {
+          // The Plane airframe step's own task card edits these; without them a
+          // QuadPlane could flip Q_ENABLE after signing off and stay green.
+          qEnable: readRoundedParameter(snapshot, 'Q_ENABLE'),
+          qFrameClass: readRoundedParameter(snapshot, 'Q_FRAME_CLASS'),
+          qFrameType: readRoundedParameter(snapshot, 'Q_FRAME_TYPE')
+        }
+      : {}
+  const failsafeVehicleKeys =
+    vehicle === 'ArduPlane'
+      ? {
+          planeThrottleFailsafe: readRoundedParameter(snapshot, 'THR_FAILSAFE'),
+          planeThrottleFailsafeValue: readRoundedParameter(snapshot, 'THR_FS_VALUE'),
+          shortAction: readRoundedParameter(snapshot, 'FS_SHORT_ACTN'),
+          longAction: readRoundedParameter(snapshot, 'FS_LONG_ACTN')
+        }
+      : vehicle === 'ArduRover'
+        ? { action: readRoundedParameter(snapshot, 'FS_ACTION') }
+        : vehicle === 'ArduSub'
+          ? {
+              leak: readRoundedParameter(snapshot, 'FS_LEAK_ENABLE'),
+              pressure: readRoundedParameter(snapshot, 'FS_PRESS_ENABLE'),
+              gcs: readRoundedParameter(snapshot, 'FS_GCS_ENABLE'),
+              pilotInput: readRoundedParameter(snapshot, 'FS_PILOT_INPUT')
+            }
+          : {}
+
+  // The Ports wiring sign-off is bound to the port map and to the ports it
+  // was taken over, so changing a protocol or a different port lighting up
+  // puts the review back.
+  const portsProtocolByPort = Object.fromEntries(
+    Array.from({ length: 10 }, (_, port) => [port, readRoundedParameter(snapshot, `SERIAL${port}_PROTOCOL`)])
+  )
+  const portsEvidence = buildSetupPortsEvidence({
+    rawText: snapshot.hardware?.uartsFile?.rawText,
+    previousRawText: snapshot.hardware?.uartsFile?.previousRawText,
+    protocolByPort: portsProtocolByPort
+  })
+
   return {
+      ports: JSON.stringify({
+        protocolByPort: portsProtocolByPort,
+        unconfigured: portsEvidence.unconfigured.map((finding) => finding.portNumber),
+        duplicateRcinPorts: portsEvidence.duplicateRcinPorts
+      }),
       // AHRS_ORIENTATION belongs in all three of these.
       //
       // The level cal is AP_InertialSensor::calibrate_trim(), which samples via
@@ -70,10 +120,13 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
         frameClassValue: airframe.frameClassValue,
         frameTypeValue: airframe.frameTypeValue,
         frameTypeIgnored: airframe.frameTypeIgnored,
-        boardOrientation: readRoundedParameter(snapshot, 'AHRS_ORIENTATION')
+        boardOrientation: readRoundedParameter(snapshot, 'AHRS_ORIENTATION'),
+        ...airframeVehicleKeys
       }),
       outputs: JSON.stringify({
         expectedMotorCount: airframe.expectedMotorCount,
+        // The ESC protocol is part of what the review signed off.
+        pwmTypeValue: escSetup.pwmTypeValue,
         motorOutputs: outputMapping.motorOutputs.map((output) => ({
           channelNumber: output.channelNumber,
           functionValue: output.functionValue,
@@ -84,6 +137,48 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
           functionValue: output.functionValue
         })),
         notes: outputMapping.notes
+      }),
+      'motor-range': JSON.stringify({
+        spinArm: readParameterValue(snapshot, 'MOT_SPIN_ARM'),
+        spinMin: readParameterValue(snapshot, 'MOT_SPIN_MIN'),
+        pwmTypeValue: escSetup.pwmTypeValue,
+        calibrationPath: escSetup.calibrationPath
+      }),
+      // A flight record: nothing on the vehicle can make it stale.
+      maiden: JSON.stringify({}),
+      'initial-tune': JSON.stringify({
+        gyroFilter: readParameterValue(snapshot, 'INS_GYRO_FILTER'),
+        voltMax: readParameterValue(snapshot, 'MOT_BAT_VOLT_MAX'),
+        voltMin: readParameterValue(snapshot, 'MOT_BAT_VOLT_MIN'),
+        thrustExpo: readParameterValue(snapshot, 'MOT_THST_EXPO'),
+        rollFilterD: readParameterValue(snapshot, 'ATC_RAT_RLL_FLTD')
+      }),
+      autotune: JSON.stringify({
+        aggressiveness: readParameterValue(snapshot, 'AUTOTUNE_AGGR'),
+        gains: ['ATC_RAT_RLL_P', 'ATC_RAT_RLL_D', 'ATC_RAT_PIT_P', 'ATC_RAT_PIT_D', 'ATC_RAT_YAW_P', 'ATC_ANG_RLL_P', 'ATC_ANG_PIT_P', 'ATC_ANG_YAW_P'].map((id) =>
+          readParameterValue(snapshot, id)
+        )
+      }),
+      filters: JSON.stringify({
+        notch: ['INS_HNTCH_ENABLE', 'INS_HNTCH_MODE', 'INS_HNTCH_REF', 'INS_HNTCH_FREQ', 'INS_HNTCH_BW', 'INS_HNTCH_HMNCS', 'INS_HNTCH_OPTS'].map((id) =>
+          readParameterValue(snapshot, id)
+        )
+      }),
+      hover: JSON.stringify({
+        hoverThrottle: readParameterValue(snapshot, 'MOT_THST_HOVER'),
+        hoverLearn: readRoundedParameter(snapshot, 'MOT_HOVER_LEARN'),
+        accelP: readParameterValue(snapshot, 'PSC_D_ACC_P') ?? readParameterValue(snapshot, 'PSC_ACCZ_P'),
+        accelI: readParameterValue(snapshot, 'PSC_D_ACC_I') ?? readParameterValue(snapshot, 'PSC_ACCZ_I')
+      }),
+      readiness: JSON.stringify({
+        armingCheck: readRoundedParameter(snapshot, 'ARMING_CHECK'),
+        armingSkip: readRoundedParameter(snapshot, 'ARMING_SKIPCHK'),
+        armingRudder: readRoundedParameter(snapshot, 'ARMING_RUDDER'),
+        logBitmask: readRoundedParameter(snapshot, 'LOG_BITMASK'),
+        logBackend: readRoundedParameter(snapshot, 'LOG_BACKEND_TYPE'),
+        armSwitch: Array.from({ length: 16 }, (_, index) => readRoundedParameter(snapshot, `RC${index + 1}_OPTION`)).map(
+          (option) => (option === 153 || option === 154 ? option : 0)
+        )
       }),
       'esc-range': JSON.stringify({
         calibrationPath: escSetup.calibrationPath,
@@ -167,7 +262,8 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
         batteryCriticalAction: readRoundedParameter(snapshot, 'BATT_FS_CRT_ACT'),
         batteryLowVoltage: readParameterValue(snapshot, 'BATT_LOW_VOLT'),
         batteryCriticalVoltage: readParameterValue(snapshot, 'BATT_CRT_VOLT'),
-        batteryLowCapacity: readParameterValue(snapshot, 'BATT_LOW_MAH')
+        batteryLowCapacity: readParameterValue(snapshot, 'BATT_LOW_MAH'),
+        ...failsafeVehicleKeys
       }),
       power: JSON.stringify({
         batteryMonitor,

@@ -85,7 +85,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const canBusDescriptor: AppViewDescriptor = {
     id: 'can',
     label: 'CAN',
-    description: 'DroneCAN bus inspector — discover nodes, read identity, edit and save per-node parameters, restart or update a node, and watch ESC telemetry via the MAVLink CAN_FORWARD tunnel. Any device can pop out into its own window.',
+    description: 'CAN bus — DroneCAN nodes through the flight controller or a USB-CAN adapter: identity, parameters, restart, firmware update, ESC telemetry, and a message plot.',
     badge: canBusBadge,
     tone: canBusStatus === 'active' ? 'success' : canBusStatus === 'error' ? 'danger' : 'neutral'
   }
@@ -97,7 +97,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const flashDescriptor: AppViewDescriptor = {
     id: 'flash',
     label: 'Flash',
-    description: 'Firmware flasher — pick an ArduPilot release, enter DFU bootloader, or drop a .apj for guided flashing.',
+    description: 'Firmware flasher — find a build for the connected board or drop a .apj; DFU .hex and Betaflight migration on their own tabs.',
     badge: 'tools',
     tone: 'neutral'
   }
@@ -127,20 +127,11 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const guidedSetupDescriptor: AppViewDescriptor = {
     id: 'guided-setup',
     label: 'Guided Setup',
-    description: 'Step-by-step ArduPilot setup — walk the checklist one stage at a time, with verification at each step.',
+    description: 'Guided Setup — the bench steps, then the first flights: hover throttle, filters, and what each step still needs.',
     // 'beta' flags the tab as still under active development (not a
     // setup-progress indicator) — the guided flow is being built out.
     badge: 'beta',
     tone: 'warning'
-  }
-  // Dedicated Calibration surface — the accelerometer / level / compass
-  // guided-action flow gathered into one tab (same actions as Setup).
-  const calibrationDescriptor: AppViewDescriptor = {
-    id: 'calibration',
-    label: 'Calibration',
-    description: 'Sensor calibration — accelerometer (6-pose), level, and compass. Same guided flow as Setup, in one place.',
-    badge: connectionKind === 'connected' ? 'ready' : 'idle',
-    tone: 'neutral'
   }
   // Peripherals — attached hardware (GPS, compass, gimbal, rangefinder/flow).
   // Always visible: the empty-state copy inside each group names the parameter
@@ -161,7 +152,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const mavlinkInspectorDescriptor: AppViewDescriptor = {
     id: 'mavlink-inspector',
     label: 'MAVLink Inspector',
-    description: 'Live decoded MAVLink message stream — per-type rate, count, and last value. Read-only.',
+    description: 'MAVLink Inspector — live message rates and values, a stream recorder, and the Plot workspace.',
     badge: connectionKind === 'connected' ? 'live' : 'idle',
     tone: 'neutral'
   }
@@ -199,12 +190,14 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     tone: 'neutral'
   }
   // Canonical tab order (single source of truth). The Setup tab is the
-  // health/status/info dashboard, so it leads and is relabelled; the rest
-  // follow a setup -> tuning -> tools flow. Views not listed fall to the
-  // end in their original order.
+  // health/status/info dashboard, so it leads and is relabelled. The rest are
+  // in the order a build gets flying: Setup (the config tab), the link and
+  // the radio, motors, calibration, failsafe and tuning, then the rest of the
+  // aircraft (OSD, servos, attached hardware) and the tools. Views not listed
+  // fall to the end in their original order.
   const CANONICAL_VIEW_ORDER = [
-    'setup', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
-    'servos', 'failsafe', 'osd', 'tuning', 'presets',
+    'setup', 'config', 'ports', 'receiver', 'modes', 'motors', 'failsafe', 'tuning',
+    'osd', 'servos', 'peripherals', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
     'mavlink-inspector', 'ai-assistant',
     // Last, and Expert-only, while its steps are reworked to follow the
@@ -227,11 +220,14 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // 2026-10-09): the tab stays in the build (the Receiver still reads its RCL
   // labels) but is not in the list. Flip this to bring it back.
   const RC_MIXER_ENABLED = false
+  // The AI Assistant is HIDDEN for everyone, Expert included (operator call,
+  // 2026-10-21). The tab stays in the build; flip this to bring it back.
+  const AI_ASSISTANT_ENABLED = false
   const combined = [
     ...relabelled,
     ...(isExpertMode ? [guidedSetupDescriptor] : []),
     peripheralsDescriptor,
-    calibrationDescriptor,
+    // Calibration is a Setup category now, not a tab.
     canBusDescriptor,
     // Files is Expert-only (isExpertOnlyView).
     flashDescriptor,
@@ -245,7 +241,11 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     ...(ELRS_FLASH_ENABLED && isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode
-      ? [...(RC_MIXER_ENABLED ? [rcMixerDescriptor] : []), mavlinkInspectorDescriptor, aiAssistantDescriptor]
+      ? [
+          ...(RC_MIXER_ENABLED ? [rcMixerDescriptor] : []),
+          mavlinkInspectorDescriptor,
+          ...(AI_ASSISTANT_ENABLED ? [aiAssistantDescriptor] : [])
+        ]
       : [])
   ]
   const rankOf = (id: string): number => {

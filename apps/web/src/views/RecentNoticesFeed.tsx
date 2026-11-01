@@ -15,6 +15,7 @@ import type { ReactElement } from 'react'
 
 import { StatusBadge } from '@arduconfig/ui-kit'
 
+import { useState } from 'react'
 import type { RecentNoticesModel } from '../view-models/recent-notices'
 
 export interface RecentNoticesFeedProps {
@@ -43,6 +44,9 @@ export interface RecentNoticesFeedProps {
   onToggleExpanded?: () => void
   /** Pop-out control. Undefined in the popped-out copy itself. */
   poppedOut?: boolean
+  /** Inline panel: INFO notices sit behind one "N info" row until asked for,
+   *  so the warnings are what the eye lands on. The popout shows everything. */
+  foldInfo?: boolean
   onTogglePopout?: () => void
   /** True when the browser blocked the last window.open, so we can say so
    *  rather than looking like a dead button. */
@@ -67,8 +71,10 @@ export function RecentNoticesFeed({
   poppedOut,
   onTogglePopout,
   popoutBlocked,
-  variant
+  variant,
+  foldInfo = false
 }: RecentNoticesFeedProps): ReactElement {
+  const [showInfo, setShowInfo] = useState(false)
   // Inline: bounded box, taller when expanded. Popout: the window's own scroll
   // is the bound, so no max-height at all.
   const listClassName = [
@@ -160,7 +166,18 @@ export function RecentNoticesFeed({
 
       <div className={listClassName} data-testid={`${testIdPrefix}-list`}>
         {notices.groups.length === 0 ? <span className="setup-gui-box__empty">No status text yet</span> : null}
-        {notices.groups.map((group) => (
+        {notices.groups.map((group) =>
+          foldInfo && !showInfo && group.key === 'info' ? (
+            <button
+              key={group.key}
+              type="button"
+              className="setup-gui-box__status-fold"
+              data-testid={`${testIdPrefix}-show-info`}
+              onClick={() => setShowInfo(true)}
+            >
+              {group.notices.length} info
+            </button>
+          ) : (
           <div
             key={group.key}
             className={`setup-gui-box__status-group setup-gui-box__status-group--${group.key}`}
@@ -192,7 +209,8 @@ export function RecentNoticesFeed({
               </div>
             ))}
           </div>
-        ))}
+          )
+        )}
       </div>
     </>
   )

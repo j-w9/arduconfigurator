@@ -66,8 +66,7 @@ import {
   OUTPUTS_BENCH_TARGET_ID,
   OUTPUTS_MOTOR_TEST_BUTTON_ID,
   escCalibrationInstructions,
-  escCalibrationPathLabel
-} from '../setup-flow-helpers'
+  OUTPUTS_SPIN_WIZARD_ID } from '../setup-flow-helpers'
 import {
   toneForParameterDraftStatus,
   toneForScopedDraftReview
@@ -157,9 +156,6 @@ export interface OutputsSectionHandlers {
   ) => void | Promise<void>
   handleDiscardScopedParameterDrafts: (paramIds: readonly string[], scopeLabel: string) => void
   handleOpenMotorReorderDialog: () => void
-  /** Expert-only surfaces. The spin-threshold wizard spins every motor, so it
-   *  stays behind the same opt-in as the rest of the expert tooling. */
-  isExpertMode: boolean
   /** Resolves with the guard reasons that REFUSED the request, or an empty
    *  array when it ran. Callers driving their own test UI must surface them;
    *  a silent refusal is indistinguishable from a broken button. */
@@ -195,9 +191,12 @@ export interface OutputsSectionHandlers {
 
 export interface OutputsSectionProps {
   activeViewId: 'motors' | 'servos'
+  /** Guided-setup mount: render only these task bodies, stacked, without the page chrome. */
+  wizardTaskIds?: readonly OutputsTaskId[]
   snapshot: ConfiguratorSnapshot
-  /** The inline motor reorder/direction panel rendered as the Motor Setup tab. */
-  motorSetupSlot: ReactNode
+  /** The inline motor reorder/direction panel rendered as the Motor Setup tab.
+   *  It places the spin thresholds card under its picture. */
+  motorSetupSlot: (spinThresholds: ReactNode) => ReactNode
   canApplyDraftParameters: boolean
   busyAction: string | undefined
   editedValues: ParameterDraftValues
@@ -227,46 +226,11 @@ export interface OutputsSectionProps {
  * anchor inside a <label> is invalid markup and the label's click handling
  * swallows it.
  */
-/**
- * Pole-count reference for SERVO_BLH_POLES.
- *
- * The field on its own is a number with no way to check it, and getting it
- * wrong is silent: ArduPilot computes RPM = eRPM * 200 / poles
- * (AP_BLHeli.cpp:1544, and the identical line in AP_IOMCU.cpp:442), so a wrong
- * pole count produces RPM telemetry, notch tuning and logs that are all wrong
- * by exactly the same factor and never look broken.
- *
- * Deliberately short on per-motor tables. "12N14P" covers essentially the whole
- * FPV size range, and beyond it the honest answer is to count magnets rather
- * than to trust a lookup that would go stale — so that is what this says.
- */
-function MotorPoleReference(): ReactElement {
-  return (
-    <details className="motor-pole-reference" data-testid="motor-pole-reference">
-      <summary>How many poles does my motor have?</summary>
-      <p>
-        Poles are the <strong>magnets in the bell</strong>, not the stator slots. Almost every FPV
-        multirotor motor — roughly 1103 through 2810 — uses the 12N14P layout: 12 stator slots and{' '}
-        <strong>14 poles</strong>. That is also ArduPilot&apos;s default, so if you are running a
-        normal 2&quot;–7&quot; quad, 14 is already right.
-      </p>
-      <p>
-        If you are not sure, look inside the bell and count the magnets. That count is the number to
-        enter. Large heavy-lift and X-class motors often use more than 14 — do not assume there.
-      </p>
-      <p>
-        To check it after the fact: with bidirectional DShot running, ArduPilot reports{' '}
-        <code>RPM = eRPM × 200 ÷ poles</code>. Unloaded at full throttle a motor turns at roughly its
-        KV × pack voltage, so if reported RPM is consistently double or half what you expect, the
-        pole count is wrong by that same factor.
-      </p>
-    </details>
-  )
-}
 
 export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const {
     activeViewId,
+    wizardTaskIds,
     snapshot,
     motorSetupSlot,
     canApplyDraftParameters,
@@ -311,13 +275,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     motorPreviewNodes,
     motorPreviewGeometryMode,
     motorPreviewFrameKnown,
-    frameClassParameter,
-    frameTypeParameter,
-    frameDraftEntries,
-    frameStagedDrafts,
     motorTestEligibility,
     isCopterVehicle,
-    escReviewSummary,
     currentMotorTestSucceeded,
     motorTestSliderTargets,
     motorTestGuardReasons,
@@ -349,13 +308,34 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const {
     handleApplyScopedParameterDrafts,
     handleDiscardScopedParameterDrafts,
-    isExpertMode,
     handleRunMotorTest,
     handleStopMotorTest,
     renderAdditionalSettingsCard,
     setDraft,
     setOutputTaskOverride
   } = handlers
+
+  // "Want props out?" under a quad X / Betaflight X Reversed: what the selects
+  // show, a staged pick winning over the live value.
+  const shownFrameValue = (parameter: ParameterState | undefined): number | undefined => {
+    if (!parameter) {
+      return undefined
+    }
+    const edited = editedValues[parameter.id]
+    const editedNumber = edited !== undefined && edited !== '' ? Number(edited) : NaN
+    return Number.isFinite(editedNumber) ? editedNumber : parameter.value
+  }
+
+  // The spin range (armed, minimum, maximum) is what this tab sets; the PWM
+  // endpoints only matter for an analog protocol (MOT_PWM_TYPE below 4 is
+  // Normal / OneShot / OneShot125 / Brushed; 4..7 are DShot, which ignores them).
+  const shownPwmType = shownFrameValue(outputReviewParameters.find((parameter) => parameter.id === 'MOT_PWM_TYPE'))
+  const analogEsc = shownPwmType !== undefined && shownPwmType < 4
+  const spinThresholdParameters = outputReviewParameters.filter(
+    (parameter) =>
+      ['MOT_SPIN_ARM', 'MOT_SPIN_MIN', 'MOT_SPIN_MAX'].includes(parameter.id) ||
+      (analogEsc && ['MOT_PWM_MIN', 'MOT_PWM_MAX'].includes(parameter.id))
+  )
 
   // MOT_SPIN_ARM / MOT_SPIN_MIN by measurement. Drives the existing motor test
   // (all motors at once) up a 0.01 staircase until the operator says every motor
@@ -386,7 +366,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const spinWizardEligibility = evaluateMotorTestEligibilityFor(
     snapshot,
     buildMotorTestRequest(ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, 1, 1),
-    { expertMode: isExpertMode }
+    { expertMode: true }
   )
   const [spinArmDraft, setSpinArmDraft] = useState<string>('')
   const [spinMinDraft, setSpinMinDraft] = useState<string>('')
@@ -515,9 +495,13 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   // hardware and relays moved to the Peripherals tab it has one job left — the
   // output map, plus the metadata-backed output settings that extend it — so a
   // tab strip over two cards was navigation for its own sake.
-  const showAllMotorTasks = activeViewId === 'motors'
-  const showAllServoTasks = activeViewId === 'servos'
-  const singlePageOutputs = showAllMotorTasks || showAllServoTasks
+  const showAllMotorTasks = activeViewId === 'motors' && !wizardTaskIds
+  const showAllServoTasks = activeViewId === 'servos' && !wizardTaskIds
+  const singlePageOutputs = showAllMotorTasks || showAllServoTasks || wizardTaskIds !== undefined
+  // Which task bodies render: the whole Motors page, the active Servos task,
+  // or the tasks a guided-setup step asked for.
+  const showTask = (taskId: OutputsTaskId): boolean =>
+    wizardTaskIds ? wizardTaskIds.includes(taskId) : showAllMotorTasks || activeOutputTaskId === taskId
 
   return (
     <>
@@ -581,12 +565,14 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         // Motors is one page: no task strip, and the denser one-page rhythm.
         singlePage={singlePageOutputs}
         singleColumn={showAllServoTasks}
+        bare={wizardTaskIds !== undefined}
+        panelId={wizardTaskIds ? 'setup-panel-outputs-wizard' : showAllServoTasks ? 'setup-panel-servos' : undefined}
         // The output overview panel was removed as part of the Motors/Outputs
         // declutter — the task surfaces below carry the per-output detail.
         overviewSlot={undefined}
         taskBodySlot={
           <>
-              {showAllMotorTasks || activeOutputTaskId === 'esc-protocol' ? (
+              {showTask('esc-protocol') && (!isCopterVehicle || escCalibrationInstructions(escSetup).length > 0) ? (
                 <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="esc-protocol">
                   {!isCopterVehicle ? (
                     <section className="bf-gui-box">
@@ -684,148 +670,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     </section>
                   ) : (
                   <div className="esc-review-card">
-                    {frameClassParameter ? (
-                      <div className="scoped-review-card scoped-review-card--compact" data-testid="esc-frame-card">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <strong>Frame</strong>
-                            <InfoDot label="About frame class and type" testId="outputs-info-frame" wide>
-                              <span className="info-dot-line">Airframe class and layout. Changing them restructures the motor outputs — reboot, then re-verify motor order and spin.</span>
-                            </InfoDot>
-                          </div>
-                          {/* No badge while in sync: the absence of a count is the state. */}
-                          {frameStagedDrafts.length > 0 ? (
-                            <StatusBadge tone={toneForScopedDraftReview(frameStagedDrafts.length, 0)}>
-                              {`${frameStagedDrafts.length} staged`}
-                            </StatusBadge>
-                          ) : null}
-                        </div>
-                        <div className="scoped-editor-grid">
-                          <ScopedSelectField
-                            parameter={frameClassParameter}
-                            liveValue={frameClassParameter.value}
-                            editedValues={editedValues}
-                            onChange={(paramId, value) => setDraft(paramId, value)}
-                            draftStatusById={parameterDraftById}
-                          />
-                          {frameTypeParameter ? (
-                            <ScopedSelectField
-                              parameter={frameTypeParameter}
-                              liveValue={frameTypeParameter.value}
-                              editedValues={editedValues}
-                              onChange={(paramId, value) => setDraft(paramId, value)}
-                              draftStatusById={parameterDraftById}
-                            />
-                          ) : null}
-                        </div>
-                        {frameStagedDrafts.length > 0 || busyAction === 'frame:apply' ? (
-                        <div className="switch-exercise-controls">
-                          <button
-                            style={buttonStyle('primary')}
-                            data-testid="esc-frame-apply"
-                            onClick={() => void handleApplyScopedParameterDrafts(frameDraftEntries, 'frame:apply', 'Frame')}
-                            disabled={busyAction !== undefined || frameStagedDrafts.length === 0 || !canApplyDraftParameters}
-                          >
-                            {frameStagedDrafts.length > 0 ? `Apply Frame (${frameStagedDrafts.length})` : 'Apply Frame'}
-                          </button>
-                        </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {/* One header for the ESC card. "ESC calibration & motor
-                     *  range" used to sit above it as a second title with no
-                     *  controls of its own; its badge and sentence live here now. */}
-                    <div className="scoped-review-card scoped-review-card--compact">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>ESC & output settings</strong>
-                          <InfoDot label="About ESC and output settings" testId="outputs-info-esc" wide>
-                            <span className="info-dot-line">Motor protocol and spin thresholds, edited here rather than from the raw parameter table.</span>
-                            <span className="info-dot-line">{escReviewSummary}</span>
-                          </InfoDot>
-                        </div>
-                        {/* The calibration-path badge only when it is a warning
-                         *  (manual review). "Digital protocol review" on every
-                         *  DShot craft was a label for the normal case. */}
-                        {escSetup.calibrationPath === 'manual-review' ? (
-                          <StatusBadge tone="warning">{escCalibrationPathLabel(escSetup.calibrationPath)}</StatusBadge>
-                        ) : null}
-                        {outputReviewInvalidDrafts.length > 0 || outputReviewStagedDrafts.length > 0 ? (
-                          <StatusBadge tone={toneForScopedDraftReview(outputReviewStagedDrafts.length, outputReviewInvalidDrafts.length)}>
-                            {outputReviewInvalidDrafts.length > 0
-                              ? `${outputReviewInvalidDrafts.length} invalid`
-                              : `${outputReviewStagedDrafts.length} staged`}
-                          </StatusBadge>
-                        ) : null}
-                      </div>
-
-                      <div className="scoped-editor-grid">
-                        {/* Shared ScopedSelectField / ScopedNumberField so float
-                          * params like MOT_SPIN_ARM don't display 32-bit mantissa
-                          * noise (0.07999999821186066 → 0.08) and the "was X" line
-                          * only renders on actually-staged drafts instead of
-                          * duplicating what the editor already shows. */}
-                        {outputReviewParameters.map((parameter) => {
-                          const hasOptions = (parameter.definition?.options ?? []).length > 0
-                          return hasOptions ? (
-                            <ScopedSelectField
-                              key={parameter.id}
-                              parameter={parameter}
-                              liveValue={parameter.value}
-                              editedValues={editedValues}
-                              onChange={(paramId, value) => setDraft(paramId, value)}
-                              draftStatusById={parameterDraftById}
-                            />
-                          ) : (
-                            <ScopedField
-                              key={parameter.id}
-                              parameter={parameter}
-                              liveValue={parameter.value}
-                              editedValues={editedValues}
-                              onChange={(paramId, value) => setDraft(paramId, value)}
-                              draftStatusById={parameterDraftById}
-                              stepFallback={parameter.definition?.step ?? 0.01}
-                            />
-                          )
-                        })}
-                      </div>
-
-                      {/* Only when the board actually reported the parameter —
-                          a firmware built without AP_BLHeli has no pole count to
-                          explain. */}
-                      {outputReviewParameters.some((parameter) => parameter.id === 'SERVO_BLH_POLES') ? (
-                        <MotorPoleReference />
-                      ) : null}
-
-                      {outputReviewDraftEntries.length > 0 || busyAction === 'outputs:apply' ? (
-                      <div className="switch-exercise-controls">
-                        <button
-                          style={buttonStyle('primary')}
-                          onClick={() =>
-                            void handleApplyScopedParameterDrafts(outputReviewDraftEntries, 'outputs:apply', 'Outputs')
-                          }
-                          disabled={
-                            busyAction !== undefined ||
-                            outputReviewStagedDrafts.length === 0 ||
-                            outputReviewInvalidDrafts.length > 0 ||
-                            !canApplyDraftParameters
-                          }
-                        >
-                          {busyAction === 'outputs:apply' ? 'Applying…' : `Apply Output Changes (${outputReviewStagedDrafts.length})`}
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          onClick={() =>
-                            handleDiscardScopedParameterDrafts(outputReviewDraftEntries.map((entry) => entry.id), 'output')
-                          }
-                          disabled={busyAction !== undefined || outputReviewDraftEntries.length === 0}
-                        >
-                          Discard Output Changes
-                        </button>
-                      </div>
-                      ) : null}
-                    </div>
-
+                    {/* Frame class/type and the ESC protocol live in Setup ▸
+                        Airframe & Powertrain; "Want props out?" sits under the
+                        motor diagram, and the spin thresholds with the
+                        measurement that sets them. What stays here is the
+                        analog ESC calibration walk-through. */}
                     {escCalibrationInstructions(escSetup).length > 0 ? (
                       <ol className="switch-exercise-instructions">
                         {escCalibrationInstructions(escSetup).map((instruction) => (
@@ -838,7 +687,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                   )}
                 </div>
               ) : null}
-              {showAllMotorTasks || activeOutputTaskId === 'motor-setup' ? (
+              {showTask('motor-setup') ? (
                 isCopterVehicle ? (
                   <div
                     className="outputs-task-panel outputs-task-panel--stack"
@@ -850,9 +699,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     // tab strip can span the page, and an element with no box
                     // cannot be scrolled to.
                   >
-                    {motorSetupSlot}
-                    {isExpertMode ? (
-                      <div className="spin-wizard-launcher" data-testid="spin-threshold-wizard-launcher">
+                    {motorSetupSlot(
+                      <div className="spin-wizard-launcher" id={OUTPUTS_SPIN_WIZARD_ID} data-testid="spin-threshold-wizard-launcher">
                         <div>
                           <strong>Spin thresholds</strong>
                           <InfoDot label="About spin thresholds" testId="outputs-info-spin-thresholds" wide><span className="info-dot-line">Measures where your motors actually break away instead of trusting library defaults, then stages <code>MOT_SPIN_ARM</code> and <code>MOT_SPIN_MIN</code> from it.</span></InfoDot>
@@ -891,8 +739,23 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             Tick the safety box first.
                           </small>
                         ) : null}
+                        {spinThresholdParameters.length > 0 ? (
+                          <div className="scoped-editor-grid spin-wizard-launcher__fields" data-testid="spin-threshold-fields">
+                            {spinThresholdParameters.map((parameter) => (
+                              <ScopedField
+                                key={parameter.id}
+                                parameter={parameter}
+                                liveValue={parameter.value}
+                                editedValues={editedValues}
+                                onChange={(paramId, value) => setDraft(paramId, value)}
+                                draftStatusById={parameterDraftById}
+                                stepFallback={parameter.definition?.step ?? 0.01}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 ) : (
                   <div className="outputs-task-panel outputs-task-panel--stack">
@@ -977,7 +840,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                   </div>
                 )
               ) : null}
-              {showAllMotorTasks || activeOutputTaskId === 'direction-test' ? (
+              {showTask('direction-test') ? (
                 <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="direction-test">
                   {!isCopterVehicle ? (
                     <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
@@ -1410,7 +1273,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
        *  at a rising throttle), so it wants the operator's whole attention,
        *  and the Motors tab has no room to spare for a surface used once per
        *  build. Closing it stops whatever it was spinning. */}
-      {isExpertMode && spinWizardOpen ? (
+      {spinWizardOpen ? (
         <div
           className="board-media-lightbox spin-wizard-lightbox"
           role="dialog"

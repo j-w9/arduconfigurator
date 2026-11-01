@@ -28,38 +28,17 @@ export interface TuningTaskCardCounts {
   profileInvalidCount: number
   profileChangedCount: number
   savedProfileCount: number
-  initialTuneStagedCount: number
-  /**
-   * Expert mode shows every task. Basic mode shows the ones that make up a
-   * working tune and hides the three that are tools for someone who already
-   * has one — see ADVANCED_TUNING_TASK_IDS.
-   */
-  isExpertMode: boolean
+  /** The firmware reports a SmallFastDrone fork feature: show the SFD task. */
+  sfdAvailable: boolean
 }
 
 /**
- * Tasks only Expert mode offers.
- *
- * The Tuning tab carried eight tasks in a strip that wrapped onto two rows,
- * which is a lot of front door for one job. These three are not part of
- * getting an airframe flying:
- *
- *  - pid-gains: 27 raw P/I/D/FF controls. Autotune is how a basic-mode
- *    operator gets gains, and it is right there in the same strip.
- *  - profiles: a local library of saved tunes — useful once you HAVE tunes
- *    worth keeping, meaningless before that.
- *  - log-tuning: post-flight log analysis, and still beta.
- *  - notches: the raw notch fields were already Expert-only inside Filters
- *    (basic mode saw only the derived cutoff panel), so splitting them onto
- *    their own task must not hand basic mode a page it never had.
- *
- * What remains is a complete path: Pilot (stick feel), Filters (noise),
- * Autotune (gains), Review (apply), Initial Tune (a starting point for a new
- * airframe). The relative order of those five is unchanged — in particular
- * Initial Tune stays last, for the reason given on its own card below.
+ * The Tuning tasks, in the order a tune is worked through: the hover throttle
+ * first (the first flight everything else depends on), then noise (Filters,
+ * Notches), the gains (Autotune, then PID Gains by hand), and stick feel
+ * (Pilot) last. SFD collects SmallFastDrone fork features when the firmware
+ * has them; Profiles and Log Tuning are tools for a tune you already have.
  */
-export const ADVANCED_TUNING_TASK_IDS = ['pid-gains', 'notches', 'profiles', 'log-tuning'] as const
-
 export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCard[] {
   const {
     rateInvalidCount,
@@ -79,36 +58,19 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     profileInvalidCount,
     profileChangedCount,
     savedProfileCount,
-    initialTuneStagedCount,
-    isExpertMode
+    sfdAvailable
   } = counts
 
   const cards: TuningTaskCard[] = [
     {
-      id: 'rates',
-      label: 'Pilot',
-      value:
-        rateInvalidCount > 0
-          ? `${rateInvalidCount} invalid`
-          : rateStagedCount > 0
-            ? `${rateStagedCount} staged`
-            : `${rateControlCount} controls`,
+      // Hover throttle: the first flight a tune depends on. Learned in the air,
+      // or measured from a log when the firmware's learner will not run.
+      id: 'hover',
+      label: 'Hover',
+      value: 'flights',
       detail:
-        'Everything that shapes manual flight feel — angle, acro rates, alt-hold climb speeds, and loiter — grouped here (not the PID gains) so stick response can be tuned without diving into raw parameters.',
-      tone: rateInvalidCount > 0 ? 'danger' : rateStagedCount > 0 ? 'warning' : 'neutral'
-    },
-    {
-      id: 'pid-gains',
-      label: 'PID Gains',
-      value:
-        pidInvalidCount > 0
-          ? `${pidInvalidCount} invalid`
-          : pidStagedCount > 0
-            ? `${pidStagedCount} staged`
-            : `${pidGainCount} gains`,
-      detail:
-        'Roll, pitch, and yaw rate gains are exposed as curated ArduPilot P, I, D, and feedforward controls rather than raw controller tables.',
-      tone: pidInvalidCount > 0 ? 'danger' : pidStagedCount > 0 ? 'warning' : 'neutral'
+        'What throttle this aircraft needs to hold altitude: learned in the air, or measured from a log you have already flown.',
+      tone: 'neutral'
     },
     {
       id: 'filters',
@@ -154,6 +116,45 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
       tone: autotuneInvalidCount > 0 ? 'danger' : autotuneStagedCount > 0 ? 'warning' : 'neutral'
     },
     {
+      id: 'pid-gains',
+      label: 'PID Gains',
+      value:
+        pidInvalidCount > 0
+          ? `${pidInvalidCount} invalid`
+          : pidStagedCount > 0
+            ? `${pidStagedCount} staged`
+            : `${pidGainCount} gains`,
+      detail:
+        'Roll, pitch, and yaw rate gains are exposed as curated ArduPilot P, I, D, and feedforward controls rather than raw controller tables.',
+      tone: pidInvalidCount > 0 ? 'danger' : pidStagedCount > 0 ? 'warning' : 'neutral'
+    },
+    {
+      id: 'rates',
+      label: 'Pilot',
+      value:
+        rateInvalidCount > 0
+          ? `${rateInvalidCount} invalid`
+          : rateStagedCount > 0
+            ? `${rateStagedCount} staged`
+            : `${rateControlCount} controls`,
+      detail:
+        'Everything that shapes manual flight feel — angle, acro rates, alt-hold climb speeds, and loiter — grouped here (not the PID gains) so stick response can be tuned without diving into raw parameters.',
+      tone: rateInvalidCount > 0 ? 'danger' : rateStagedCount > 0 ? 'warning' : 'neutral'
+    },
+    // Shown only when the firmware reports a SmallFastDrone fork feature.
+    ...(sfdAvailable
+      ? [
+          {
+            id: 'sfd' as const,
+            label: 'SFD',
+            value: 'fork',
+            detail:
+              'SmallFastDrone firmware features in one place, current and future: the accelerometer Z-bias, baro thrust (VALT), and the failsafe options the fork extends.',
+            tone: 'neutral' as const
+          }
+        ]
+      : []),
+    {
       id: 'profiles',
       label: 'Profiles',
       value:
@@ -178,18 +179,6 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
               : 'neutral'
     },
     {
-      // First in intent, last in the list on purpose: it is where a NEW
-      // airframe starts, but a vehicle only passes through it once, and
-      // putting a batch-write of a dozen parameters at the front of the
-      // Tuning tab invites pressing it on an aircraft that is already tuned.
-      id: 'initial-tune',
-      label: 'Initial Tune',
-      value: initialTuneStagedCount > 0 ? `${initialTuneStagedCount} staged` : 'starting point',
-      detail:
-        'Work out a sane starting point from the airframe — prop size, battery cells and chemistry — and stage the filter, acceleration, thrust-curve and battery-voltage parameters that follow from it. Uses the same formulas as Mission Planner’s Initial Parameters screen. Sets no PID gains.',
-      tone: initialTuneStagedCount > 0 ? 'warning' : 'neutral'
-    },
-    {
       id: 'log-tuning',
       label: 'Log Tuning',
       value: 'beta',
@@ -199,7 +188,8 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     }
   ]
 
-  return isExpertMode
-    ? cards
-    : cards.filter((card) => !ADVANCED_TUNING_TASK_IDS.some((id) => id === card.id))
+  // Every task for everyone. The strip used to hide PID Gains, Notches,
+  // Profiles and Log tuning outside Expert mode; roles pick tabs, not
+  // features (operator call 2026-10-21).
+  return cards
 }

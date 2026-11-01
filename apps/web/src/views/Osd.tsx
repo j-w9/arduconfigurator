@@ -979,17 +979,8 @@ export function OsdView(props: OsdViewProps) {
                       onChange={onEditChange}
                       draftStatusById={draftStatusById}
                     />
-                    <p className="bf-note">
-                      Tick the categories to show; leave all unticked to show everything.{' '}
-                      <strong>Critical</strong> and above always show regardless. Classification is keyword-based
-                      (best-effort).
-                    </p>
                   </div>
                 ) : null}
-                <p className="bf-note">
-                  Per-screen message severity (which messages each screen shows) is under each screen&apos;s{' '}
-                  <strong>Screen Options</strong> below.
-                </p>
 
                 {osdShorthand.status === 'available' ? (
                   <div className="osd-shorthand" data-testid="osd-shorthand-editor">
@@ -1071,10 +1062,6 @@ export function OsdView(props: OsdViewProps) {
                         Reset
                       </button>
                     </div>
-                    <p className="bf-note">
-                      Your own from→to substitutions, applied to the MESSAGE panel on top of the built-in dictionary
-                      (from ≤{osdShorthand.fromMax} chars, to ≤{osdShorthand.toMax}). Matching is case-insensitive.
-                    </p>
                   </div>
                 ) : null}
               </div>

@@ -40,6 +40,8 @@ export function formatSetupOutcome(outcome: SetupSectionOutcome): string {
       return 'Already done'
     case 'deferred':
       return 'Deferred'
+    case 'overridden':
+      return 'Overridden'
     default:
       return 'Resolved'
   }
@@ -157,5 +159,19 @@ export function missionTitleForView(viewId: AppViewId): string {
       return 'File Browser'
     default:
       return 'Configurator'
+  }
+}
+
+/** The wizard task-card badge: a word for the exercise state, not the raw enum. */
+export function formatExerciseStatus(status: 'idle' | 'running' | 'passed' | 'failed'): string {
+  switch (status) {
+    case 'running':
+      return 'Running'
+    case 'passed':
+      return 'Passed'
+    case 'failed':
+      return 'Failed'
+    default:
+      return 'Not run'
   }
 }

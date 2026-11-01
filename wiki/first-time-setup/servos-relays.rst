@@ -7,10 +7,9 @@ settings that extend it.
 
 .. note::
 
-   Relays, the notification LEDs and buzzer, the gimbal and the
-   rangefinder/optical-flow settings are on :doc:`peripherals-gimbal`, with the
-   other hardware wired to the board. Relays are documented below for
-   reference, but you configure them on the Peripherals tab.
+   Relays, LEDs and buzzer, the gimbal and the rangefinder/optical-flow
+   settings are on :doc:`peripherals-gimbal`. Relays are documented below for
+   reference.
 
 Servo output functions
 -----------------------
@@ -56,7 +55,7 @@ instead of a number.
 
 The *Kind* badge classifies each output (Motor, Control Surface, RC Pass-through,
 Peripheral, Disabled) so you can see at a glance what the frame is using. Edits
-stage as drafts; **Apply servo mapping** commits them and **Revert** discards
+stage as drafts; **Apply servo mapping (n)** commits them and **Revert** discards
 them.
 
 .. warning::
@@ -70,8 +69,8 @@ Notify devices (LED and buzzer)
 
 ArduPilot's *notify* subsystem drives external LEDs and buzzers. They do not use
 an output function, so they are set in the **LED & buzzer notifications** card
-on **Peripherals → LEDs & Buzzer**, not in the servo table. The two driver parameters are
-bitmasks:
+on :doc:`peripherals-gimbal` › **LEDs & Buzzer**, not in the servo table. The
+two driver parameters are bitmasks:
 
 - ``NTF_LED_TYPES``: which LED drivers are active (*Built-in LED*, *NeoPixel*,
   *ProfiLED*, *DShot*, *DroneCAN*, *Scripting*, …).
@@ -110,7 +109,7 @@ outputs as a grid of per-relay cards. Each relay has:
    ``RELAYn_FUNCTION``, ``RELAYn_PIN`` and ``RELAYn_DEFAULT`` are applied when
    the flight controller boots, which is when the pin is configured and the
    default state set. A change to them is **reboot-required**, and the app
-   prompts you to reboot before it takes effect. ``RELAYn_INVERTED`` applies live.
+   prompts you to reboot. ``RELAYn_INVERTED`` applies live.
 
 Enum fields show as selectable chips and the pin as a number field. Changes are
 staged and committed with the **Apply relay changes** / **Revert** toolbar.

@@ -74,12 +74,7 @@ export function HoverThrottleFromLogCard({
         <strong>Hover throttle from a log</strong>
         <StatusBadge tone="neutral">new airframe</StatusBadge>
       </div>
-      <p>
-        Measures what this frame and powertrain actually hover at, from a flight you have already
-        flown. Do it once when a new build first flies, or when <strong>Hover throttle learning</strong>
-        came back with nothing because the firmware&apos;s own learner never ran. After that the
-        firmware keeps the value up to date and that card is the routine calibration.
-      </p>
+      <p>Measures the hover throttle from a flight you have already flown. Once, when a new build first flies.</p>
 
       <div className="config-pills">
         <span data-tone={liveValue === undefined ? 'neutral' : 'success'}>
@@ -166,11 +161,7 @@ export function HoverThrottleFromLogCard({
         </div>
       ) : null}
 
-      <small>
-        {canStage
-          ? 'Staged like any other change — nothing is written until you apply it.'
-          : flightCalibrationBlockedReason(snapshot, busyAction)}
-      </small>
+      {canStage ? null : <small>{flightCalibrationBlockedReason(snapshot, busyAction)}</small>}
     </article>
   )
 }

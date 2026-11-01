@@ -165,7 +165,7 @@ export interface SetupConfirmationRecord {
   outcome: SetupSectionOutcome
 }
 
-export type SetupSectionOutcome = 'complete' | 'not-applicable' | 'already-done' | 'deferred'
+export type SetupSectionOutcome = 'complete' | 'not-applicable' | 'already-done' | 'deferred' | 'overridden'
 
 export interface SetupFlowActionDescriptor {
   kind:
@@ -207,6 +207,8 @@ export interface SetupFlowSectionDescriptor {
   actions: SetupFlowActionDescriptor[]
   confirmationOutcome?: SetupSectionOutcome
   blockingReason?: string
+  /** What the operator does next, in their words ("Next: props on, pack on, first flight"). */
+  nextStep?: string
 }
 
 export interface SetupFlowFollowUpDescriptor {

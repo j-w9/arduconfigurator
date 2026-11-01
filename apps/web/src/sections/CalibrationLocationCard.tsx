@@ -22,7 +22,12 @@ export function CalibrationLocationButton({ snapshot, runtime }: CalibrationLoca
   const [infoOpen, setInfoOpen] = useState(false)
   const [latitude, setLatitude] = useState<number | undefined>(undefined)
   const [longitude, setLongitude] = useState<number | undefined>(undefined)
-  const [active, setActive] = useState(false)
+  // Read from the runtime, not kept here: this control is mounted on the
+  // compass wizard step AND on the Calibration tab, and each used to hold its
+  // own "active" flag. Leaving the step unmounted the control, the remount
+  // showed "Set location" again, and a synthetic GPS kept streaming with no
+  // Stop button anywhere -- and GPS1_TYPE left at 14 (MAV) on the aircraft.
+  const active = snapshot.liveVerification.fakeGpsActive
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger' | 'neutral'; text: string } | undefined>(undefined)
 
@@ -54,7 +59,6 @@ export function CalibrationLocationButton({ snapshot, runtime }: CalibrationLoca
     void (async () => {
       try {
         await runtime.startFakeGps(latitude, longitude)
-        setActive(true)
         setModalOpen(false)
         setNotice({
           tone: 'success',
@@ -73,7 +77,6 @@ export function CalibrationLocationButton({ snapshot, runtime }: CalibrationLoca
     void (async () => {
       try {
         await runtime.stopFakeGps()
-        setActive(false)
         setNotice({ tone: 'neutral', text: 'Fake GPS stopped; GPS backend restored.' })
       } catch (error) {
         setNotice({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to stop fake GPS.' })

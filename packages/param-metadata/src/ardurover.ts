@@ -262,11 +262,11 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     { id: 'snapshots', label: 'Snapshots', description: 'Capture, compare, and restore known-good parameter sets.', order: 11 },
     { id: 'tuning', label: 'Tuning', description: 'Steering-rate, speed/throttle, navigation, and sailing tuning.', order: 12 },
     { id: 'presets', label: 'Presets', description: 'Future home for Rover tuning presets (not populated in the first cut).', order: 13 },
-    { id: 'config', label: 'Config', description: 'Baseline misc — board orientation, arming behavior, system identity, statistics.', order: 13.5 },
+    { id: 'config', label: 'Setup', description: 'Setup — drive, RC, modes, arming, battery, and system settings.', order: 13.5 },
     { id: 'parameters', label: 'Parameters', description: 'Low-level parameter editing and backup work.', order: 14 }
   ],
   categories: {
-    drive: { id: 'drive', label: 'Drive Config', description: 'Cruise speed/throttle and pilot steering behavior.', order: 1, viewId: 'motors' },
+    drive: { id: 'drive', label: 'Drive', description: 'Cruise speed/throttle and pilot steering behavior.', order: 1, viewId: 'motors' },
     sensors: { id: 'sensors', label: 'Sensors', description: 'Board orientation and sensor-related setup.', order: 2, viewId: 'setup' },
     ports: { id: 'ports', label: 'Ports', description: 'Serial roles, baud rates, and peripheral transport settings.', order: 3, viewId: 'ports' },
     vtx: { id: 'vtx', label: 'VTX', description: 'Video transmitter control settings.', order: 4, viewId: 'osd' },
@@ -528,34 +528,41 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     {
       id: 'link',
       title: 'Vehicle Link',
-      description: 'Bring the Rover online and pull the first parameter snapshot.',
+      description: 'Connect and pull the parameters.',
       requiredParameters: [],
       actions: ['request-parameters']
     },
     {
       id: 'sensors',
       title: 'Sensors',
-      description: 'Verify board orientation and compass selection before tuning or driving.',
+      description: 'Check the board orientation and compass.',
       requiredParameters: ['AHRS_ORIENTATION', 'COMPASS_USE'],
       actions: ['calibrate-accelerometer', 'calibrate-level', 'calibrate-compass']
     },
     {
       id: 'radio',
       title: 'Radio',
-      description: 'Inspect primary RC input and verify the drive-mode channel.',
+      description: 'Check the sticks and the mode channel.',
       requiredParameters: ['MODE_CH'],
       requiredLiveSignals: ['rc-input'],
     },
     {
+      // A Rover with every SERVOn_FUNCTION at 0 used to complete the wizard.
+      id: 'outputs',
+      title: 'Outputs',
+      description: 'Check which outputs drive steering and throttle (SERVOn_FUNCTION).',
+      requiredParameters: [],
+    },
+    {
       id: 'drive',
-      title: 'Drive Config',
-      description: 'Confirm cruise speed/throttle and pilot steering behavior before any motion.',
+      title: 'Drive',
+      description: 'Set cruise speed, cruise throttle and steering.',
       requiredParameters: ['CRUISE_SPEED', 'CRUISE_THROTTLE']
     },
     {
       id: 'power',
       title: 'Battery',
-      description: 'Validate battery monitoring before driving.',
+      description: 'Check the battery monitor reads right.',
       requiredParameters: ['BATT_MONITOR', 'BATT_CAPACITY'],
       // BATT_MONITOR=0 disables battery monitoring entirely. Same trap as
       // Copter / Plane — the section reading "complete" with monitoring
@@ -566,7 +573,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     {
       id: 'failsafe',
       title: 'Failsafe',
-      description: 'Review Rover throttle/GCS failsafe and battery failsafe behavior.',
+      description: 'Review the throttle, GCS and battery failsafes.',
       requiredParameters: [
         'FS_THR_ENABLE',
         'FS_THR_VALUE',
@@ -582,7 +589,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     {
       id: 'verify',
       title: 'Verify',
-      description: 'Final pre-drive review and reboot before any powered testing.',
+      description: 'Final check and reboot before power-on.',
       requiredParameters: [],
       actions: ['reboot-autopilot']
     }

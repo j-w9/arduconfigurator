@@ -50,7 +50,7 @@ describe('buildSetupConfirmationSignatures', () => {
       // 'modes' was missing here, which meant getSetupConfirmationRecord always
       // found an undefined signature for the Modes step and silently discarded
       // any confirmation stored against it.
-      ['accelerometer', 'airframe', 'compass', 'esc-range', 'failsafe', 'level', 'modes', 'outputs', 'power', 'radio'].sort()
+      ['accelerometer', 'airframe', 'autotune', 'compass', 'esc-range', 'failsafe', 'filters', 'hover', 'initial-tune', 'level', 'maiden', 'modes', 'motor-range', 'outputs', 'ports', 'power', 'radio', 'readiness'].sort()
     )
   })
 
@@ -82,10 +82,20 @@ describe('buildSetupConfirmationSignatures', () => {
     })
   })
 
-  it('the ESC calibration path only re-signs esc-range', () => {
-    expectOnlyChanges('esc-range', (inputs) => {
+  it('the ESC calibration path re-signs esc-range and motor-range, nothing else', () => {
+    // Motor Range carries the ESC-endpoint criterion (analog ESCs only), so
+    // the calibration path is part of what its sign-off reviewed.
+    const before = sig()
+    const after = sig((inputs) => {
       ;(inputs.escSetup as { calibrationPath: string }).calibrationPath = 'manual-review'
     })
+    expect(after['esc-range']).not.toBe(before['esc-range'])
+    expect(after['motor-range']).not.toBe(before['motor-range'])
+    for (const [key, value] of Object.entries(before)) {
+      if (key !== 'esc-range' && key !== 'motor-range') {
+        expect(after[key]).toBe(value)
+      }
+    }
   })
 
   it('guided-action state does not re-sign the calibration sections (reboot resets it to idle)', () => {
@@ -152,5 +162,43 @@ describe('buildSetupConfirmationSignatures', () => {
       }
     })
     expect(after).toEqual(before)
+  })
+})
+
+describe('per-vehicle signature keys (wizard audit 2026-10)', () => {
+  const build = (vehicle: string, params: Record<string, number>) =>
+    buildSetupConfirmationSignatures({
+      airframe: { frameClassValue: 1, frameTypeValue: 1, frameTypeIgnored: false, expectedMotorCount: 4 } as never,
+      outputMapping: { motorOutputs: [], configuredAuxOutputs: [], notes: [] } as never,
+      escSetup: { calibrationPath: 'digital-protocol', pwmTypeValue: 6, notes: [], relevantParameters: [] } as never,
+      compassSetupAvailability: { gpsConfigured: true, enabledCompassCount: 1, canSkipCalibration: false } as never,
+      currentRcAxisChannelMap: {} as never,
+      rcAxisObservations: [],
+      rcMappingSession: { status: 'idle', captures: {} } as never,
+      snapshot: {
+        vehicle: { vehicle },
+        parameters: Object.entries(params).map(([id, value]) => ({ id, value }))
+      } as never,
+      batteryCapacity: 1300,
+      batteryFailsafe: 2,
+      batteryMonitor: 4,
+      throttleFailsafe: 1
+    })
+
+  it('Copter signatures carry no vehicle keys (stored Copter sign-offs stay valid)', () => {
+    // Vehicle params present on the Copter too (a Copter demo built on a shared
+    // base reports some of them): none may leak into the Copter JSON.
+    const copter = build('ArduCopter', { FS_THR_VALUE: 975, THR_FAILSAFE: 1, FS_ACTION: 2, FS_LEAK_ENABLE: 1, Q_ENABLE: 1 })
+    expect(Object.keys(JSON.parse(copter.failsafe))).toEqual(['throttleFailsafe', 'batteryFailsafe', 'throttleFailsafeValue'])
+    expect(Object.keys(JSON.parse(copter.airframe))).toEqual(['frameClassValue', 'frameTypeValue', 'frameTypeIgnored'])
+  })
+
+  it('Plane pins THR_FAILSAFE / FS_*_ACTN and the Q_* frame values; Rover FS_ACTION; Sub leak, pressure, GCS and pilot input', () => {
+    const plane = build('ArduPlane', { THR_FAILSAFE: 1, FS_LONG_ACTN: 1, Q_ENABLE: 1 })
+    expect(JSON.parse(plane.failsafe)).toMatchObject({ planeThrottleFailsafe: 1, longAction: 1 })
+    expect(JSON.parse(plane.airframe)).toMatchObject({ qEnable: 1 })
+    expect(build('ArduPlane', { THR_FAILSAFE: 1, FS_LONG_ACTN: 2, Q_ENABLE: 1 }).failsafe).not.toBe(plane.failsafe)
+    expect(JSON.parse(build('ArduRover', { FS_ACTION: 2 }).failsafe)).toMatchObject({ action: 2 })
+    expect(JSON.parse(build('ArduSub', { FS_LEAK_ENABLE: 2, FS_GCS_ENABLE: 1 }).failsafe)).toMatchObject({ leak: 2, gcs: 1 })
   })
 })

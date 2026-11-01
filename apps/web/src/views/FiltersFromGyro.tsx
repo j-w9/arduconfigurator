@@ -179,9 +179,6 @@ export function FiltersFromGyro(props: FiltersFromGyroProps): ReactElement | nul
                 <StatusBadge tone="warning">staged — review and apply above</StatusBadge>
               ) : null}
             </div>
-            <p className="hint">
-              Staged values land in the fields above as drafts. Nothing is written until you apply them.
-            </p>
           </>
         )}
       </div>

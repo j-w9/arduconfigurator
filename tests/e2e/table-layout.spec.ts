@@ -38,7 +38,7 @@ async function connect(page: Page): Promise<void> {
 
 async function openParameters(page: Page): Promise<void> {
   await connect(page)
-  await page.getByTestId('product-mode-expert').click()
+  await page.getByTestId('product-mode-expert').check()
   await page.getByTestId('view-button-parameters').click()
 }
 

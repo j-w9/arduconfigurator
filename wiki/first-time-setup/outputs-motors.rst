@@ -1,16 +1,15 @@
 Outputs & Motors
 ================
 
-The **Outputs / Motors** tab sets the ESC/output protocol, confirms motor order
-and spin direction, and runs a props-off motor test. On ArduCopter it works from
-the frame's motor matrix. Plane, Rover, and Sub show a read-only summary of their
-output assignments.
+The **Motors** tab sets the frame and the ESC/output protocol, confirms motor
+order and spin direction, and runs a props-off motor test. On ArduCopter it works
+from the frame's motor matrix. Plane, Rover, and Sub show a read-only summary of
+their output assignments.
 
-Everything is on **one page**. The motor map and the order/direction work sit
-top-left, the ESC and range settings below them, and the throttle sliders in a
-live column alongside. You can set a protocol and check the result without
-leaving the page. (The Servos tab keeps its sub-tabs, because those are separate
-subsystems.)
+Everything is on **one page**, in two bands. The **Frame** and **ESC & output
+settings** cards run across the top. Below them are the motor map with the
+order/direction work, the **Spin thresholds** card, and the **Test** box. You can
+set a protocol and check the result without leaving the page.
 
 .. warning::
 
@@ -20,19 +19,30 @@ subsystems.)
    any moment: the test arms the autopilot to do exactly that. The run button
    stays disabled until you confirm props are off and the area is clear.
 
-ESC & protocol
---------------
+Frame, ESC & output settings
+----------------------------
 
-The **ESC & Protocol** panel sets the frame (``FRAME_CLASS`` / ``FRAME_TYPE``)
-and the output protocol, ``MOT_PWM_TYPE``:
+The **Frame** card sets ``FRAME_CLASS`` / ``FRAME_TYPE``. Under a quad X it
+offers **Want props out?**. One tick switches the type to *BetaFlight X
+Reversed*, which also numbers the motors in Betaflight order. Re-check the motor
+order after applying.
+
+**ESC & output settings** holds the output protocol, ``MOT_PWM_TYPE``:
 
 - ``0`` Normal, ``1`` OneShot, ``2`` OneShot125, ``3`` Brushed
 - ``4`` DShot150, ``5`` DShot300, ``6`` DShot600, ``7`` DShot1200
 - ``8`` PWMRange
 
+It also holds ``MOT_PWM_MIN`` / ``MOT_PWM_MAX``, the three spin fractions
+``MOT_SPIN_ARM`` / ``MOT_SPIN_MIN`` / ``MOT_SPIN_MAX``, the ESC type
+(``SERVO_DSHOT_ESC``) and the motor pole count (``SERVO_BLH_POLES``, with *How
+many poles does my motor have?*: count the magnets in the bell).
+
 DShot ESCs can also report RPM back over **bidirectional DShot** (``bdshot``).
 It is configured with ``SERVO_BLH_BDMASK`` (the per-output telemetry mask) and
-``SERVO_BLH_AUTO``. Frame class/type and ``MOT_PWM_TYPE`` need a reboot.
+``SERVO_BLH_AUTO``. Those two, the DShot rate and the reverse mask
+(``SERVO_BLH_RVMASK``) are on :doc:`../config` › **Airframe & Powertrain** in
+the **ESC & DShot** card. Frame class/type and ``MOT_PWM_TYPE`` need a reboot.
 
 .. note::
 
@@ -44,19 +54,21 @@ It is configured with ``SERVO_BLH_BDMASK`` (the per-output telemetry mask) and
 Motor order & direction
 -----------------------
 
-The **Motor Setup** panel handles the reorder inline, with an Order tab and a
-Direction tab. Both are gated behind the props-off acknowledgement, and one
-acknowledgement at the top of the page covers everything on it:
+The motor map draws every motor (M1, M2, …) with the output that drives it.
+**Motor Setup** handles the reorder in two steps, **1 · Order** and
+**2 · Direction**. Both are gated behind the one safety sentence on the page,
+*Props are off, the vehicle is restrained, and the test area is clear*:
 
-- **Order:** *Run motor wizard* spins each output briefly (about 2.5 s at 6%).
-  Click the position on the schematic that moved. This stages the
-  ``SERVOn_FUNCTION`` mapping. Apply stages a reboot. When the order already
-  matches, the panel moves on to Direction by itself.
-- **Direction:** click a motor to spin it and compare against the arrows
-  (top-view CW/CCW). A per-motor **Reverse** toggle flips its spin via
-  ``SERVO_BLH_RVMASK``. Reverse toggles are only available on a **DShot**
-  protocol (``MOT_PWM_TYPE`` 4–7). On PWM ESCs, reverse a motor by swapping any
-  two of its three ESC wires.
+- **Order:** **Run motor wizard** spins each output briefly, in order. Click the
+  position on the schematic that moved. This stages the ``SERVOn_FUNCTION``
+  mapping (**Stage Reorder**). **Manual output mapping (optional)** lets you set
+  each motor's output directly if you already know it. Apply stages a reboot.
+  When the order already matches, the panel moves on to Direction by itself.
+- **Direction:** *Click a motor to spin it* and compare against the arrows
+  (top-view CW/CCW). **Reverse motor direction** flips a motor's spin via
+  ``SERVO_BLH_RVMASK``. Reverse is only available on a **DShot** protocol
+  (``MOT_PWM_TYPE`` 4–7). On PWM ESCs, reverse a motor by swapping any two of
+  its three ESC wires.
 
 .. note::
 
@@ -71,12 +83,13 @@ acknowledgement at the top of the page covers everything on it:
 Motor test (props off)
 ----------------------
 
-The **Test** column spins motors at a set throttle for a set time. Pick a single
-output, all motors in sequence, or all at once. Set **Throttle %** (1–100) and
-**Duration** (up to 5 s, 30 s in Expert mode). You can drag the throttle slider
-or **type** a value into the percent box beside it. Use the slider to find
-roughly the right throttle, and type a value when you need exactly 7% for a
-repeatable bench test.
+The **Test** box spins motors at a set throttle for a set time. Pick a single
+motor on the map, **In order** (every motor in sequence, M1 upward), or **At
+once**. Set the throttle **%** and the duration in **s** (5 s by default and at
+most, 30 s in Expert mode), then press **Test**. **Stop** ends it early. You can
+drag the throttle slider or **type** a value into the percent box beside it.
+Use the slider to find roughly the right throttle, and type a value when you
+need exactly 7% for a repeatable bench test.
 
 The test sends ``MAV_CMD_DO_MOTOR_TEST``. It is gated by eligibility checks (the
 vehicle must be connected, disarmed and parameter-synced, with no other guided
@@ -90,8 +103,8 @@ safety net.
    Never run a motor test with props on. Confirm each numbered motor is the one
    that spins before trusting the layout.
 
-Spin thresholds (Expert)
-------------------------
+Spin thresholds
+---------------
 
 ``MOT_SPIN_ARM`` and ``MOT_SPIN_MIN`` set where your motors start turning and
 where thrust begins. ArduPilot's defaults (0.10 and 0.15) were not measured
@@ -99,8 +112,8 @@ against any particular build. The point where a motor breaks away depends on
 that ESC and that motor. Too low and a motor may not start on arming. Too high
 and it lurches.
 
-In Expert mode the Motor Setup panel offers **Measure Spin Thresholds**. It
-opens a popout that measures the values:
+The **Spin thresholds** card offers **Measure Spin Thresholds**. It opens a
+popout that measures the values:
 
 1. Every motor is driven together at a rising output, starting at 0.01.
 2. The motors stay **live and follow the slider**. Raise it slowly until they

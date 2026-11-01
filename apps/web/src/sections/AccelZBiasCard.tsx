@@ -88,10 +88,7 @@ export function AccelZBiasCard({
           {stage === 'complete' ? 'complete' : waiting ? 'waiting' : 'flight 2'}
         </StatusBadge>
       </div>
-      <p>
-        Vibration rectifies through the accelerometer and reads as a steady vertical bias. This
-        learns it in a hover and applies the correction inside EKF3.
-      </p>
+      <p>Learns the accelerometer&apos;s vertical bias in a hover; EKF3 applies it.</p>
 
       <div className="config-pills">
         <span data-tone={state.biasLearned ? 'success' : 'neutral'}>
@@ -104,17 +101,15 @@ export function AccelZBiasCard({
 
       {ekfWrong ? (
         <p className="switch-exercise-warning" data-testid="hover-learn-ekf-warning">
-          Z-bias learning only works on EKF3 (AHRS_EKF_TYPE = 3); this vehicle reports {state.ekfType}
-          . This flight will not learn anything until that is changed.
+          Z-bias learning needs EKF3 (AHRS_EKF_TYPE = 3); this vehicle is on {state.ekfType}. Nothing
+          is learned until that changes.
         </p>
       ) : null}
 
       {waiting ? (
         <p className="bf-note" data-testid="zbias-prerequisite">
-          Accept a hover throttle first, on <strong>Hover throttle learning</strong>. A bias learned
-          on top of a wrong vertical feedforward measures the feedforward&apos;s error as much as the
-          accelerometer&apos;s. On a new build, tune first and learn the bias last: it measures
-          the vibration at the hover you will actually fly, and a tune changes that.
+          Accept a hover throttle first, on <strong>Hover throttle learning</strong>. On a new build,
+          tune first and learn the bias last.
         </p>
       ) : null}
 
@@ -138,7 +133,7 @@ export function AccelZBiasCard({
             </small>
           )}
           <small data-testid="hover-learn-flight-2-hint">
-            Z-bias learning is staged and saves on disarm — go and fly it.
+            Z-bias learning is on and saves on disarm. Go fly it.
           </small>
         </>
       ) : null}
@@ -150,8 +145,8 @@ export function AccelZBiasCard({
               armed, not flown yet" -- Re-learn on the next hover lands here
               too, before anyone has flown. */}
           <p data-testid="hover-learn-step">
-            <strong>A Z-bias is learned, and learning is on</strong>, so each altitude-holding hover
-            refines it and saves on disarm. Once it has seen a good, steady hover, keep it.
+            <strong>A Z-bias is learned and learning is on</strong>, so each hover refines it. After a
+            good, steady hover, keep it.
           </p>
           {state.hoverLearnArmed ? (
             <p className="switch-exercise-warning" data-testid="hover-learn-flight-2-unfrozen">
@@ -196,7 +191,7 @@ export function AccelZBiasCard({
       {stage === 'complete' ? (
         <>
           <p className="success-copy" data-testid="hover-learn-done">
-            The learned Z-bias is being applied, and learning is off so nothing moves it.
+            The Z-bias is applied and learning is off, so nothing moves it.
           </p>
           {/* Re-learn WITHOUT clearing (operator request, for fleets of one
               build): the learner filters towards what it measures, starting
@@ -215,7 +210,7 @@ export function AccelZBiasCard({
             {relearnStaged ? 'Re-learn staged — apply to write it' : 'Re-learn on the next hover'}
           </button>
           <small data-testid="hover-learn-zbias-relearn-hint">
-            Keeps the current bias and refines it on the next hover. Clear Z-Bias Cal starts from zero.
+            Keeps the current bias and refines it on the next hover. Clear Z-bias starts from zero.
           </small>
         </>
       ) : null}
@@ -229,17 +224,13 @@ export function AccelZBiasCard({
           data-testid="hover-learn-zeroize"
           disabled={!canStage}
           onClick={clearBias}
-          title="Clears the learned Z-bias and re-arms hover learning. The measured hover throttle is left alone."
+          title="Clears the learned Z-bias and turns hover learning back on. The hover throttle is left alone."
         >
-          Clear Z-Bias Cal
+          Clear Z-bias
         </button>
       </div>
 
-      <small>
-        {canStage
-          ? 'Staged like any other change — nothing is written until you apply it.'
-          : flightCalibrationBlockedReason(snapshot, busyAction)}
-      </small>
+      {canStage ? null : <small>{flightCalibrationBlockedReason(snapshot, busyAction)}</small>}
     </article>
   )
 }

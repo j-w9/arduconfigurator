@@ -710,7 +710,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'motors',
       label: 'Motors',
-      description: 'Frame class, motor map, direction tests, ESC protocol, and verification review.',
+      description: 'Motor order, direction, motor test and spin thresholds.',
       order: 7
     },
     {
@@ -751,8 +751,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     {
       id: 'config',
-      label: 'Config',
-      description: 'Baseline misc — board orientation, arming behavior, system identity, statistics.',
+      label: 'Setup',
+      description: 'Setup — airframe and powertrain, RC, flight modes, arming, battery, and system settings.',
       order: 13.5
     },
     {
@@ -4338,7 +4338,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'link',
       title: 'Vehicle Link',
-      description: 'Bring the vehicle online and pull the first parameter snapshot.',
+      description: 'Connect and pull the parameters.',
       requiredParameters: [],
       actions: ['request-parameters']
     },
@@ -4352,13 +4352,13 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       // wire, then configure the things on those wires.
       id: 'ports',
       title: 'Ports',
-      description: 'Tell the flight controller what is wired to each serial port before setting up the peripherals on them.',
+      description: 'Tell the flight controller what is wired to each serial port.',
       requiredParameters: ['SERIAL1_PROTOCOL', 'SERIAL2_PROTOCOL']
     },
     {
       id: 'airframe',
       title: 'Airframe',
-      description: 'Verify the frame class and geometry before motor output setup.',
+      description: 'Check the frame class and type.',
       requiredParameters: ['FRAME_CLASS', 'FRAME_TYPE'],
       // FRAME_CLASS=0 means "no frame picked" — ArduPilot logs "Frame:
       // UNSUPPORTED", refuses every calibration COMMAND, and won't arm. Require
@@ -4368,7 +4368,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'outputs',
       title: 'Outputs',
-      description: 'Review the primary motor and peripheral output assignments before any props-on testing.',
+      description: 'Check which output drives each motor. Props off.',
       requiredParameters: ['SERVO1_FUNCTION', 'SERVO2_FUNCTION', 'SERVO3_FUNCTION', 'SERVO4_FUNCTION'],
       // At least one SERVOn_FUNCTION must be assigned (non-zero), else
       // nothing is wired to motors. Covers the first 8 channels (the slots
@@ -4388,7 +4388,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'accelerometer',
       title: 'Accelerometer Calibration',
-      description: 'Complete 6-pose IMU calibration before tuning or arming.',
+      description: 'Calibrate the accelerometer in six poses.',
       requiredParameters: ['AHRS_ORIENTATION'],
       completionStatusTexts: ['Accelerometer calibration complete.'],
       // INS_ACCOFFS_X/Y/Z are written by the 6-pose accel cal; a non-zero
@@ -4400,7 +4400,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'level',
       title: 'Level Calibration',
-      description: 'Trim the flight controller against a known-level surface. Run this whenever the FC is repositioned on the frame.',
+      description: 'Level the flight controller on a flat surface. Redo it if the board is moved.',
       requiredParameters: ['AHRS_TRIM_X', 'AHRS_TRIM_Y'],
       completionStatusTexts: ['Board level calibration complete.'],
       // Level cal writes AHRS_TRIM_X / AHRS_TRIM_Y; either being non-zero is
@@ -4422,7 +4422,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'radio',
       title: 'Radio',
-      description: 'Inspect primary RC channel calibration.',
+      description: 'Map and calibrate the sticks.',
       requiredParameters: [
         'RCMAP_ROLL',
         'RCMAP_PITCH',
@@ -4444,16 +4444,33 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       requiredLiveSignals: ['rc-input'],
     },
     {
+      // After Radio, as ArduPilot orders it: the all-at-once ESC calibration
+      // uses the stick's maximum, and the spin range is measured after the
+      // ESCs know their endpoints (set-motor-range.rst, esc-calibration.rst).
+      id: 'motor-range',
+      title: 'Motor Range',
+      description: 'Set the armed idle and the minimum in-flight spin. Props off.',
+      requiredParameters: ['MOT_SPIN_ARM', 'MOT_SPIN_MIN'],
+    },
+    {
+      // Starting gains, filters and limits from the prop size and the pack,
+      // before the first flight (setting-up-for-tuning.rst).
+      id: 'initial-tune',
+      title: 'Initial Tune',
+      description: 'Starting gains, filters and limits from the prop size and the pack, before the first flight.',
+      requiredParameters: ['INS_GYRO_FILTER', 'MOT_THST_EXPO'],
+    },
+    {
       id: 'modes',
       title: 'Flight Modes',
-      description: 'Check the first three mapped flight modes.',
+      description: 'Put Stabilize and AltHold on the mode switch.',
       requiredParameters: ['FLTMODE1', 'FLTMODE2', 'FLTMODE3'],
       requiredLiveSignals: ['rc-input'],
     },
     {
       id: 'power',
       title: 'Battery',
-      description: 'Validate battery monitoring before flight.',
+      description: 'Check the battery monitor reads right.',
       requiredParameters: ['BATT_MONITOR', 'BATT_CAPACITY', 'BATT_ARM_VOLT', 'BATT_ARM_MAH'],
       // BATT_MONITOR=0 disables battery monitoring entirely — no voltage,
       // no current, no battery failsafe. The autopilot still reports the
@@ -4466,7 +4483,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'failsafe',
       title: 'Failsafe',
-      description: 'Review throttle and battery failsafe behavior.',
+      description: 'Review the throttle and battery failsafes.',
       requiredParameters: [
         'FS_THR_ENABLE',
         'FS_THR_VALUE',
@@ -4486,6 +4503,45 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'RTL_ALT_M'
       ],
       requiredLiveSignals: ['rc-input', 'battery-telemetry'],
+    },
+    {
+      // The last look before props go on. The bench phase used to end on
+      // Failsafe and report complete with nothing checked for flight.
+      id: 'readiness',
+      title: 'Ready to Fly',
+      description: 'Arming checks on, logging on, a way to arm, pre-arm clear, snapshot saved.',
+      requiredParameters: [],
+    },
+    {
+      // The first flight step: flown in Stabilize, read from its log.
+      id: 'maiden',
+      title: 'Maiden Hover',
+      description: 'The first flight, in Stabilize: arm, disarm, arm, a hand\u2019s width up and down, then a short hover. Bring the log back.',
+      requiredParameters: [],
+    },
+    {
+      // The second flight: a steady hover in AltHold, so the firmware learns
+      // MOT_THST_HOVER; then the vertical controller follows it.
+      id: 'hover',
+      title: 'Hover Throttle',
+      description: 'A steady AltHold hover learns the hover throttle. Accept it and set the throttle controller from it.',
+      requiredParameters: ['MOT_THST_HOVER', 'MOT_HOVER_LEARN'],
+    },
+    {
+      // The harmonic notch, placed from the hover: ESC telemetry when the
+      // build has it, throttle otherwise. Before autotune, as the wiki orders.
+      id: 'filters',
+      title: 'Filters',
+      description: 'Place the harmonic notch on the motor noise from the hover log, so the tune that follows is not tuned against noise.',
+      requiredParameters: ['INS_HNTCH_ENABLE', 'INS_HNTCH_MODE', 'INS_HNTCH_REF', 'INS_HNTCH_FREQ', 'INS_HNTCH_BW', 'INS_GYRO_FILTER'],
+    },
+    {
+      // Autotune, one axis at a time, in AltHold on a calm day; judged by the
+      // gains that moved.
+      id: 'autotune',
+      title: 'Autotune',
+      description: 'Autotune roll, pitch and yaw in AltHold, one axis at a time; the gains that moved say which axes are done.',
+      requiredParameters: ['AUTOTUNE_AXES', 'AUTOTUNE_AGGR'],
     }
   ]
 }

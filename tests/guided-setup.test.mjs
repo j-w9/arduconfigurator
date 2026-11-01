@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   ArduPilotConfiguratorRuntime,
+  advanceModeSwitchExerciseState,
   createModeSwitchExerciseState,
   canCompleteModeSwitchExercise,
   completeModeSwitchExerciseState,
@@ -512,4 +513,31 @@ test('throttle capture demands a larger swing than the sprung axes', () => {
     targetAxis: 'roll'
   })
   assert.equal(rollCandidate?.channelNumber, 3)
+})
+
+test('mode-switch exercise credits a target when the switch lands on another slot carrying the same mode', () => {
+  // FLTMODE1 and FLTMODE4 both Stabilize (the default). The targets are the
+  // first slot per distinct mode; a 3-position switch whose middle position
+  // reads slot 4 must count toward Stabilize, not stall as "unexpected".
+  const snapshot = createSnapshot({
+    FLTMODE1: 0,
+    FLTMODE2: 0,
+    FLTMODE3: 2,
+    FLTMODE4: 0,
+    FLTMODE5: 0,
+    FLTMODE6: 16,
+    FLTMODE_CH: 7
+  })
+  snapshot.liveVerification.rcInput = {
+    verified: true,
+    channelCount: 8,
+    channels: [1500, 1500, 1000, 1500, 1500, 1500, 1500, 1500]
+  }
+  const started = createModeSwitchExerciseState(snapshot)
+  assert.deepEqual(started.targetSlots, [1, 3, 6])
+  // 1500 on CH7 is slot 4 (value 0 = Stabilize), not a target slot.
+  const advanced = advanceModeSwitchExerciseState(started, snapshot)
+  assert.deepEqual(advanced.visitedSlots, [1])
+  assert.deepEqual(advanced.unexpectedSlots, [])
+  assert.equal(advanced.currentTargetSlot, 3)
 })

@@ -1,18 +1,22 @@
 Flight Modes
 ============
 
-The **Modes** tab assigns a flight mode to each position of a transmitter
-switch and shows which mode the vehicle is in. This tab decides what happens
+Flight-mode assignment is on the :doc:`../config` tab, under the **Flight
+Modes** category. It assigns a flight mode to each position of a transmitter
+switch and shows which mode the vehicle is in. This panel decides what happens
 when you flick a switch in the air. The mapping from switch position to mode is
-less obvious than it looks, because ArduPilot reads it from raw PWM bands, not
-from a switch position the transmitter reports.
+less obvious than it looks, because ArduPilot reads it from raw PWM bands. The
+:doc:`receiver` page has the same six slots in its **Flight modes** row, so you
+can make the assignment from either place. Both edit the same parameters.
 
 The mode channel
 ----------------
 
 One RC channel selects the mode: :param:`FLTMODE_CH` on ArduCopter (Rover calls
-it ``MODE_CH``). The tab shows it as the **Mode channel** card, with the
-parameter name it edits in the subtext.
+it ``MODE_CH``). The panel shows it as the **Mode channel** dropdown, with
+*Disabled*, *Channel 1 … 16*, or **Custom…** to type a number. The parameter
+name it edits is shown beside it. On the Receiver page you do the same thing by
+giving a channel the **Flight modes** Function.
 
 Pick a channel that your transmitter drives with a physical switch and that does
 not already carry roll, pitch, throttle, or yaw. Use the :doc:`receiver` tab's
@@ -22,10 +26,10 @@ or by an auxiliary-function switch.
 
 .. warning::
 
-   If the mode channel is also used by an RC Mixer (``RCL_*``) function, the
-   tab flags it: *"This channel also drives an RC Mixer function"*. Two
-   functions on one channel is an in-flight hazard. Move the mixer function to a
-   different channel.
+   If the mode channel is also used by an RC Mixer (``RCL_*``) function, on a
+   firmware that has one, the panel flags it: *"This channel also drives an RC
+   Mixer function"*. Two functions on one channel is an in-flight hazard. Move
+   the mixer function to a different channel.
 
 The six slots and their PWM bands
 ---------------------------------
@@ -59,8 +63,9 @@ band a mode parameter. You **cannot** change the boundaries:
      - ≥ 1750 µs
      - :param:`FLTMODE6`
 
-The tab shows this table, one row per slot. Each row has the assigned mode as an
-inline dropdown. The slot the vehicle is in gets a **live** badge.
+The panel shows this table as **Slot · PWM · Mode**, one row per slot. Each row
+has the assigned mode as an inline dropdown. The slot the switch is in gets a
+**live** badge with the channel's current microseconds.
 
 .. note::
 
@@ -73,8 +78,8 @@ inline dropdown. The slot the vehicle is in gets a **live** badge.
 Because the bands are fixed and unevenly spaced:
 
 - A **3-position switch** that outputs the usual 1000 / 1500 / 2000 µs lands in
-  slots **1, 4 and 6**, not 1, 2, 3. Assign those three slots. The others can't
-  be reached with that switch.
+  slots **1, 4 and 6**. Assign those three slots. The others can't be reached
+  with that switch.
 - A channel **at or beyond the extremes** (≤ 800 µs or ≥ 2200 µs) is treated as
   an error and the mode is not updated. If your transmitter mixes a switch onto
   a channel that it also drives to full travel, the vehicle can stay stuck in
@@ -86,11 +91,13 @@ switch that chatters electrically will not flick the vehicle between modes.
 Which modes to put where
 ------------------------
 
-The **Assigned mode** dropdown lists the modes the connected firmware supports:
-Stabilize, Acro, AltHold, Auto, Guided, Loiter, RTL, Circle, Land, Drift, Sport,
-Flip, AutoTune, PosHold, Brake, Throw, Avoid_ADSB, Guided_NoGPS, Smart_RTL,
-FlowHold, Follow, ZigZag, SystemID, Auto RTL, Turtle, and the heli-specific
-entries.
+The mode dropdown lists the modes the connected firmware supports: Stabilize,
+Acro, AltHold, Auto, Guided, Loiter, RTL, Circle, Land, Drift, Sport, Flip,
+AutoTune, PosHold, Brake, Throw, Avoid ADS-B, Guided NoGPS, SmartRTL, FlowHold,
+Follow, ZigZag, SystemID, Auto RTL, Turtle, and the heli-specific entries. It
+also has **Custom…**, which takes a mode number the list does not know. A number
+typed there is written as-is, so you can assign a fork's mode before the app has
+a name for it.
 
 The tab does not suggest a layout, and neither does this wiki. A cinematic build
 and a freestyle build need different switches. Two rules apply to any layout:
@@ -147,8 +154,7 @@ sticks. The vehicle keeps its tilt and accelerates until drag balances it, then
 cruises at a constant velocity. AltHold would return to level and stop.
 
 On entry it locks onto the vehicle's attitude at that moment, so switching in
-from forward flight holds that lean instead of snapping level. Before you fly
-it, know that:
+from forward flight holds that lean. Before you fly it, know that:
 
 - Entering while tilted past ``ANGLE_MAX`` does not hold that angle. The mode
   returns smoothly to the limit, not to level.
@@ -167,19 +173,19 @@ Editing and applying
 --------------------
 
 Each slot's dropdown stages a draft like any other parameter edit. Nothing
-reaches the vehicle until you apply it from the staged-changes bar. A slot whose
-parameter has not arrived yet shows *not synced* instead of a guessed value.
+reaches the vehicle until you apply it with **Apply Setup** (or from the
+Receiver page's apply dock). A slot whose parameter has not arrived yet shows
+*not synced* instead of a guessed value.
 
-**Open Receiver → Flight Mode** opens the same settings on the :doc:`receiver`
-tab, which adds a live switch exerciser. Flick through the detents and watch
-which slot each one selects. This is the quickest way to check the mapping
-before you fly.
+To check the mapping before you fly, flick through the detents and watch the
+**live** badge move from slot to slot. The :doc:`receiver` page's **Flight
+modes** row outlines the live position the same way.
 
 .. note::
 
-   On **ArduSub** the tab shows only the live heartbeat mode. Sub binds modes to
-   joystick buttons instead of a six-position channel, so there is no slot table
-   to edit. ArduCopter is the validated path.
+   On **ArduSub** the panel shows only the live heartbeat mode. Sub binds modes
+   to joystick buttons instead of a six-position channel, so there is no slot
+   table to edit. ArduCopter is the validated path.
 
 For how each mode behaves, see the ArduPilot wiki:
 `Copter flight modes <https://ardupilot.org/copter/docs/flight-modes.html>`__.

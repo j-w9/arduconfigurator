@@ -11,10 +11,13 @@ export type TuningTaskId =
   // lives in Log Tuning.
   | 'notches'
   | 'filters'
+  // The hover throttle flights (learned, or measured from a log).
+  | 'hover'
+  // SmallFastDrone fork features, when the firmware has any.
+  | 'sfd'
   | 'autotune'
   | 'profiles'
   | 'log-tuning'
-  | 'initial-tune'
 
 export interface TuningTaskCard {
   id: TuningTaskId

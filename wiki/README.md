@@ -1,7 +1,7 @@
 # ArduConfigurator Wiki
 
-Sphinx + Read-the-Docs theme (the same stack as the ArduPilot wiki), served at
-`arduconfigurator.com/wiki`. Responsive/phone-friendly via the RTD theme.
+Sphinx + the Furo theme (the ArduPilot wiki is Sphinx too), served at
+`arduconfigurator.com/wiki`. Responsive/phone-friendly via the theme.
 
 ## Build locally
 

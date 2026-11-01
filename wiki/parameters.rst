@@ -3,10 +3,10 @@ Parameters (Expert)
 
 The **Parameters** tab is the raw parameter editor. It shows the full ArduPilot
 parameter tree with search, inline editing, staged drafts, verified writes, and
-import/export. It is an **Expert** tab. The other tabs (Setup,
-:doc:`Config <config>`, Ports, Receiver, Outputs, Power, Tuning) cover routine
-changes more safely. Use this one for a parameter they do not expose, or when
-you move a configuration between aircraft.
+import/export. It is Expert-only. The other tabs (Status & Info,
+:doc:`Setup <config>`, Ports, Receiver, Motors, Tuning, Peripherals, …) cover
+routine changes more safely. Use this one for a parameter they do not expose,
+or when you move a configuration between aircraft.
 
 Browsing, search, and categories
 ---------------------------------
@@ -27,9 +27,12 @@ you half-remember a name. When you know the name, it can get in the way:
 searching ``FS_THR`` also finds ``FS_EKF_THRESH``. Tick **Exact match** to show
 only rows that contain exactly what you typed, in the controller's own order. A
 wildcard search is always literal, so the box makes no difference to
-``ARMING_*``. **Refresh** pulls the tree fresh from the controller, bypassing
-the auto-refresh. Each row is compact (name, current value, and the draft
-editor), so more of the tree fits on screen.
+``ARMING_*``. **Show only changed** shows only parameters that differ from the
+firmware defaults. **Refresh** pulls the tree fresh from the controller,
+bypassing the auto-refresh. **Reset to Defaults** asks the vehicle to reset
+every parameter. It asks for confirmation first; take a snapshot before you use
+it. Each row is compact (name, current value, and the draft editor), so more of
+the tree fits on screen.
 
 Looking parameters up with nothing connected
 --------------------------------------------
@@ -104,10 +107,12 @@ The tab reads and writes three file formats:
 - **Mission Planner .param / .parm:** ``NAME,VALUE`` per line.
 - **QGroundControl .params:** tab-separated ``vid/cid/NAME/VALUE/type``.
 
-Importing a backup stages the values that differ as drafts and scrolls the diff
-into view. Nothing is written until you review it and click Apply All. Optional
-**Skip on import** toggles leave out calibration offsets, the ``SRn_*`` stream-rate
-group, or the ``MIS_*`` mission parameters before staging.
+**Import Backup** reads a file and shows the values that differ as a pending
+import, grouped by category. You can edit a value, **Drop** a row or a whole
+group, then stage it. Staged rows become drafts like any other, and nothing is
+written until you review them and click Apply All. Optional **Skip on import**
+toggles leave out calibration offsets, the ``SRn_*`` stream-rate group, or the
+``MIS_*`` mission parameters before staging.
 
 Export has matching **Skip on export** toggles. Use them to leave per-airframe
 or volatile categories out of the file, for a smaller, more portable backup:
@@ -134,15 +139,25 @@ of them stage drafts through the same verified write path:
 
 - **Backups:** the JSON/.param/.params files above. This is the portable,
   long-term record of a configuration.
-- **Snapshots:** full parameter-tree captures stored in a local library, with
-  labels, notes, tags, and deletion protection, captured from the live tree or
-  imported from a backup. Use them to save a known-good state before a risky
-  change.
+- **Snapshots:** full parameter-tree captures stored in a local library,
+  captured from the live tree or imported from a backup. Use them to save a
+  known-good state before a risky change. On the **Snapshots** tab the capture
+  is one row, **Capture Live Snapshot**. **Details** opens the label, tags, note
+  and *Protect this baseline*. The saved list sits below it.
 
-  To change a saved snapshot's label, tags or note, select it and press
-  **Edit Details**. This changes the description only. The captured values and
-  the entry's place in the library stay the same. To replace the captured
-  values, use **Overwrite Selected**.
+  Select a snapshot to see its **restore preview**: the parameters that differ
+  from the live controller, grouped by category, each group folding. **Stage
+  All (n)** loads every row into the draft set, ready for **Write all** in the
+  draft bar. **Stage & Write (n)** stages and writes in one click, using the
+  same verified, readback-checked write. **Drop All** clears the rows. A value
+  the metadata would reject is staged anyway when you override it. The row's
+  other actions are **Send Diff to Parameters**, **Export Selected**, **Protect
+  Selected**, **Edit Details** and **Delete Selected**.
+
+  **Edit Details** changes a saved snapshot's label, tags or note only. The
+  captured values and the entry's place in the library stay the same. To replace
+  the captured values, use **Overwrite Selected**. **Import Library** /
+  **Export Library** move the whole library as a file.
 
   A restore can include the calibration values (accelerometer, compass, RC trim)
   or leave them out. They are excluded by default, and the option to include

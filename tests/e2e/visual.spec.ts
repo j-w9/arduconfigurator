@@ -43,6 +43,12 @@ async function connectViaHeader(page: Page): Promise<void> {
 }
 
 async function openView(page: Page, viewId: string): Promise<void> {
+  // Calibration is a Setup category, not a tab of its own.
+  if (viewId === 'calibration') {
+    await page.getByTestId('view-button-config').click()
+    await page.getByTestId('config-category-calibration').click()
+    return
+  }
   // Files is an Expert-only tab, and so are the CAN tab's bus tools.
   if (((viewId === 'can' || viewId === 'files') && (await page.getByTestId(`view-button-${viewId}`).count()) === 0) || viewId === 'can') {
     const expert = page.getByTestId('product-mode-expert')

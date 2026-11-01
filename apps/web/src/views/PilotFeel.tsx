@@ -478,9 +478,12 @@ export function PilotFeelView({ angle, acro, altHold, loiter, altHoldControllerS
         </div>
       </details>
 
-      <details className="bf-gui-box pilot-feel-card" data-testid="pilot-feel-althold">
+      {/* Open by default: the climb and descent limits apply in every mode
+          that holds altitude, and folded they were easy to miss. */}
+      <details className="bf-gui-box pilot-feel-card" data-testid="pilot-feel-althold" open>
         <summary className="bf-gui-box__titlebar">
           <strong>Alt Hold</strong>
+          <small className="pilot-feel-card__modes">Climb &amp; descent · AltHold · Loiter · PosHold</small>
         </summary>
         <div className="bf-gui-box__body">
           <FeelGrid

@@ -68,6 +68,8 @@ export interface ConfigSectionField {
 /** Config category ids — the top tab groups. */
 export type ConfigCategoryId =
   | 'airframe'
+  | 'initial-tune'
+  | 'calibration'
   | 'sensors'
   // Peripheral groups. These render on the dedicated Peripherals tab rather
   // than under Config — same section/category machinery, a second ConfigView
@@ -104,7 +106,13 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   // motor poles, reverse mask. Someone looking for ESC settings had no reason to
   // open a tab called Airframe.
   { id: 'airframe', label: 'Airframe & Powertrain' },
+  // The starting point for a new build (prop size, cells): set once, before
+  // the first flight, so it sits with the airframe rather than in Tuning.
+  // Copter only; the category shows only when its section exists.
+  { id: 'initial-tune', label: 'Initial Tune' },
   { id: 'sensors', label: 'Sensors' },
+  // The bench calibrations, right after the sensors they calibrate.
+  { id: 'calibration', label: 'Calibration' },
   // Peripherals-tab groups, in the order a build is worked through: the
   // position sources first, then the payloads hanging off them.
   { id: 'gps', label: 'GPS' },
@@ -115,19 +123,26 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   // strip and a relay are things wired to the board, not servo setup.
   { id: 'alerts', label: 'LEDs & Buzzer' },
   { id: 'relays', label: 'Relays' },
-  { id: 'rc', label: 'RC' },
-  // Flight modes sat in a top-level Modes tab whose content overlapped
-  // Receiver's own Flight Modes sub-tab. The tab is gone; the same panel lives
-  // here, next to RC, so mode setup is reachable from configuration as well as
-  // from the receiver workflow.
-  { id: 'flight-modes', label: 'Flight Modes' },
-  { id: 'arming', label: 'Arming' },
-  // Power was its own nav tab. It keeps its own panel — battery monitor
-  // selection, live telemetry and its own staged-change review — and now lives
-  // here as a category rather than a separate tab.
-  { id: 'power', label: 'Power' },
+  // Arming checks and arm/disarm behaviour sit with RC: the arm switch is an
+  // RC function. Flight modes live on the Receiver tab only.
+  { id: 'rc', label: 'RC & Arming' },
+  // The battery panel is a card under System: on its own it was a thin tab.
   { id: 'system', label: 'System' }
 ]
+
+/**
+ * Categories folded into another tab. The ids stay, so a section, a search
+ * hit or a guided-setup jump that names the old category still lands in the
+ * right place.
+ */
+const CATEGORY_FOLD: Partial<Record<ConfigCategoryId, ConfigCategoryId>> = {
+  arming: 'rc',
+  power: 'system'
+}
+
+function foldCategory(category: ConfigCategoryId | undefined): ConfigCategoryId | undefined {
+  return category === undefined ? undefined : CATEGORY_FOLD[category] ?? category
+}
 
 export interface ConfigSection {
   id: string
@@ -221,8 +236,8 @@ function fieldHasUnsaved(draftStatusById: ScopedFieldDraftMap, paramId: string):
 
 export function ConfigView(props: ConfigViewProps) {
   const {
-    sections,
-    title = 'Config',
+    sections: rawSections,
+    title = 'Setup',
     // No default subtitle: the page title is enough under the tab of the
     // same name.
     subtitle,
@@ -243,6 +258,10 @@ export function ConfigView(props: ConfigViewProps) {
     onRevert
   } = props
 
+  const sections = useMemo(
+    () => rawSections.map((section) => ({ ...section, category: foldCategory(section.category) })),
+    [rawSections]
+  )
   // Categories that actually have sections for this vehicle/build — an empty
   // group never gets a tab.
   const presentCategories = useMemo(
@@ -256,7 +275,7 @@ export function ConfigView(props: ConfigViewProps) {
   // the tab strip.
   useEffect(() => {
     if (requestedCategory !== undefined) {
-      setActiveCategory(requestedCategory)
+      setActiveCategory(foldCategory(requestedCategory) ?? requestedCategory)
     }
   }, [requestedCategory, requestedCategoryNonce])
   // Keep the active tab valid if the section set changes under us.
@@ -452,6 +471,8 @@ export function ConfigView(props: ConfigViewProps) {
 
         <div
           className={`config-grid${spreadWide ? ' config-grid--wide' : ''} config-grid--cat-${effectiveCategory}`}
+          // The guided Airframe step scrolls here.
+          id={effectiveCategory === 'airframe' ? 'setup-panel-airframe' : undefined}
           data-testid="config-section-grid"
         >
           {visibleSections.map((section) => (
@@ -534,7 +555,7 @@ export function ConfigView(props: ConfigViewProps) {
             disabled={isBusy || stagedCount === 0 || invalidCount > 0 || !canApply}
             data-testid="config-apply"
           >
-            {isApplying ? 'Applying…' : `Apply Config (${stagedCount})`}
+            {isApplying ? 'Applying…' : `Apply ${title} (${stagedCount})`}
           </button>
           <button
             type="button"

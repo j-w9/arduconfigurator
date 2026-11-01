@@ -243,7 +243,7 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     { id: 'snapshots', label: 'Snapshots', description: 'Capture, compare, and restore known-good parameter sets.', order: 11 },
     { id: 'tuning', label: 'Tuning', description: 'Sub attitude, pilot, and waypoint-navigation tuning.', order: 12 },
     { id: 'presets', label: 'Presets', description: 'Future home for Sub tuning presets (not populated in the first cut).', order: 13 },
-    { id: 'config', label: 'Config', description: 'Baseline misc — board orientation, arming behavior, system identity, statistics.', order: 13.5 },
+    { id: 'config', label: 'Setup', description: 'Setup — frame, controls, arming, battery, and system settings.', order: 13.5 },
     { id: 'parameters', label: 'Parameters', description: 'Low-level parameter editing and backup work.', order: 14 }
   ],
   categories: {
@@ -491,34 +491,34 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     {
       id: 'link',
       title: 'Vehicle Link',
-      description: 'Bring the Sub online and pull the first parameter snapshot.',
+      description: 'Connect and pull the parameters.',
       requiredParameters: [],
       actions: ['request-parameters']
     },
     {
       id: 'frame',
       title: 'Frame',
-      description: 'Confirm FRAME_CONFIG matches the physical thruster layout before any wet test.',
+      description: 'Set FRAME_CONFIG to match the thruster layout.',
       requiredParameters: ['FRAME_CONFIG']
     },
     {
       id: 'sensors',
       title: 'Sensors',
-      description: 'Verify board orientation and compass selection before tuning or diving.',
+      description: 'Check the board orientation and compass.',
       requiredParameters: ['AHRS_ORIENTATION', 'COMPASS_USE'],
       actions: ['calibrate-accelerometer', 'calibrate-level', 'calibrate-compass']
     },
     {
       id: 'controls',
       title: 'Controls',
-      description: 'Confirm joystick gain range before powered thruster testing.',
+      description: 'Check the joystick gain range.',
       requiredParameters: ['JS_GAIN_DEFAULT'],
       requiredLiveSignals: ['rc-input'],
     },
     {
       id: 'power',
       title: 'Battery',
-      description: 'Validate battery monitoring before diving.',
+      description: 'Check the battery monitor reads right.',
       requiredParameters: ['BATT_MONITOR', 'BATT_CAPACITY'],
       // BATT_MONITOR=0 disables battery monitoring entirely. Same trap as
       // Copter / Plane / Rover — the section reading "complete" with
@@ -531,7 +531,7 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     {
       id: 'failsafe',
       title: 'Failsafe',
-      description: 'Review the leak, internal pressure/temperature, GCS, and battery failsafes — the leak failsafe is the most safety-critical Sub setting.',
+      description: 'Review the leak, pressure, temperature, GCS and battery failsafes.',
       requiredParameters: [
         'FS_LEAK_ENABLE',
         'FS_PRESS_ENABLE',
@@ -547,7 +547,7 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     {
       id: 'verify',
       title: 'Verify',
-      description: 'Final pre-dive review and reboot before any powered testing.',
+      description: 'Final check and reboot before power-on.',
       requiredParameters: [],
       actions: ['reboot-autopilot']
     }

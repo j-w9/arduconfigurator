@@ -15,6 +15,8 @@ export const OUTPUTS_BENCH_TARGET_ID = 'outputs-bench-lab'
 export const OUTPUTS_MOTOR_START_BUTTON_ID = 'outputs-motor-verification-start'
 export const OUTPUTS_MOTOR_TEST_BUTTON_ID = 'outputs-motor-test-run'
 export const OUTPUTS_MOTOR_CONFIRM_BUTTON_ID = 'outputs-motor-confirm'
+/** The spin-threshold wizard launcher on Motors ▸ Motor Setup (the Motor Range step's target). */
+export const OUTPUTS_SPIN_WIZARD_ID = 'outputs-spin-thresholds'
 /**
  * The single props-off / area-clear acknowledgement on the Motors tab.
  *
@@ -42,8 +44,8 @@ export function escCalibrationInstructions(escSetup: ReturnType<typeof deriveEsc
   switch (escSetup.calibrationPath) {
     case 'analog-calibration':
       return [
-        'Remove props and disconnect USB before running the offline all-at-once ESC calibration flow.',
-        'After calibration, reconnect, review the PWM range, and rerun motor-order verification before first flight.'
+        'Props off and USB unplugged, then run the all-at-once ESC calibration.',
+        'Then reconnect, check the PWM range and re-check motor order.'
       ]
     case 'digital-protocol':
       // Digital protocols (DShot) need no ESC endpoint-calibration steps, so
@@ -51,8 +53,8 @@ export function escCalibrationInstructions(escSetup: ReturnType<typeof deriveEsc
       return []
     default:
       return [
-        'Review the ESC protocol and motor-range values manually because the current snapshot does not match a known path.',
-        'Only sign off after the protocol, PWM range, and spin thresholds make sense for this build.'
+        'This ESC setup is not one the wizard knows. Check the protocol and motor range by hand.',
+        'Sign off once the protocol, PWM range and spin thresholds make sense.'
       ]
   }
 }
@@ -62,27 +64,40 @@ export function panelAnchorForSetupSection(sectionId: string): { panelId: string
     case 'link':
       return { panelId: 'setup-panel-link', panelLabel: 'Vehicle Link' }
     case 'ports':
-      return { panelId: 'setup-panel-ports', panelLabel: 'Serial Ports' }
+      return { panelId: 'setup-panel-ports', panelLabel: 'Ports' }
+    // Frame class and type are edited in Setup ▸ Airframe & Powertrain (the
+    // Motors tab no longer carries them).
     case 'airframe':
+      return { panelId: 'setup-panel-airframe', panelLabel: 'Airframe' }
     case 'outputs':
-      return { panelId: 'setup-panel-outputs', panelLabel: 'Airframe & Outputs' }
+      return { panelId: 'setup-panel-outputs', panelLabel: 'Motors' }
+    case 'motor-range':
+      return { panelId: 'setup-panel-outputs', panelLabel: 'Motors' }
+    case 'readiness':
+    case 'maiden':
+    case 'hover':
+    case 'filters':
+    case 'autotune':
+    case 'initial-tune':
+      return { panelId: 'setup-panel-guided', panelLabel: 'Guided Setup' }
     case 'accelerometer':
     case 'level':
     case 'compass':
       return { panelId: 'setup-panel-guided', panelLabel: 'Guided Setup' }
     case 'radio':
-      return { panelId: 'setup-panel-rc', panelLabel: 'Live RC Inputs' }
+      return { panelId: 'setup-panel-rc', panelLabel: 'Receiver' }
     // Modes and Failsafe each own a tab with its own anchor, and both anchors
     // already existed and were referenced by nothing. Modes sent the operator to
     // the Receiver view and Failsafe to the Config tab's power section -- neither
     // of which is where the step's parameters are edited. Same class of silent
     // breakage the power mapping below documents.
+    // Flight modes are on the Receiver tab only (Setup dropped its copy).
     case 'modes':
-      return { panelId: 'setup-panel-modes', panelLabel: 'Flight Modes' }
+      return { panelId: 'receiver-section-flight-modes', panelLabel: 'Flight Modes' }
     case 'failsafe':
       return { panelId: 'setup-panel-failsafe', panelLabel: 'Failsafe' }
     case 'power':
-      return { panelId: 'setup-panel-power', panelLabel: 'Power & Failsafe' }
+      return { panelId: 'setup-panel-power', panelLabel: 'Power' }
     default:
       return { panelId: 'setup-panel-guided', panelLabel: 'Guided Setup' }
   }
@@ -94,11 +109,13 @@ export function setupPanelActionForSection(
 ): SetupFlowActionDescriptor {
   switch (sectionId) {
     case 'outputs':
+      // "Open Motor Verification" named a surface the Motors-tab redesign
+      // retired; the anchor it targeted only renders inside the Copter-only
+      // reorder panel, so on Plane the scroll gave up silently.
       return {
         kind: 'scroll',
-        label: 'Open Motor Verification',
-        panelId: panel.panelId,
-        targetElementId: OUTPUTS_MOTOR_START_BUTTON_ID
+        label: 'Open Motors',
+        panelId: panel.panelId
       }
     case 'link':
       return {
@@ -109,13 +126,13 @@ export function setupPanelActionForSection(
     case 'radio':
       return {
         kind: 'scroll',
-        label: 'Open Receiver Workbench',
+        label: 'Open Receiver',
         panelId: panel.panelId
       }
     case 'modes':
       return {
         kind: 'scroll',
-        label: 'Open Mode Switch Check',
+        label: 'Open Flight Modes',
         panelId: panel.panelId
       }
     default:
@@ -144,16 +161,28 @@ export function appViewForPanel(panelId: string): AppViewId {
       // on the Motors nav tab. (Servos is a separate nav tab for aux
       // peripheral servo work and isn't part of the setup checklist.)
       return 'motors'
-    case 'setup-panel-calibration':
-      return 'calibration'
-    case 'setup-panel-modes':
-      // Flight modes stopped being a tab and became a Config category, so the
-      // old 'modes' target renders an empty section with nothing selected in
-      // the nav — the step strands with no visible error. Same silent
-      // breakage the power mapping below documents; see
-      // configCategoryForPanel for the other half, since a Config category
-      // only exists in the DOM while it is the active one.
+    case 'setup-panel-tuning':
+      return 'tuning'
+    case 'setup-panel-snapshots':
+      return 'snapshots'
+    case 'setup-panel-arming':
+      // Arming checks are a Config category, like Power and Flight Modes.
       return 'config'
+    case 'setup-panel-parameters':
+      return 'parameters'
+    case 'setup-panel-servos':
+      // Plane/Rover/Sub outputs are the SERVOn_FUNCTION map, reviewed on the
+      // Servos page -- the Motors page shows them a multirotor procedure.
+      return 'servos'
+    case 'setup-panel-calibration':
+    case 'setup-panel-airframe':
+      // Setup categories (configCategoryForPanel picks which).
+      return 'config'
+    case 'setup-panel-modes':
+    case 'receiver-section-flight-modes':
+      // Flight modes live on the Receiver tab only. Pointing this anywhere
+      // else strands the guided Modes step with no visible error.
+      return 'receiver'
     case 'setup-panel-failsafe':
       return 'failsafe'
     case 'setup-panel-power':
@@ -175,12 +204,16 @@ export function appViewForPanel(panelId: string): AppViewId {
  * sitting on Airframe finds nothing, retries eight frames, and gives up
  * silently. The caller selects the category before scrolling.
  */
-export function configCategoryForPanel(panelId: string): 'power' | 'flight-modes' | undefined {
+export function configCategoryForPanel(panelId: string): 'power' | 'arming' | 'calibration' | 'airframe' | undefined {
   switch (panelId) {
+    case 'setup-panel-airframe':
+      return 'airframe'
+    case 'setup-panel-calibration':
+      return 'calibration'
     case 'setup-panel-power':
       return 'power'
-    case 'setup-panel-modes':
-      return 'flight-modes'
+    case 'setup-panel-arming':
+      return 'arming'
     default:
       return undefined
   }

@@ -10,8 +10,9 @@ The port matrix
 ---------------
 
 Each row is one UART, shown by its board name (``UART6``) and its ``SERIALn``
-label, under five columns: **Port**, **Function**, **Baud**, **Flow** and
-**Options**.
+label, under five columns: **Port · Function · Baud · Flow · Options**. Ports
+with nothing assigned are hidden by default. **Show All n Ports** shows them,
+and **Show Active Ports** hides them again.
 
 USB interfaces are named for the cable, not the STM32 peripheral. An ``OTG2``
 appears as ``USB1_2 (OTG2)`` and sorts below the solderable UARTs, because it is
@@ -28,6 +29,13 @@ a second interface on the USB lead and not a port you wire something to.
 - **Options:** a per-bit editor for ``SERIALn_OPTIONS`` (invert RX/TX, half
   duplex, swap RX/TX, pull-ups, no-DMA, and so on). Open it with the
   **Bitmask** button on the row.
+
+Edits stage as drafts. **Apply Port Changes** writes every staged row and
+**Discard Port Changes** drops them. There is one apply bar for the whole page,
+as on Setup and Peripherals. Below the matrix, **Additional port settings**
+holds the serial pass-through parameters (``SERIAL_PASS1`` / ``SERIAL_PASS2``
+/ ``SERIAL_PASSTIMO``). A **MAVLink signing** card can enable or disable
+signing and send a key to the vehicle.
 
 .. note::
 
@@ -146,7 +154,7 @@ Read the counters like this:
 
    ``SERIALn_PROTOCOL``, ``SERIALn_OPTIONS``, and ``BRD_SERn_RTSCTS`` are
    **reboot-required**. They only take effect after a reboot. The tab prompts
-   for a reboot when a staged change needs one. Reboot and re-pull parameters
+   for a reboot when a staged change needs one. Reboot and re-sync parameters
    before you continue. (Baud changes apply without a reboot.)
 
 Telemetry, GPS & other devices

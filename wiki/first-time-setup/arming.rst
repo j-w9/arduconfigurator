@@ -6,7 +6,8 @@ right, and the vehicle still refuses to arm. ArduPilot's pre-arm checks are
 blocking it, and they always say why. Read the reason and fix what it found.
 Don't turn the check off to get past it.
 
-The settings are on the **Config** tab under the **Arming** category. The
+The settings are on the **Setup** tab under the **RC & Arming** category, in one
+**Arming behavior** card with the check grid beside the two short fields. The
 pre-arm *results* are on the **Status & Info** tab.
 
 Reading why it will not arm
@@ -18,9 +19,9 @@ three places:
 
 - **Status & Info → Pre-arm:** a badge reading *Clear* or *N issues*, with the
   failure text listed underneath. Read this one.
-- The **global status bar** carries an *N pre-arm issues* chip, so you notice
-  from any tab.
-- **Recent notices** carries the raw message stream, for the messages that are
+- The **header** carries a *Pre-arm clear* / *N pre-arm issues* pill, so you
+  notice from any tab.
+- **Recent Notices** carries the raw message stream, for the messages that are
   not pre-arm failures.
 
 Work down the list from the top. Most entries name the subsystem and the
@@ -57,10 +58,9 @@ shows you; don't assume:
        Setting bits removes checks. ``-1`` skips every non-mandatory check,
        including ones added by future releases.
 
-The configurator binds whichever one your connected firmware reports and
-labels it to match (*Check bitmask* or *Checks to skip*). It edits it as a grid
-of per-bit checkboxes, with a raw numeric box beside it for pasting a value you
-already have.
+The app binds whichever one your firmware reports and labels it to match. It
+edits it as a grid of per-bit checkboxes (*All checks*, *Barometer*, *Compass*,
+*GPS lock*, …). On 4.7 a ticked box is a skipped check.
 
 .. warning::
 

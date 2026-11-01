@@ -22,12 +22,17 @@ The default for a flight controller plugged into your computer over USB.
    port. If the first port is silent, it tries the other. If you land on the
    wrong one, disconnect and reconnect.
 
+   Boards of the same model share USB identifiers, so with several plugged in the app
+   uses the port you pick in the dialog. A port remembered from an earlier
+   session never overrides it. **Choose a different port** on the landing
+   screen reopens the dialog.
+
 .. warning::
 
    Web Serial needs a Chromium-based browser (Chrome, Edge, Brave, Opera), an
    HTTPS origin and a desktop OS: Chrome 89+ on ChromeOS, Linux, macOS and
-   Windows. If the Serial / USB option is greyed out as *(n/a)*, this browser
-   does not have it.
+   Windows. If **Serial / USB** is greyed out as *(n/a)*, this browser does not
+   have it.
 
 USB (WebUSB) — Android
 ----------------------
@@ -39,16 +44,16 @@ plugged in reports *"Failed to execute 'requestPort' on 'Serial': No port
 selected by user"*.
 
 **WebUSB** works today. Android ships no CDC-ACM driver, so nothing claims the
-board's serial interface before the browser does, and the page drives the port
-itself. Both options stay on Android (a device with the Android Serial API can
-use plain Serial), but **USB (WebUSB)** is the default there. On the desktop it
-is not offered: the operating system owns that interface and claiming it fails.
+board's serial interface before the browser does. Both
+options stay on Android (a device with the Android Serial API can use plain
+Serial), but **USB (WebUSB)** is the default there. On the desktop it is not
+offered: the operating system owns that interface and claiming it fails.
 
 Pick **USB (WebUSB)**, tap **Connect**, and choose the flight controller from
 the browser's device list. The picker is filtered to ArduPilot's USB identifiers
 (``1209:5740`` for boards with two USB serial ports, ``1209:5741`` for one), so
-it lists only the board. Chrome remembers the grant per site, so later sessions
-reconnect without asking again.
+it lists only the board. Chrome remembers the grant
+per site, so later sessions reconnect without asking again.
 
 The link claims the **first** CDC interface, which on an ArduPilot board is
 MAVLink (the second is SLCAN). If the board answers but no heartbeat arrives,
@@ -66,28 +71,32 @@ WebSocket bridge
 
 Connects to a flight controller through the local **MAVLink-over-WebSocket
 bridge**: SITL, a replayed session, or a serial/demo source served from the
-desktop tooling. Enter the bridge URL (default ``ws://localhost:8765``) and
-connect.
+desktop tooling. Pick **WebSocket**, enter the bridge URL (default
+``ws://127.0.0.1:14550``) and connect. The desktop app also offers **UDP
+(direct)** and **TCP (direct)** for a SITL or telemetry endpoint without a
+bridge.
 
 Demo mode
 ---------
 
-Loads the built-in mock vehicle. No hardware is needed, and you can explore
-every part of the app. See :doc:`introduction`.
+**Demo (Copter)** or **Demo (Plane)** loads the built-in mock vehicle. No
+hardware is needed, and you can explore every part of the app. See
+:doc:`introduction`.
 
 After connecting
 ----------------
 
 Once connected, the header shows the vehicle type, firmware version and a live
-link indicator, and the parameter table syncs. From here, go to
+link indicator, and the parameter table syncs. You land on **Status & Info**.
+Its **Vehicle actions** card holds the three bench buttons: **Sync
+Parameters**, **Reboot** and **Flash Firmware**. From here, go to
 :doc:`guided-setup` for a fresh vehicle, or open any tab.
 
 When nothing ever answers
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If the port opens and **no heartbeat ever arrives**, check the baud rate and
-that you picked the MAVLink port. Most controllers expose two USB serial
-interfaces and only one of them speaks MAVLink. A booting board can also take
+If the port opens and no heartbeat arrives, check the baud rate and that you
+picked the MAVLink port (see the two-port note above). A booting board can take
 several seconds to send its first heartbeat.
 
 A board running **Betaflight** never sends one, because it does not speak
@@ -100,16 +109,16 @@ When it answers, but not as ArduPilot
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A board running **PX4** sends heartbeats this app cannot use, and says so:
-**"PX4 is not currently supported."** The board is connected and talking, but
+*"PX4 is not currently supported."* The board is connected and talking, but
 the app cannot configure it. To run ArduPilot, flash it from the Flash tab and
-reconnect.
+reconnect. Any other autopilot type is reported by its MAVLink id.
 
-Only PX4 is named. Any other autopilot type is reported by its MAVLink id.
+If the link drops
+~~~~~~~~~~~~~~~~~
 
 If the link drops mid-sync (for example, a board that watchdog-resets during
 the parameter download), the app keeps the parameters it already read behind a
-**"link lost"** banner. They are marked as no longer live, and nothing can be
-written while disconnected. On reconnect the download **resumes from where it
-stopped**. It keeps retrying while the board comes back, so a resetting board
-still ends up with a complete parameter table. You do not lose data when the
-link drops.
+**link lost** banner. They are marked as no longer live, and nothing can be
+written while disconnected. On reconnect the download resumes where it stopped.
+It keeps retrying while the board comes back, so a resetting board still ends
+with a complete table. You do not lose data when the link drops.
