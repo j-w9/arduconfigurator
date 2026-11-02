@@ -34,6 +34,20 @@ const STATE_DFU_ERROR = 10
 
 const STATUS_OK = 0
 
+// GETSTATUS stalls ridden out before giving up (dfu-util allows 3).
+const MAX_STATUS_STALLS = 3
+const STALL_BACKOFF_MS = 5
+// Tries per chunk before the flash fails.
+const MAX_CHUNK_ATTEMPTS = 3
+// STM32H7 programs flash in 32-byte words; a short final write is padded with
+// erased bytes rather than left for the bootloader to deal with.
+const FLASH_WORD_BYTES = 32
+// A sector erase still busy after this long is wedged, not slow. An STM32H7
+// takes up to 4 s for a 128 KiB sector (datasheet tERASE128KB max) and its ROM
+// asks for a shorter wait than that, so a board still busy after the wait it
+// asked for is usually just erasing; a CLRSTATUS then is stalled.
+const ERASE_WEDGED_AFTER_MS = 10_000
+
 // DfuSe command bytes (download to block 0 = command channel).
 const DFUSE_SET_ADDRESS = 0x21
 const DFUSE_ERASE = 0x41
@@ -81,7 +95,13 @@ export interface DfuFlashProgress {
 
 import type { IntelHexSegment } from './intel-hex.js'
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+/** Waits out a device's poll timeout. Injectable: a browser tab in the
+ *  background throttles main-thread timers to one wake a second (one a minute
+ *  after five minutes), and a flash waits once per block -- so the web app
+ *  passes a clock that keeps time off the main thread. */
+export type DfuSleep = (ms: number) => Promise<void>
+
+const timerSleep: DfuSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Parse a DfuSe interface name string (e.g.
@@ -224,7 +244,8 @@ export class DfuSeDevice {
     private readonly usb: DfuUsbInterface,
     private readonly memory: readonly DfuMemorySector[],
     /** wTransferSize from the DFU functional descriptor (STM32 default 2048). */
-    private readonly transferSize = 2048
+    private readonly transferSize = 2048,
+    private readonly sleep: DfuSleep = timerSleep
   ) {}
 
   async getStatus(): Promise<DfuStatus> {
@@ -266,22 +287,80 @@ export class DfuSeDevice {
     await this.usb.controlOut(DFU_DNLOAD, blockNumber, data)
   }
 
-  /** GETSTATUS-poll until the device leaves its busy/sync states; throws on DFU error. */
-  private async pollUntilIdle(): Promise<DfuStatus> {
-    let status = await this.getStatus()
+  /**
+   * GETSTATUS that rides out a few STALLs. dfu-util does the same: some
+   * bootloaders stall the status request while they are busy writing, and a
+   * single stall used to abort the whole flash partway through.
+   */
+  private async getStatusTolerant(): Promise<DfuStatus> {
+    for (let stalls = 0; ; stalls += 1) {
+      try {
+        return await this.getStatus()
+      } catch (caught) {
+        if (!isStall(caught) || stalls >= MAX_STATUS_STALLS) {
+          throw caught
+        }
+        await this.sleep(STALL_BACKOFF_MS)
+      }
+    }
+  }
+
+  /**
+   * GETSTATUS-poll until the device leaves its busy/sync states; throws on DFU error.
+   *
+   * After a sector erase, some H743 rev V system bootloaders stay in dfuDNBUSY
+   * past the wait they asked for and never leave it. Betaflight found that
+   * STM32CubeProgrammer recovers them with two CLRSTATUS requests (the first
+   * answers dfuERROR, the second dfuIDLE); the erase itself has completed. Only
+   * a sector erase still busy long past any real erase gets that: a board that
+   * is merely still erasing stalls a CLRSTATUS (a real H743 erases for longer
+   * than the wait it asks for). The read-back verify checks the result either way.
+   */
+  private async pollUntilIdle(kind: 'command' | 'erase' | 'mass-erase' | 'block' = 'command'): Promise<DfuStatus> {
+    let status = await this.getStatusTolerant()
+    const started = Date.now()
+    let waitedMs = 0
     while (
       status.state === STATE_DFU_DNBUSY ||
       status.state === STATE_DFU_DNLOAD_SYNC ||
       status.state === STATE_DFU_MANIFEST_SYNC ||
       status.state === STATE_DFU_MANIFEST
     ) {
-      await sleep(Math.max(status.pollTimeoutMs, 1))
-      status = await this.getStatus()
+      // Counted both ways: the waits asked for, and the clock (a board that asks for no wait at all).
+      const busyMs = Math.max(waitedMs, Date.now() - started)
+      if (kind === 'erase' && busyMs >= ERASE_WEDGED_AFTER_MS && status.state === STATE_DFU_DNBUSY) {
+        return this.unwedgeAfterErase()
+      }
+      const wait = Math.max(status.pollTimeoutMs, 1)
+      await this.sleep(wait)
+      waitedMs += wait
+      status = await this.getStatusTolerant()
     }
     if (status.status !== STATUS_OK || status.state === STATE_DFU_ERROR) {
-      throw new Error(`DFU operation failed (status 0x${status.status.toString(16)}, state ${status.state})`)
+      throw new DfuStateError(status)
     }
     return status
+  }
+
+  private async unwedgeAfterErase(): Promise<DfuStatus> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await this.clearStatus()
+      const status = await this.getStatusTolerant()
+      if (status.state === STATE_DFU_IDLE) {
+        return status
+      }
+    }
+    throw new Error('The board stayed busy after a sector erase and did not recover')
+  }
+
+  /** Back to a state that accepts a new command after a failed transfer. */
+  private async recover(): Promise<void> {
+    const status = await this.getStatusTolerant()
+    if (status.state === STATE_DFU_ERROR) {
+      await this.clearStatus()
+    } else if (status.state !== STATE_DFU_IDLE) {
+      await this.abort()
+    }
   }
 
   /** DfuSe command: set the flash address pointer for subsequent block writes. */
@@ -290,48 +369,183 @@ export class DfuSeDevice {
     await this.pollUntilIdle()
   }
 
-  /** DfuSe command: erase the flash page/sector containing `address`. */
+  /** DfuSe command: erase the flash page/sector containing `address`. Erasing
+   *  twice is harmless, so a stalled erase is sent again from idle. */
   private async eraseSector(address: number): Promise<void> {
-    await this.download(0, encodeCommand(DFUSE_ERASE, address))
-    await this.pollUntilIdle()
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.download(0, encodeCommand(DFUSE_ERASE, address))
+        await this.pollUntilIdle('erase')
+        return
+      } catch (caught) {
+        if (attempt >= MAX_CHUNK_ATTEMPTS || !isStall(caught)) {
+          throw caught
+        }
+        await this.recover()
+      }
+    }
   }
 
   /** DfuSe mass erase (ERASE command with no address) — whole chip in one op.
    *  Used for a full wipe when the memory layout isn't enumerable. */
   private async massErase(): Promise<void> {
     await this.download(0, new Uint8Array([DFUSE_ERASE]))
-    await this.pollUntilIdle()
+    await this.pollUntilIdle('mass-erase')
   }
 
-  /** Read every programmed byte back over DFU UPLOAD and byte-compare it to the
-   *  image; throws on the first mismatch. Per ST AN3156 the DfuSe read sequence
-   *  is abort -> set-address -> abort -> UPLOAD blocks 2,3,... */
-  private async verify(
-    segments: readonly IntelHexSegment[],
-    totalBytes: number,
-    onProgress?: (progress: DfuFlashProgress) => void
-  ): Promise<void> {
-    let verifiedBytes = 0
-    for (const segment of segments) {
+  /** Read programmed chunks back over DFU UPLOAD and byte-compare them to what
+   *  was written; throws on the first mismatch. Per ST AN3156 the DfuSe read
+   *  sequence is abort -> set-address -> abort -> UPLOAD blocks 2,3,... from
+   *  that address, so each run of back-to-back full blocks is one read. */
+  private async verifyChunks(chunks: readonly DfuChunk[], onVerified: (bytes: number) => void): Promise<void> {
+    let index = 0
+    while (index < chunks.length) {
+      const runStart = index
+      index = await this.retryReads(() => this.verifyRun(chunks, runStart, onVerified))
+    }
+  }
+
+  /**
+   * A read (UPLOAD, and the ABORTs around it) changes nothing on the board, so
+   * a stall in one is retried from the top after returning the board to idle.
+   */
+  private async retryReads<T>(read: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await read()
+      } catch (caught) {
+        if (attempt >= MAX_CHUNK_ATTEMPTS || !isStall(caught)) {
+          throw caught
+        }
+        await this.recover()
+      }
+    }
+  }
+
+  /** Verify one run of back-to-back chunks from `index`; returns the index after it. */
+  private async verifyRun(chunks: readonly DfuChunk[], from: number, onVerified: (bytes: number) => void): Promise<number> {
+    let index = from
+    let verifiedHere = 0
+    try {
+      const start = chunks[index].address
       await this.abort()
-      await this.setAddress(segment.address)
+      await this.setAddress(start)
       await this.abort()
       let block = 2
-      for (let offset = 0; offset < segment.data.length; offset += this.transferSize) {
-        const expected = segment.data.slice(offset, offset + this.transferSize)
-        const got = await this.usb.controlIn(DFU_UPLOAD, block, expected.length)
-        if (!bytesEqual(got, expected)) {
+      for (;;) {
+        const chunk = chunks[index]
+        const got = await this.usb.controlIn(DFU_UPLOAD, block, chunk.data.length)
+        if (!bytesEqual(got, chunk.data)) {
           throw new Error(
-            `Verification failed at 0x${(segment.address + offset).toString(16)} — flash read-back does not match the firmware image`
+            `Verification failed at 0x${chunk.address.toString(16)} — flash read-back does not match the firmware image`
           )
         }
+        verifiedHere += chunk.data.length
+        onVerified(chunk.data.length)
+        index += 1
         block += 1
-        verifiedBytes += expected.length
-        onProgress?.({
-          phase: 'verify',
-          ratio: verifiedBytes / totalBytes,
-          label: `Verifying ${formatBytes(verifiedBytes)} / ${formatBytes(totalBytes)}`
-        })
+        const next = chunks[index]
+        if (!next || chunk.data.length !== this.transferSize || next.address !== chunk.address + chunk.data.length) {
+          break
+        }
+      }
+    } catch (caught) {
+      // A retried run is read again from its start; take back its progress.
+      onVerified(-verifiedHere)
+      throw caught
+    }
+    return index
+  }
+
+  /** Erase sectors one by one, saying which one is under way: a sector takes
+   *  seconds on an H7, so a bar that moved only when one finished sat still. */
+  private async eraseSectors(
+    starts: readonly number[],
+    kept: ReadonlySet<number>,
+    onProgress?: (progress: DfuFlashProgress) => void
+  ): Promise<void> {
+    const keptNote = kept.size > 0 ? '; bootloader unchanged, left in place' : ''
+    for (let i = 0; i < starts.length; i += 1) {
+      onProgress?.({
+        phase: 'erase',
+        ratio: i / starts.length,
+        label: `Erasing sector ${i + 1} of ${starts.length} at 0x${starts[i].toString(16).toUpperCase().padStart(8, '0')}${keptNote}`
+      })
+      await this.eraseSector(starts[i])
+    }
+    onProgress?.({ phase: 'erase', ratio: 1, label: `Erased ${starts.length} sector(s)${keptNote}` })
+  }
+
+  /** Read `length` bytes from `address` over DFU UPLOAD, then return to idle. */
+  private async readRange(address: number, length: number): Promise<Uint8Array> {
+    const bytes = new Uint8Array(length)
+    await this.abort()
+    await this.setAddress(address)
+    await this.abort()
+    let block = 2
+    for (let offset = 0; offset < length; offset += this.transferSize) {
+      const size = Math.min(this.transferSize, length - offset)
+      const got = await this.usb.controlIn(DFU_UPLOAD, block, size)
+      if (got.length < size) {
+        throw new Error(`DFU UPLOAD returned ${got.length} of ${size} bytes at 0x${(address + offset).toString(16)}`)
+      }
+      bytes.set(got.subarray(0, size), offset)
+      block += 1
+    }
+    await this.abort()
+    return bytes
+  }
+
+  /**
+   * Sectors below the app that already hold exactly what the image would put
+   * there -- normally the bootloader, unchanged from the last flash. Leaving
+   * them alone closes the one window a cut-off flash could not otherwise
+   * survive: between erasing the bootloader's sector and writing it back, the
+   * board has nothing to boot and needs BOOT0.
+   */
+  private async unchangedSectorsBelow(appStart: number, segments: readonly IntelHexSegment[]): Promise<Set<number>> {
+    const imageStart = Math.min(...segments.map((segment) => segment.address))
+    const kept = new Set<number>()
+    for (const sector of this.memory) {
+      if (sector.start < imageStart || sector.start + sector.size > appStart || !sector.readable) {
+        continue
+      }
+      const expected = new Uint8Array(sector.size).fill(0xff)
+      for (const segment of segments) {
+        const from = Math.max(sector.start, segment.address)
+        const to = Math.min(sector.start + sector.size, segment.address + segment.data.length)
+        if (from < to) {
+          expected.set(segment.data.subarray(from - segment.address, to - segment.address), from - sector.start)
+        }
+      }
+      const actual = await this.retryReads(() => this.readRange(sector.start, sector.size))
+      if (bytesEqual(actual, expected)) {
+        kept.add(sector.start)
+      }
+    }
+    return kept
+  }
+
+  /**
+   * Write one chunk at its own address (set-address, then block 2 -- as
+   * dfu-util does -- so a chunk can be sent again on its own). A stall or a
+   * DFU error is retried after returning the board to idle; a disconnect is
+   * not. Resending a chunk the board had already started writing fails again
+   * (flash cannot be rewritten without an erase), so a retry never hides a bad
+   * write -- and the read-back verify checks everything regardless.
+   */
+  private async writeChunk(chunk: DfuChunk): Promise<void> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.setAddress(chunk.address)
+        await this.download(2, chunk.data)
+        await this.pollUntilIdle('block')
+        return
+      } catch (caught) {
+        if (attempt >= MAX_CHUNK_ATTEMPTS || !(isStall(caught) || caught instanceof DfuStateError)) {
+          throw caught
+        }
+        await this.recover()
       }
     }
   }
@@ -373,19 +587,33 @@ export class DfuSeDevice {
 
     await this.clearErrorState()
 
+    const appStart = findAppStart(segments, this.memory)
+    const imageStartAddress = Math.min(...segments.map((segment) => segment.address))
+    const checkBootloader = appStart !== undefined && appStart > imageStartAddress && this.memory.length > 0
+    if (checkBootloader) {
+      onProgress?.({ phase: 'erase', ratio: 0, label: 'Reading the bootloader already on the board' })
+    }
+    const kept = checkBootloader ? await this.unchangedSectorsBelow(appStart, segments) : new Set<number>()
+    const inKeptSector = (address: number) =>
+      this.memory.some((sector) => kept.has(sector.start) && address >= sector.start && address < sector.start + sector.size)
+
     // 1. Erase. Full-erase wipes the whole chip (every sector in the layout, or
     //    a mass-erase when the layout is unknown); otherwise erase only the
     //    sectors the image overlaps.
     if (options?.fullErase) {
       if (this.memory.length > 0) {
-        const all = this.memory.map((sector) => sector.start)
-        for (let i = 0; i < all.length; i += 1) {
-          await this.eraseSector(all[i])
-          onProgress?.({ phase: 'erase', ratio: (i + 1) / all.length, label: `Full chip erase (${all.length} sectors)` })
-        }
+        // Sectors wholly below the image stay: an image without a bootloader
+        // (one that starts at the app's address) must not erase the board's
+        // bootloader, or the chip has nothing to boot.
+        const imageStart = Math.min(...segments.map((segment) => segment.address))
+        const all = this.memory
+          .filter((sector) => sector.start + sector.size > imageStart && !kept.has(sector.start))
+          .map((sector) => sector.start)
+        await this.eraseSectors(all, kept, onProgress)
       } else {
+        onProgress?.({ phase: 'erase', ratio: 0, label: 'Erasing the whole chip' })
         await this.massErase()
-        onProgress?.({ phase: 'erase', ratio: 1, label: 'Full chip erase' })
+        onProgress?.({ phase: 'erase', ratio: 1, label: 'Erased the whole chip' })
       }
     } else if (this.memory.length === 0) {
       // No parseable sector map (the DFU alt exposed no memory layout), so we
@@ -394,44 +622,58 @@ export class DfuSeDevice {
       // the written image is corrupt and fails verify. Fall back to a mass-erase
       // (same as the full-erase-without-a-layout path) rather than silently
       // programming onto un-erased flash.
+      onProgress?.({ phase: 'erase', ratio: 0, label: 'Erasing the whole chip (the board gave no sector map)' })
       await this.massErase()
-      onProgress?.({ phase: 'erase', ratio: 1, label: 'Full chip erase (no sector map)' })
+      onProgress?.({ phase: 'erase', ratio: 1, label: 'Erased the whole chip' })
     } else {
-      const eraseTargets = sectorsToErase(this.memory, segments)
-      if (eraseTargets.length === 0) {
+      const touched = sectorsToErase(this.memory, segments)
+      if (touched.length === 0) {
         throw new Error('Firmware image lies outside the device flash memory map — refusing to flash')
       }
-      for (let i = 0; i < eraseTargets.length; i += 1) {
-        await this.eraseSector(eraseTargets[i])
-        onProgress?.({ phase: 'erase', ratio: (i + 1) / eraseTargets.length, label: `Erasing ${eraseTargets.length} sector(s)` })
-      }
+      const eraseTargets = touched.filter((start) => !kept.has(start))
+      await this.eraseSectors(eraseTargets, kept, onProgress)
     }
 
-    // 2. Program each segment in transferSize blocks (set address pointer per
-    //    segment, then stream blocks 2,3,4,... per ST AN3156).
-    const totalBytes = segments.reduce((sum, segment) => sum + segment.data.length, 0)
+    // 2. Program, then 3. verify. The app's first block -- its vector table --
+    //    is held back until everything else is written and read back, then
+    //    written and verified last. ArduPilot's bootloader will not start an
+    //    app whose first words are blank (bl_protocol.cpp holds the same words
+    //    back for the same reason), so a flash cut off at any point leaves a
+    //    board that waits in its bootloader, ready to be flashed again, never
+    //    one that jumps into a half-written app.
+    const chunks = planDfuChunks(segments, this.transferSize).filter((chunk) => !inKeptSector(chunk.address))
+    // Only the first flash word (32 bytes, ArduPilot's eight RESERVE_LEAD_WORDS)
+    // is held back -- a power cut halfway through a whole held block could
+    // otherwise land the vector table without the code behind it.
+    const first = chunks.find((chunk) => chunk.address === appStart) ?? chunks[0]
+    const held: DfuChunk = { address: first.address, data: first.data.slice(0, FLASH_WORD_BYTES) }
+    const rest = chunks.flatMap((chunk) =>
+      chunk !== first
+        ? [chunk]
+        : chunk.data.length > FLASH_WORD_BYTES
+          ? [{ address: chunk.address + FLASH_WORD_BYTES, data: chunk.data.slice(FLASH_WORD_BYTES) }]
+          : []
+    )
+    const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.data.length, 0)
     let sentBytes = 0
-    for (const segment of segments) {
-      await this.setAddress(segment.address)
-      let block = 2
-      for (let offset = 0; offset < segment.data.length; offset += this.transferSize) {
-        const chunk = segment.data.slice(offset, offset + this.transferSize)
-        await this.download(block, chunk)
-        await this.pollUntilIdle()
-        block += 1
-        sentBytes += chunk.length
-        onProgress?.({
-          phase: 'program',
-          ratio: sentBytes / totalBytes,
-          label: `Flashing ${formatBytes(sentBytes)} / ${formatBytes(totalBytes)}`
-        })
-      }
+    const programmed = (bytes: number) => {
+      sentBytes += bytes
+      onProgress?.({ phase: 'program', ratio: sentBytes / totalBytes, label: `Flashing ${formatBytes(sentBytes)} / ${formatBytes(totalBytes)}` })
     }
-
-    // 3. Verify: read every programmed byte back over DFU UPLOAD and compare to
-    //    the image. A failed verify throws before the board reboots, so it never
-    //    boots a half-written image.
-    await this.verify(segments, totalBytes, onProgress)
+    let verifiedBytes = 0
+    const verified = (bytes: number) => {
+      verifiedBytes += bytes
+      onProgress?.({ phase: 'verify', ratio: verifiedBytes / totalBytes, label: `Verifying ${formatBytes(verifiedBytes)} / ${formatBytes(totalBytes)}` })
+    }
+    for (const chunk of rest) {
+      await this.writeChunk(chunk)
+      programmed(chunk.data.length)
+    }
+    await this.verifyChunks(rest, verified)
+    onProgress?.({ phase: 'verify', ratio: verifiedBytes / totalBytes, label: "Writing the firmware's first bytes, last" })
+    await this.writeChunk(held)
+    sentBytes += held.data.length
+    await this.verifyChunks([held], verified)
 
     // 4. Manifest + leave: point at the image start and issue a zero-length
     //    download to leave DFU. The write + read-back already succeeded, so the
@@ -449,6 +691,109 @@ export class DfuSeDevice {
     }
     onProgress?.({ phase: 'manifest', ratio: 1, label: 'Finishing and rebooting' })
   }
+}
+
+/** A board's DFU status reported an error. */
+export class DfuStateError extends Error {
+  readonly status: number
+  readonly state: number
+
+  constructor(status: DfuStatus) {
+    super(`DFU operation failed (status 0x${status.status.toString(16)}, state ${status.state})`)
+    this.name = 'DfuStateError'
+    this.status = status.status
+    this.state = status.state
+  }
+}
+
+function isStall(caught: unknown): boolean {
+  // Chrome on Windows does not report a stalled control transfer as status
+  // 'stall': WinUSB fails it, and WebUSB throws "A transfer error has occurred"
+  // (NetworkError). A board that is gone throws NotFoundError instead.
+  return (
+    caught instanceof Error &&
+    (/\bstall\b/i.test(caught.message) || caught.name === 'NetworkError' || /transfer error has occurred/i.test(caught.message))
+  )
+}
+
+/** One write: at most transferSize bytes at an address. */
+export interface DfuChunk {
+  address: number
+  data: Uint8Array
+}
+
+/**
+ * Split the image into transferSize writes. Each segment's last write is
+ * padded with 0xFF (erased flash) to a whole flash word, where the gap to the
+ * next segment allows.
+ */
+export function planDfuChunks(segments: readonly IntelHexSegment[], transferSize: number): DfuChunk[] {
+  const sorted = [...segments].sort((a, b) => a.address - b.address)
+  const chunks: DfuChunk[] = []
+  sorted.forEach((segment, index) => {
+    for (let offset = 0; offset < segment.data.length; offset += transferSize) {
+      let data = segment.data.slice(offset, offset + transferSize)
+      const end = segment.address + offset + data.length
+      const short = end % FLASH_WORD_BYTES
+      if (offset + transferSize >= segment.data.length && short !== 0) {
+        const next = sorted[index + 1]
+        const room = next ? next.address - end : Number.POSITIVE_INFINITY
+        const pad = Math.min(FLASH_WORD_BYTES - short, room, transferSize - data.length)
+        if (pad > 0) {
+          const padded = new Uint8Array(data.length + pad).fill(0xff)
+          padded.set(data)
+          data = padded
+        }
+      }
+      chunks.push({ address: segment.address + offset, data })
+    }
+  })
+  return chunks
+}
+
+function readWord(segments: readonly IntelHexSegment[], address: number): number | undefined {
+  for (const segment of segments) {
+    const offset = address - segment.address
+    if (offset >= 0 && offset + 4 <= segment.data.length) {
+      const d = segment.data
+      return (d[offset] | (d[offset + 1] << 8) | (d[offset + 2] << 16) | (d[offset + 3] << 24)) >>> 0
+    }
+  }
+  return undefined
+}
+
+function looksLikeVectorTable(segments: readonly IntelHexSegment[], address: number, imageEnd: number): boolean {
+  const stack = readWord(segments, address)
+  const reset = readWord(segments, address + 4)
+  if (stack === undefined || reset === undefined) {
+    return false
+  }
+  // Initial stack pointer in RAM (CCM / SRAM / H7 AXI SRAM / H7 D2 SRAM), and a
+  // Thumb reset handler inside the image.
+  const ram = [0x10000000, 0x20000000, 0x24000000, 0x30000000].some((base) => stack > base && stack <= base + 0x100000)
+  // STM32F7 builds may start through the ITCM alias of flash (0x0020_0000 maps 0x0800_0000).
+  const target = reset >= 0x00200000 && reset < 0x00400000 ? reset - 0x00200000 + 0x08000000 : reset
+  return ram && (stack & 3) === 0 && (reset & 1) === 1 && target > address && target < imageEnd
+}
+
+/**
+ * Where the app starts in this image: the first sector boundary past the
+ * image's start that holds a Cortex-M vector table (a _with_bl image: the
+ * bootloader sits below it), else the image's start when that holds one (an
+ * app-only image). Undefined when neither does.
+ */
+export function findAppStart(segments: readonly IntelHexSegment[], sectors: readonly DfuMemorySector[]): number | undefined {
+  if (segments.length === 0) {
+    return undefined
+  }
+  const imageStart = Math.min(...segments.map((segment) => segment.address))
+  const imageEnd = Math.max(...segments.map((segment) => segment.address + segment.data.length))
+  for (const sector of sectors) {
+    if (sector.start > imageStart && sector.start < imageEnd && looksLikeVectorTable(segments, sector.start, imageEnd)) {
+      return sector.start
+    }
+  }
+  return looksLikeVectorTable(segments, imageStart, imageEnd) ? imageStart : undefined
 }
 
 function encodeCommand(command: number, address: number): Uint8Array {

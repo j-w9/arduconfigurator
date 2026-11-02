@@ -39,3 +39,6 @@ export {
   parseFirmwareStringFromBanner,
   parsePwmOutputCountFromBanner
 } from './runtime-helpers.js'
+export { GCS_DRONECAN_NODE_ID } from './runtime-can-bus-service.js'
+export { AdapterCanBus } from './adapter-can-bus.js'
+export { createDemoSlcanIo } from './demo-slcan.js'

@@ -42,8 +42,11 @@ export function periphCandidates(rows: readonly FirmwareIndexRow[], boardId: num
 }
 
 export function relayPeriphFirmwareSource(rows: readonly FirmwareIndexRow[]): DronecanFirmwareOnlineSource {
+  // Every build, every channel: the panel's picker filters it.
+  const allBuilds = rows.map((row) => periphCandidates([row], row.boardId)[0])
   return {
     available: true,
+    allBuilds,
     findCandidates: async (node: DronecanInspectedNode) => {
       const boardId = dronecanNodeBoardId(node.hwVersion)
       if (boardId === undefined) {

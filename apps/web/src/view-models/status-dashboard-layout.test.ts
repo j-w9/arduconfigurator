@@ -507,6 +507,24 @@ describe('isDefaultStatusDashboardLayout', () => {
       isDefaultStatusDashboardLayout(toggleStatusDashboardColumnFlow(start, 'midcol'), specsWithSensors)
     ).toBe(false)
   })
+
+  it('a default layout saved before the sensor cards existed is still the default once they appear', () => {
+    // Saved before the parameters arrived (no GPS/rangefinder/flow cards yet):
+    // the cards are added back at the end of the array, in their own column,
+    // so the page reads exactly like the default and must not offer Reset.
+    const withoutAnySensor = specsWithSensors.filter((spec) => spec.column !== 'sensors')
+    const saved = defaultStatusDashboardLayout(withoutAnySensor)
+    expect(isDefaultStatusDashboardLayout(reconcileStatusDashboardLayout(saved, specsWithSensors), specsWithSensors)).toBe(true)
+  })
+
+  it('reads the columns as they show: a card moved away and back is still the default', () => {
+    const start = defaultStatusDashboardLayout(specsWithSensors)
+    const away = moveStatusDashboardCard(start, 'gps', 'sidebar', 0)
+    const gpsColumn = start.cards.find((card) => card.id === 'gps')!.column
+    const gpsIndex = start.cards.filter((card) => card.column === gpsColumn).findIndex((card) => card.id === 'gps')
+    const back = moveStatusDashboardCard(away, 'gps', gpsColumn, gpsIndex)
+    expect(isDefaultStatusDashboardLayout(back, specsWithSensors)).toBe(true)
+  })
 })
 
 // ── Drop-target hit testing ───────────────────────────────────────────────

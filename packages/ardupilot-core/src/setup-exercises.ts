@@ -326,9 +326,23 @@ export function advanceModeSwitchExerciseState(
   let visitedSlots = current.visitedSlots
   let unexpectedSlots = current.unexpectedSlots
 
-  if (current.targetSlots.includes(observedSlot)) {
-    if (!visitedSlots.includes(observedSlot)) {
-      visitedSlots = [...visitedSlots, observedSlot].sort((left, right) => left - right)
+  // The targets are the FIRST slot carrying each distinct mode value, but the
+  // switch may land on a later slot that carries the same mode (FLTMODE1 and
+  // FLTMODE4 both Stabilize is the default). Credit the target that mode
+  // belongs to; filing it as unexpected stalled the exercise with no way to
+  // pass and no failure either.
+  const observedValue = estimate.configuredValue
+  const creditedSlot = current.targetSlots.includes(observedSlot)
+    ? observedSlot
+    : observedValue === undefined
+      ? undefined
+      : deriveModeAssignments(snapshot, vehicle).find(
+          (assignment) => current.targetSlots.includes(assignment.slot) && assignment.value === observedValue
+        )?.slot
+
+  if (creditedSlot !== undefined) {
+    if (!visitedSlots.includes(creditedSlot)) {
+      visitedSlots = [...visitedSlots, creditedSlot].sort((left, right) => left - right)
     }
   } else if (!unexpectedSlots.includes(observedSlot)) {
     unexpectedSlots = [...unexpectedSlots, observedSlot].sort((left, right) => left - right)

@@ -321,10 +321,16 @@ export function decodeDronecanNodeStatus(payload: Uint8Array): DronecanNodeStatu
   }
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
   const uptimeSec = view.getUint32(0, true)
+  // DroneCAN packs a byte's fields from the MOST significant bit down:
+  // uint2 health is the top two bits, uint3 mode the next three, uint3
+  // sub_mode the bottom three (pydronecan / libcanard). This read them from
+  // the bottom up, which only agreed for the all-zero byte of a healthy,
+  // operational node -- a warning, maintenance or software-update node was
+  // misreported. Pinned against pydronecan's vectors in dronecan-dsdl.test.
   const packed = payload[4]
-  const health = packed & 0x03
-  const mode = (packed >> 2) & 0x07
-  const subMode = (packed >> 5) & 0x07
+  const health = (packed >> 6) & 0x03
+  const mode = (packed >> 3) & 0x07
+  const subMode = packed & 0x07
   const vendorSpecificStatusCode = view.getUint16(5, true)
   return { uptimeSec, health, mode, subMode, vendorSpecificStatusCode }
 }
@@ -543,7 +549,7 @@ export interface DronecanGetSetResponse {
 export function decodeDronecanGetSetResponse(payload: Uint8Array): DronecanGetSetResponse | undefined {
   // BYTE-ALIGNED, back-to-back:
   //   Value         value         (1-byte tag + variant — 5 variants)
-  //   NumericValue  default_value (1-byte tag + variant — 3 variants)
+  //   Value         default_value (1-byte tag + variant — 5 variants)
   //   NumericValue  max_value     (1-byte tag + variant)
   //   NumericValue  min_value     (1-byte tag + variant)
   //   uint8[<=92]   name          (tail bytes, byte-aligned)
@@ -563,7 +569,10 @@ export function decodeDronecanGetSetResponse(payload: Uint8Array): DronecanGetSe
   // wire.
   const value = readDronecanValueBytes(payload, 0, true)
   if (!value) return undefined
-  const defaultValue = readDronecanValueBytes(payload, value.next, false)
+  // default_value is a full Value in the DSDL (bool and string allowed), not
+  // a NumericValue like max/min: read as numeric, a bool or string param's
+  // response was rejected outright and the param never loaded.
+  const defaultValue = readDronecanValueBytes(payload, value.next, true)
   if (!defaultValue) return undefined
   const maxValue = readDronecanValueBytes(payload, defaultValue.next, false)
   if (!maxValue) return undefined
@@ -1161,7 +1170,7 @@ export function encodeDronecanNodeStatus(status: DronecanNodeStatus): Uint8Array
   const out = new Uint8Array(7)
   const view = new DataView(out.buffer)
   view.setUint32(0, status.uptimeSec >>> 0, true)
-  out[4] = (status.health & 0x03) | ((status.mode & 0x07) << 2) | ((status.subMode & 0x07) << 5)
+  out[4] = ((status.health & 0x03) << 6) | ((status.mode & 0x07) << 3) | (status.subMode & 0x07)
   view.setUint16(5, status.vendorSpecificStatusCode & 0xffff, true)
   return out
 }
@@ -1256,4 +1265,49 @@ export function encodeDronecanExecuteOpcodeResponse(argument: bigint, ok: boolea
   for (let i = 0; i < 6; i += 1) out[i] = Number((arg >> BigInt(8 * i)) & 0xffn)
   out[6] = ok ? 1 : 0
   return out
+}
+
+// ---------------------------------------------------------------------------
+// uavcan.protocol.dynamic_node_id.Allocation (message 1): dynamic node ID
+// allocation. A node without an ID sends its unique ID ANONYMOUSLY (source 0)
+// in up to three parts (6 + 6 + 4 bytes); the allocator echoes what it has so
+// far, then answers the last part with the node ID.
+// Layout: node_id uint7 | first_part_of_unique_id bool | unique_id uint8[<=16]
+// (the array is last, so on classic CAN it has no length prefix).
+
+export const DRONECAN_ALLOCATION_DT_ID = 1
+export const DRONECAN_ALLOCATION_SIGNATURE = 0x0b2a812620a11d40n
+/** The allocator forgets a half-finished request after this (FOLLOWUP_TIMEOUT_MS). */
+export const DRONECAN_ALLOCATION_FOLLOWUP_TIMEOUT_MS = 500
+
+export interface DronecanAllocation {
+  nodeId: number
+  firstPartOfUniqueId: boolean
+  uniqueId: Uint8Array
+}
+
+export function decodeDronecanAllocation(payload: Uint8Array): DronecanAllocation | undefined {
+  if (payload.length < 1 || payload.length > 17) return undefined
+  return {
+    nodeId: payload[0] >> 1,
+    firstPartOfUniqueId: (payload[0] & 1) === 1,
+    uniqueId: payload.slice(1)
+  }
+}
+
+export function encodeDronecanAllocation(allocation: DronecanAllocation): Uint8Array {
+  const out = new Uint8Array(1 + Math.min(16, allocation.uniqueId.length))
+  out[0] = ((allocation.nodeId & 0x7f) << 1) | (allocation.firstPartOfUniqueId ? 1 : 0)
+  out.set(allocation.uniqueId.subarray(0, 16), 1)
+  return out
+}
+
+/** An anonymous (source 0) message frame whose type id ends in Allocation's low two bits. */
+export function dronecanIsAnonymousAllocationFrame(canId: number): boolean {
+  return (canId & 0x7f) === 0 && ((canId >>> 7) & 1) === 0 && ((canId >>> 8) & 0x3) === (DRONECAN_ALLOCATION_DT_ID & 0x3)
+}
+
+/** An anonymous message's CAN id: a random 14-bit discriminator in place of the type id's upper bits. */
+export function dronecanEncodeAnonymousCanId(priority: number, messageTypeId: number, discriminator: number): number {
+  return (((priority & 0x1f) << 24) | ((discriminator & 0x3fff) << 10) | ((messageTypeId & 0x3) << 8)) >>> 0
 }

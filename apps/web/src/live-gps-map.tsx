@@ -12,6 +12,9 @@ interface LiveGpsMapCardProps {
   title: string
   subtitle: string
   compact?: boolean
+  /** The latitude / longitude / altitude / speed tiles under the map. Off
+   *  where the card above already lists them (Status & Info). */
+  readouts?: boolean
   testId?: string
 }
 
@@ -168,7 +171,7 @@ function distanceBetweenCoordinatesMeters(a: StableMapFocus, b: StableMapFocus):
   return Math.hypot(latitudeMeters, longitudeMeters)
 }
 
-export function LiveGpsMapCard({ snapshot, title, subtitle, compact = false, testId }: LiveGpsMapCardProps) {
+export function LiveGpsMapCard({ snapshot, title, subtitle, compact = false, testId, readouts = true }: LiveGpsMapCardProps) {
   const position = snapshot.liveVerification.globalPosition
   const latitudeDeg = position.latitudeDeg
   const longitudeDeg = position.longitudeDeg
@@ -235,6 +238,7 @@ export function LiveGpsMapCard({ snapshot, title, subtitle, compact = false, tes
         )}
       </div>
 
+      {readouts ? (
       <div className="gps-map-card__meta">
         <article>
           <span>Latitude</span>
@@ -253,13 +257,9 @@ export function LiveGpsMapCard({ snapshot, title, subtitle, compact = false, tes
           <strong>{formatMetric(position.groundSpeedMs, ' m/s')}</strong>
         </article>
       </div>
+      ) : null}
 
       <div className="gps-map-card__footer">
-        <small>
-          {verified
-            ? 'Map tiles come from OpenStreetMap. The view recenters only after meaningful aircraft movement so zoom and pan stay usable during small GPS drift.'
-            : 'Mission-control style location review appears automatically when the flight controller reports a live global position.'}
-        </small>
         {externalUrl ? (
           <a href={externalUrl} target="_blank" rel="noreferrer">
             Open in OpenStreetMap

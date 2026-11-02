@@ -2,9 +2,6 @@ import type { ReactNode } from 'react'
 import { Panel } from '@arduconfig/ui-kit'
 
 export interface SnapshotsViewProps {
-  snapshotsCount: number
-  profilesCount: number
-  activeDiffCount: number
   hiddenInputsSlot?: ReactNode
   /** "Reset to Defaults" control, near the top where the operator already is
    *  when deciding they want a clean slate. */
@@ -17,9 +14,6 @@ export interface SnapshotsViewProps {
 
 export function SnapshotsView(props: SnapshotsViewProps) {
   const {
-    snapshotsCount,
-    profilesCount,
-    activeDiffCount,
     hiddenInputsSlot,
     resetToDefaultsSlot,
     libraryFormSlot,
@@ -29,34 +23,12 @@ export function SnapshotsView(props: SnapshotsViewProps) {
   } = props
 
   return (
-    <section className="grid one-up snapshots-page">
+    <section className="grid one-up snapshots-page" id="setup-panel-snapshots">
       <Panel
         title="Snapshots"
       >
         <div className="telemetry-stack snapshots-page__stack">
           {hiddenInputsSlot}
-
-          <div className="snapshots-page__hero">
-            <div className="snapshots-page__hero-copy">
-              <span className="snapshots-page__eyebrow">Configuration Baselines</span>
-              <h3>Local libraries for restore and batch provisioning</h3>
-              <p>Capture trusted baselines, build reusable provisioning profiles, and apply only the verified diff back to a live vehicle.</p>
-            </div>
-            <div className="snapshots-page__hero-metrics">
-              <div className="snapshots-page__hero-metric">
-                <span>Snapshots</span>
-                <strong>{snapshotsCount}</strong>
-              </div>
-              <div className="snapshots-page__hero-metric">
-                <span>Profiles</span>
-                <strong>{profilesCount}</strong>
-              </div>
-              <div className="snapshots-page__hero-metric">
-                <span>Active diff</span>
-                <strong>{activeDiffCount}</strong>
-              </div>
-            </div>
-          </div>
 
           {resetToDefaultsSlot ? (
             <div className="snapshots-page__reset" data-testid="snapshots-reset-row">

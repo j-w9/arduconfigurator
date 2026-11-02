@@ -117,6 +117,9 @@ export interface SnapshotsSectionRefs {
 export interface SnapshotsSectionHandlers {
   handleApplySelectedProvisioningProfile: () => void | Promise<void>
   handleApplySelectedSnapshotRestore: () => void | Promise<void>
+  /** Stage All, then write the staged set at once (field request: the
+   *  operator restoring their own snapshot knows the values are right). */
+  handleStageAndWriteSelectedSnapshotRestore: () => void | Promise<void>
   /** Apply ONE row of the snapshot restore diff (field request: apply
    *  individual parameters like the Parameters tab). Same overwrite ack
    *  gates it as the full restore. */
@@ -184,7 +187,6 @@ export interface SnapshotsSectionProps {
   busyAction: string | undefined
   canApplyDraftParameters: boolean
   parameterFollowUp: ParameterFollowUp | undefined
-  isExpertMode: boolean
   /** Rendered near the top of the page — see ResetToDefaultsButton. */
   resetToDefaultsSlot?: ReactNode
   snapshotNotice: ParameterNotice | undefined
@@ -207,7 +209,6 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     busyAction,
     canApplyDraftParameters,
     parameterFollowUp,
-    isExpertMode,
     snapshotNotice,
     provisioningNotice,
     formatCategoryLabel,
@@ -306,6 +307,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   const {
     handleApplySelectedProvisioningProfile,
     handleApplySelectedSnapshotRestore,
+    handleStageAndWriteSelectedSnapshotRestore,
     handleApplySnapshotEntry,
     handleApplySnapshotGroup,
     handleDropSnapshotGroup,
@@ -354,11 +356,32 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   // re-seeded whenever it changes, so opening the form on a different snapshot
   // never shows the previous one's text.
   const [editingSnapshot, setEditingSnapshot] = useState(false)
+  // Tags, note and protect sit behind "Details" (field request: one capture
+  // row). Capture itself never needs them.
+  const [captureDetailsOpen, setCaptureDetailsOpen] = useState(false)
   const [editLabel, setEditLabel] = useState('')
   const [editTags, setEditTags] = useState('')
   const [editNote, setEditNote] = useState('')
 
   const selectedSnapshotId = selectedSnapshot?.id
+  // Restore groups start folded (field request): the operator restoring their
+  // own snapshot reads the headings and the counts and goes to Stage All; a
+  // group opens on its heading. Re-folded when another snapshot is selected.
+  const [expandedRestoreGroups, setExpandedRestoreGroups] = useState<ReadonlySet<string>>(() => new Set())
+  useEffect(() => {
+    setExpandedRestoreGroups(new Set())
+  }, [selectedSnapshotId])
+  const toggleRestoreGroup = (category: string): void => {
+    setExpandedRestoreGroups((current) => {
+      const next = new Set(current)
+      if (next.has(category)) {
+        next.delete(category)
+      } else {
+        next.add(category)
+      }
+      return next
+    })
+  }
   useEffect(() => {
     setEditingSnapshot(false)
     setEditLabel(selectedSnapshot?.label ?? '')
@@ -389,9 +412,6 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   return (
 
       <SnapshotsView
-        snapshotsCount={savedSnapshots.length}
-        profilesCount={savedProvisioningProfiles.length}
-        activeDiffCount={selectedSnapshotChangedEntries.length + selectedProvisioningProfileChangedEntries.length}
         resetToDefaultsSlot={props.resetToDefaultsSlot}
         hiddenInputsSlot={
           <>
@@ -418,7 +438,6 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
             <div className="snapshots-section-header">
               <div>
                 <h3>Capture and restore trusted baselines</h3>
-                <p>Keep known-good controller states close at hand and restore them through the verified write path.</p>
               </div>
               <div className="snapshots-section-meta">
                 <span className="snapshots-counter-chip">
@@ -431,13 +450,8 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
               </div>
             </div>
 
-            <div className="snapshot-capture-row snapshots-form-grid">
-              <div className="snapshots-form-group-heading">
-                <span>Baseline Metadata</span>
-                <p>Name the baseline and add only the context you will actually use later.</p>
-              </div>
-
-              <label className="scoped-editor-field snapshots-field">
+            <div className="snapshot-capture-bar" data-testid="snapshot-capture-bar">
+              <label className="scoped-editor-field snapshots-field snapshot-capture-bar__label">
                 <span>Snapshot label</span>
                 <input
                   data-testid="snapshot-label-input"
@@ -446,39 +460,38 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   onChange={(event) => setSnapshotLabelInput(event.target.value)}
                   placeholder="Garage tune v1 baseline"
                 />
-                <small>Leave blank to generate a timestamped vehicle label.</small>
               </label>
+              <button
+                data-testid="capture-live-snapshot-button"
+                className="snapshots-button snapshots-button--primary"
+                onClick={handleCaptureLiveSnapshot}
+                disabled={busyAction !== undefined || snapshot.parameters.length === 0}
+              >
+                Capture Live Snapshot
+              </button>
+              <button
+                type="button"
+                data-testid="snapshot-capture-details-toggle"
+                className="snapshots-button snapshots-button--ghost"
+                aria-expanded={captureDetailsOpen}
+                onClick={() => setCaptureDetailsOpen((open) => !open)}
+              >
+                {captureDetailsOpen ? 'Hide details' : 'Details'}
+              </button>
+            </div>
 
-              <label className="scoped-editor-field snapshots-field">
-                <span>Tags</span>
-                <input
-                  data-testid="snapshot-tags-input"
-                  type="text"
-                  value={snapshotTagsInput}
-                  onChange={(event) => setSnapshotTagsInput(event.target.value)}
-                  placeholder="moz7, baseline, tune"
-                />
-                <small>Comma-separated metadata for later filtering.</small>
-              </label>
-
-              <label className="scoped-editor-field snapshots-field snapshots-field--wide">
-                <span>Note</span>
-                <textarea
-                  data-testid="snapshot-note-input"
-                  value={snapshotNoteInput}
-                  onChange={(event) => setSnapshotNoteInput(event.target.value)}
-                  placeholder="Context for when and why this baseline was captured."
-                  rows={4}
-                />
-                <small>Notes travel with exported libraries.</small>
-              </label>
-
-              <div className="snapshot-capture-actions snapshots-capture-actions">
-                <div className="snapshots-form-group-heading">
-                  <span>Capture Controls</span>
-                  <p>One primary action, plus quieter library import and export utilities.</p>
-                </div>
-
+            {captureDetailsOpen ? (
+              <div className="snapshot-capture-details snapshots-form-grid" data-testid="snapshot-capture-details">
+                <label className="scoped-editor-field snapshots-field">
+                  <span>Tags</span>
+                  <input
+                    data-testid="snapshot-tags-input"
+                    type="text"
+                    value={snapshotTagsInput}
+                    onChange={(event) => setSnapshotTagsInput(event.target.value)}
+                    placeholder="moz7, baseline, tune"
+                  />
+                </label>
                 <label className="snapshot-protected-toggle snapshots-setting-row">
                   <input
                     data-testid="snapshot-protected-toggle"
@@ -488,73 +501,69 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   />
                   <span>
                     <strong>Protect this baseline</strong>
-                    <small>Prevents accidental removal of a known-good restore point.</small>
                   </span>
                 </label>
-
-                <div className="snapshots-action-row">
-                  <button
-                    data-testid="capture-live-snapshot-button"
-                    className="snapshots-button snapshots-button--primary"
-                    onClick={handleCaptureLiveSnapshot}
-                    disabled={busyAction !== undefined || snapshot.parameters.length === 0}
-                  >
-                    Capture Live Snapshot
-                  </button>
-                  {selectedSnapshot ? (
-                    <button
-                      data-testid="overwrite-selected-snapshot-button"
-                      className="snapshots-button snapshots-button--secondary"
-                      onClick={handleOverwriteSelectedSnapshot}
-                      disabled={busyAction !== undefined || snapshot.parameters.length === 0}
-                      title={`Replace "${selectedSnapshot.label}" with the current live values, keeping the same saved entry.`}
-                    >
-                      Overwrite Selected
-                    </button>
-                  ) : null}
-                  <button
-                    data-testid="import-snapshot-file-button"
-                    className="snapshots-button snapshots-button--secondary"
-                    onClick={handleOpenSnapshotImport}
-                    disabled={busyAction !== undefined}
-                  >
-                    Import Library
-                  </button>
-                  <button
-                    data-testid="export-snapshot-library-button"
-                    className="snapshots-button snapshots-button--secondary"
-                    onClick={handleExportSnapshotLibrary}
-                    disabled={busyAction !== undefined || savedSnapshots.length === 0}
-                  >
-                    Export Library
-                  </button>
-                  {/* Same bytes as Export Library, filed under this aircraft on
-                      the operator's own log server. */}
-                  <UploadToLogServerButton
-                    available={artifactUpload.available}
-                    serverUrl={artifactUpload.serverUrl}
-                    status={artifactUpload.status}
-                    onUpload={handleUploadSnapshotLibrary}
-                    defaultFileName={snapshotLibraryUploadTarget.fileName}
-                    folder={snapshotLibraryUploadTarget.folder}
-                    label="this snapshot library"
-                    testId="upload-snapshot-library-button"
-                    disabled={busyAction !== undefined || savedSnapshots.length === 0}
+                <label className="scoped-editor-field snapshots-field snapshots-field--wide">
+                  <span>Note</span>
+                  <textarea
+                    data-testid="snapshot-note-input"
+                    value={snapshotNoteInput}
+                    onChange={(event) => setSnapshotNoteInput(event.target.value)}
+                    placeholder="Context for when and why this baseline was captured."
+                    rows={3}
                   />
-                </div>
+                </label>
               </div>
-            </div>
+            ) : null}
 
-            <p className="telemetry-note snapshots-inline-note">
-              Snapshot libraries stay local by default, but exported libraries remain portable across later sessions and desktop tooling.
-            </p>
+            <div className="snapshots-action-row snapshot-library-actions">
+              {selectedSnapshot ? (
+                <button
+                  data-testid="overwrite-selected-snapshot-button"
+                  className="snapshots-button snapshots-button--secondary"
+                  onClick={handleOverwriteSelectedSnapshot}
+                  disabled={busyAction !== undefined || snapshot.parameters.length === 0}
+                  title={`Replace "${selectedSnapshot.label}" with the current live values, keeping the same saved entry.`}
+                >
+                  Overwrite Selected
+                </button>
+              ) : null}
+              <button
+                data-testid="import-snapshot-file-button"
+                className="snapshots-button snapshots-button--secondary"
+                onClick={handleOpenSnapshotImport}
+                disabled={busyAction !== undefined}
+              >
+                Import Library
+              </button>
+              <button
+                data-testid="export-snapshot-library-button"
+                className="snapshots-button snapshots-button--secondary"
+                onClick={handleExportSnapshotLibrary}
+                disabled={busyAction !== undefined || savedSnapshots.length === 0}
+              >
+                Export Library
+              </button>
+              {/* Same bytes as Export Library, filed under this aircraft on
+                  the operator's own log server. */}
+              <UploadToLogServerButton
+                available={artifactUpload.available}
+                serverUrl={artifactUpload.serverUrl}
+                status={artifactUpload.status}
+                onUpload={handleUploadSnapshotLibrary}
+                defaultFileName={snapshotLibraryUploadTarget.fileName}
+                folder={snapshotLibraryUploadTarget.folder}
+                label="this snapshot library"
+                testId="upload-snapshot-library-button"
+                disabled={busyAction !== undefined || savedSnapshots.length === 0}
+              />
+            </div>
 
             {desktopBridge ? (
               <div className="desktop-snapshot-workspace">
                 <div className="snapshots-subsection-header">
                   <div>
                     <h3>Desktop snapshot files</h3>
-                    <p>Open or save a named library file through the desktop shell without leaving this workflow.</p>
                   </div>
                   <span className={`snapshots-counter-chip${desktopSnapshotLibraryPath ? ' is-success' : ''}`}>
                     {desktopSnapshotLibraryPath ? 'linked library' : 'local only'}
@@ -567,9 +576,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     <span>{desktopSnapshotLibraryPath}</span>
                   </div>
                 ) : (
-                  <p className="telemetry-note">
-                    No desktop library file is linked yet. Open one from disk to keep this browser library tied to a named desktop file.
-                  </p>
+                  <p className="telemetry-note">No library file linked.</p>
                 )}
 
                 <div className="snapshots-action-row">
@@ -627,24 +634,6 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
             ) : null}
             </div>
 
-            <div className="telemetry-metric-grid snapshots-metrics-grid">
-              <article className="telemetry-metric-card snapshots-metric-card">
-                <span>Saved snapshots</span>
-                <strong>{savedSnapshots.length}</strong>
-              </article>
-              <article className="telemetry-metric-card snapshots-metric-card">
-                <span>Snapshot params</span>
-                <strong>{selectedSnapshot?.backup.parameterCount ?? 0}</strong>
-              </article>
-              <article className="telemetry-metric-card snapshots-metric-card">
-                <span>Changed vs live</span>
-                <strong>{selectedSnapshotRestore?.changedCount ?? 0}</strong>
-              </article>
-              <article className="telemetry-metric-card snapshots-metric-card">
-                <span>Reboot-sensitive</span>
-                <strong>{selectedSnapshotChangedEntries.filter((entry) => entry.definition?.rebootRequired).length}</strong>
-              </article>
-            </div>
           </>
         }
         selectedSnapshotSlot={
@@ -723,7 +712,6 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
             ) : (
               <div className="snapshots-empty-state">
                 <h4>No saved snapshots yet</h4>
-                <p>Capture the current controller or import an existing library to create your first restore baseline.</p>
               </div>
             )}
             </div>
@@ -733,53 +721,55 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                 <div className="telemetry-header">
                   <div>
                     <h3>{selectedSnapshot.label}</h3>
-                    <p>
-                      {selectedSnapshot.source === 'captured'
-                        ? 'Captured from the current browser session.'
-                        : 'Imported into the local browser snapshot library.'}
-                    </p>
                   </div>
                   <StatusBadge tone={selectedSnapshotChangedEntries.length > 0 ? 'warning' : 'success'}>
                     {selectedSnapshotChangedEntries.length > 0 ? 'restore available' : 'already matched'}
                   </StatusBadge>
                 </div>
 
-                <div className="telemetry-metric-grid snapshots-metrics-grid">
-                  <article className="telemetry-metric-card snapshots-metric-card">
-                    <span>Captured</span>
-                    <strong>{formatSnapshotTimestamp(selectedSnapshot.capturedAt)}</strong>
-                  </article>
-                  <article className="telemetry-metric-card snapshots-metric-card">
-                    <span>Matched live</span>
-                    <strong>{selectedSnapshotRestore?.unchangedCount ?? 0}</strong>
-                  </article>
-                  <article className="telemetry-metric-card snapshots-metric-card" data-testid="snapshot-missing-old">
-                    <span title="Present in the saved snapshot (old side) but absent from this FC's parameters — skipped on restore.">
-                      In snapshot, not on FC
+                {/* One line says what this snapshot is and how it meets this
+                    board (field request: the identity cards, pills and three
+                    notes were four blocks saying it). Counts carry their
+                    parameter lists in the title. */}
+                <div className="config-pills" data-testid="snapshot-identity-match">
+                  {snapshot.connection.kind === 'connected' && selectedSnapshotBoardMatch ? (
+                    <span data-testid="snapshot-board-match">
+                      <StatusBadge tone={selectedSnapshotBoardMatch.tone}>{selectedSnapshotBoardMatch.label}</StatusBadge>
                     </span>
-                    <strong>{selectedSnapshotRestore?.unknownParameterIds.length ?? 0}</strong>
-                  </article>
-                  <article className="telemetry-metric-card snapshots-metric-card" data-testid="snapshot-missing-new">
-                    <span title="Present on this FC (new side) but absent from the saved snapshot — typically params a newer firmware added since capture. Informational; a restore never removes params.">
-                      On FC, not in snapshot
+                  ) : null}
+                  {snapshot.connection.kind === 'connected' && selectedSnapshotVehicleMatch ? (
+                    <span data-testid="snapshot-vehicle-match">
+                      <StatusBadge tone={selectedSnapshotVehicleMatch.tone}>{selectedSnapshotVehicleMatch.label}</StatusBadge>
                     </span>
-                    <strong>{selectedSnapshotRestore?.newParameterIds.length ?? 0}</strong>
-                  </article>
-                  <article className="telemetry-metric-card snapshots-metric-card">
-                    <span>Restore writes</span>
-                    <strong>{selectedSnapshotChangedEntries.length}</strong>
-                  </article>
-                </div>
-
-                <div className="config-pills">
+                  ) : null}
                   <span>{selectedSnapshot.backup.vehicle?.vehicle ?? selectedSnapshot.backup.firmware}</span>
                   <span>{selectedSnapshot.backup.vehicle?.firmware ?? 'Unknown firmware'}</span>
-                  <span>{selectedSnapshot.backup.vehicle?.flightMode ?? 'Mode unknown at export'}</span>
                   <span>{selectedSnapshot.backup.parameterCount} parameters</span>
+                  <span>Captured {formatSnapshotTimestamp(selectedSnapshot.capturedAt)}</span>
+                  <span>{selectedSnapshotRestore?.unchangedCount ?? 0} match live</span>
+                  <span data-tone={selectedSnapshotChangedEntries.length > 0 ? 'warning' : 'success'}>
+                    {selectedSnapshotChangedEntries.length} to restore
+                  </span>
+                  {selectedSnapshotRestore && selectedSnapshotRestore.unknownParameterIds.length > 0 ? (
+                    <span
+                      data-testid="snapshot-missing-old"
+                      data-tone="warning"
+                      title={`In the snapshot but not on this FC, so skipped on restore: ${formatMissingParamList(selectedSnapshotRestore.unknownParameterIds)}`}
+                    >
+                      {selectedSnapshotRestore.unknownParameterIds.length} in snapshot, not on FC
+                    </span>
+                  ) : null}
+                  {selectedSnapshotRestore && selectedSnapshotRestore.newParameterIds.length > 0 ? (
+                    <span
+                      data-testid="snapshot-missing-new"
+                      title={`On this FC but not in the snapshot (usually added by a newer firmware); a restore never removes them: ${formatMissingParamList(selectedSnapshotRestore.newParameterIds)}`}
+                    >
+                      {selectedSnapshotRestore.newParameterIds.length} on FC, not in snapshot
+                    </span>
+                  ) : null}
                   {/* Hardware identity pills (fleet-management visibility):
                       AUTOPILOT_VERSION.uid (STM32 UID), board type, and
-                      USB VID/PID. The data was already captured into the
-                      backup at snapshot time — these just surface it. */}
+                      USB VID/PID, captured into the backup at snapshot time. */}
                   {selectedSnapshot.backup.hardware?.uid && isMeaningfulHardwareUid(selectedSnapshot.backup.hardware.uid) ? (
                     <span
                       data-testid="snapshot-hardware-uid"
@@ -806,58 +796,18 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
 
                 {selectedSnapshot.note ? <p className="snapshot-selected__note">{selectedSnapshot.note}</p> : null}
 
-                {/* Identity match vs the connected FC — does this snapshot come
-                    from THIS board/vehicle, or a different one being migrated in? */}
-                {snapshot.connection.kind === 'connected' && (selectedSnapshotBoardMatch || selectedSnapshotVehicleMatch) ? (
-                  <div className="config-pills" data-testid="snapshot-identity-match">
-                    {selectedSnapshotBoardMatch ? (
-                      <span data-testid="snapshot-board-match">
-                        <StatusBadge tone={selectedSnapshotBoardMatch.tone}>{selectedSnapshotBoardMatch.label}</StatusBadge>
-                      </span>
-                    ) : null}
-                    {selectedSnapshotVehicleMatch ? (
-                      <span data-testid="snapshot-vehicle-match">
-                        <StatusBadge tone={selectedSnapshotVehicleMatch.tone}>{selectedSnapshotVehicleMatch.label}</StatusBadge>
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-
                 {snapshot.connection.kind === 'connected' && selectedSnapshotIsMigration ? (
                   <div className="parameter-follow-up parameter-follow-up--warning" data-testid="snapshot-migration-notice">
                     <StatusBadge tone="warning">migration</StatusBadge>
                     <p>
-                      This snapshot was captured on a
+                      Captured on a
                       {selectedSnapshotVehicleMatch?.status === 'different' ? ' different vehicle' : ''}
                       {selectedSnapshotVehicleMatch?.status === 'different' && selectedSnapshotBoardMatch?.status === 'different' ? ' and' : ''}
                       {selectedSnapshotBoardMatch?.status === 'different' ? ' different board' : ''}
-                      . Restore applies the {selectedSnapshotChangedEntries.length} matching parameter(s) through the verified write path;
+                      . {selectedSnapshotChangedEntries.length} matching parameter(s) restore
                       {selectedSnapshotRestore && selectedSnapshotRestore.unknownParameterIds.length > 0
-                        ? ` ${selectedSnapshotRestore.unknownParameterIds.length} parameter(s) that don't exist here are skipped.`
-                        : ' any parameters not present here are skipped.'}
-                    </p>
-                  </div>
-                ) : null}
-
-                {selectedSnapshotRestore && selectedSnapshotRestore.unknownParameterIds.length > 0 ? (
-                  <div className="parameter-follow-up parameter-follow-up--warning" data-testid="snapshot-missing-old-note">
-                    <StatusBadge tone="warning">in snapshot, not on FC</StatusBadge>
-                    <p>
-                      {selectedSnapshotRestore.unknownParameterIds.length} parameter(s) exist in this saved snapshot (the old side) but not on the
-                      connected FC (the new side), so they can&apos;t be restored and are skipped:{' '}
-                      <span className="snapshot-missing-list">{formatMissingParamList(selectedSnapshotRestore.unknownParameterIds)}</span>
-                    </p>
-                  </div>
-                ) : null}
-
-                {selectedSnapshotRestore && selectedSnapshotRestore.newParameterIds.length > 0 ? (
-                  <div className="parameter-follow-up" data-testid="snapshot-missing-new-note">
-                    <StatusBadge tone="neutral">on FC, not in snapshot</StatusBadge>
-                    <p>
-                      {selectedSnapshotRestore.newParameterIds.length} parameter(s) exist on the connected FC (the new side) but not in this saved
-                      snapshot (the old side) — usually params a newer firmware added after this snapshot was captured. A restore never removes them; this
-                      is informational:{' '}
-                      <span className="snapshot-missing-list">{formatMissingParamList(selectedSnapshotRestore.newParameterIds)}</span>
+                        ? `; ${selectedSnapshotRestore.unknownParameterIds.length} that don't exist here are skipped.`
+                        : '.'}
                     </p>
                   </div>
                 ) : null}
@@ -870,6 +820,89 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     {selectedSnapshotChangedEntries.length} writes
                   </span>
                 </div>
+                <div className="snapshots-detail-section-heading snapshots-detail-section-heading--compact">
+                  <div>
+                    <h4>Stage restore</h4>
+                  </div>
+                </div>
+
+                <div className="parameter-follow-up parameter-follow-up--warning">
+                  <StatusBadge tone="warning">overwrite</StatusBadge>
+                  <p>
+                    Stage All loads every row below into the draft set; nothing is written until you
+                    <strong> Write all</strong> from the draft bar. Writing overwrites the live values.
+                  </p>
+                </div>
+
+                <label className="snapshot-restore-ack">
+                  <input
+                    data-testid="snapshot-restore-ack"
+                    type="checkbox"
+                    checked={snapshotRestoreAcknowledged}
+                    onChange={(event) => setSnapshotRestoreAcknowledged(event.target.checked)}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0))
+                    }
+                  />
+                  <span>I understand these staged changes will overwrite the current live values when I write them.</span>
+                </label>
+
+                {/* Stage / Drop sit ABOVE the rows (field request): the operator
+                 *  restoring their own snapshot knows the values are right and
+                 *  goes straight to Stage All; the rows are there to read, not
+                 *  to scroll past. */}
+                <div className="snapshots-action-row snapshots-action-row--detail" data-testid="snapshot-restore-actions">
+                  <button
+                    data-testid="apply-snapshot-restore-button"
+                    className="snapshots-button snapshots-button--primary"
+                    onClick={() => void handleApplySelectedSnapshotRestore()}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
+                      !snapshotRestoreAcknowledged
+                    }
+                    title="Stage every changed parameter as a draft, then Write all from the draft bar to apply."
+                  >
+                    {`Stage All (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
+                  </button>
+                  {/* One click from "I know these values are right" to written:
+                   *  stages the same set, then writes it through the draft
+                   *  bar's verified path as soon as the drafts have settled. */}
+                  <button
+                    data-testid="stage-and-write-snapshot-restore-button"
+                    className="snapshots-button snapshots-button--primary"
+                    onClick={() => void handleStageAndWriteSelectedSnapshotRestore()}
+                    disabled={
+                      busyAction !== undefined ||
+                      !canApplyDraftParameters ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
+                      !snapshotRestoreAcknowledged
+                    }
+                    title="Stage every row and write it to the flight controller now — the same verified, readback-checked write the draft bar does."
+                  >
+                    {`Stage & Write (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
+                  </button>
+                  {/* Drop next to Stage (field request) — clears every row from
+                   *  the restore diff and un-stages any drafts it already
+                   *  staged, mirroring the Parameters tab's "Discard All". */}
+                  <button
+                    data-testid="drop-all-snapshot-restore-button"
+                    className="snapshots-button snapshots-button--secondary"
+                    onClick={handleDropAllSnapshotRestoreEntries}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 && selectedSnapshotInvalidEntries.length === 0)
+                    }
+                    title="Drop every row from this restore diff (and un-stage any staged drafts). Keeps the live FC values as-is."
+                  >
+                    Drop All
+                  </button>
+                </div>
+
 
                 {snapshotRestoreDroppedParamIds.size > 0 ? (
                   <div className="snapshot-restore-dropped-note" data-testid="snapshot-restore-dropped-note">
@@ -889,15 +922,14 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   </div>
                 ) : null}
 
-                {/* Expert-gated. Carrying another unit's accelerometer offsets
+                {/* Off by default. Carrying another unit's accelerometer offsets
                     or compass calibration onto this board produces an aircraft
                     that flies on measurements taken from different hardware —
                     it is not a preference, it is a decision with a wrong
-                    answer. Expert mode is this repo's gate for exactly that
-                    kind of control, so in basic mode the calibrations are
-                    simply excluded and the line below says so rather than
-                    offering a checkbox with a warning attached to it. */}
-                {isExpertMode ? (
+                    answer. It used to be Expert-only; roles pick tabs, not
+                    features (operator call 2026-10-21), so the box is here
+                    for everyone and the copy carries the warning. */}
+                {
                   <label className="snapshot-restore-ack" data-testid="snapshot-import-calibration-toggle">
                     <input
                       data-testid="snapshot-import-calibration"
@@ -915,13 +947,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                         : ''}
                     </span>
                   </label>
-                ) : snapshotRestoreExcludedCalibrationCount > 0 ? (
-                  <p className="bf-note" data-testid="snapshot-import-calibration-excluded">
-                    {snapshotRestoreExcludedCalibrationCount} calibration value(s) (accelerometer/compass/RC-trim)
-                    are excluded from this restore — they belong to the unit the snapshot came from. Enable Expert
-                    mode to carry them anyway.
-                  </p>
-                ) : null}
+                }
 
                 {selectedSnapshotChangedEntries.length > 0 ? (
                   <div className="parameter-diff-bulk" data-testid="snapshot-diff-bulk">
@@ -957,7 +983,17 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     {selectedSnapshotDiffGroups.map((group) => (
                       <section key={group.category} className="parameter-diff-group">
                         <header>
-                          <strong>{formatCategoryLabel(group.category)}</strong>
+                          <button
+                            type="button"
+                            className="parameter-diff-group__toggle"
+                            data-testid={`snapshot-diff-group-toggle-${group.category}`}
+                            aria-expanded={expandedRestoreGroups.has(group.category)}
+                            onClick={() => toggleRestoreGroup(group.category)}
+                            title={expandedRestoreGroups.has(group.category) ? 'Fold this group' : 'Show the rows in this group'}
+                          >
+                            <span aria-hidden="true">{expandedRestoreGroups.has(group.category) ? '▾' : '▸'}</span>
+                            <strong>{formatCategoryLabel(group.category)}</strong>
+                          </button>
                           <span>{group.entries.length} changed</span>
                           {/* Group-level Stage/Drop. The preview is already
                            *  grouped by category, so a whole group is the
@@ -990,7 +1026,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                           />
                         </header>
 
-                        {group.entries.map((draft) => (
+                        {expandedRestoreGroups.has(group.category) ? group.entries.map((draft) => (
                           <div key={draft.id} className="parameter-diff-item parameter-diff-item--selectable">
                             <input
                               type="checkbox"
@@ -1057,7 +1093,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                               </button>
                             </div>
                           </div>
-                        ))}
+                        )) : null}
                       </section>
                     ))}
                   </div>
@@ -1162,75 +1198,16 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       disabled={busyAction !== undefined}
                     />
                     <span>
-                      Also stage these {selectedSnapshotInvalidEntries.length} blocked value(s). They exceed this
-                      app&apos;s documented range/enum (common on a cross-board restore) — staging them as drafts lets you
-                      complete the override from the Parameters tab (&ldquo;Override and write anyway&rdquo;) before writing.
+                      Also stage these {selectedSnapshotInvalidEntries.length} blocked value(s), overriding the documented
+                      range/enum for them so they write with the rest. This is your own snapshot; the app&apos;s documented
+                      limits can lag the firmware, which is common on a cross-board restore.
                     </span>
                   </label>
                   </>
                 ) : null}
 
-                <div className="snapshots-detail-section-heading snapshots-detail-section-heading--compact">
-                  <div>
-                    <h4>Stage restore</h4>
-                  </div>
-                </div>
-
-                <div className="parameter-follow-up parameter-follow-up--warning">
-                  <StatusBadge tone="warning">overwrite</StatusBadge>
-                  <p>
-                    Staging loads the diff against the current live controller into the shared draft set — nothing is written yet. Review it, then
-                    <strong> Write all</strong> from the draft bar (the same verified, readback-checked, rollback-on-failure path the Parameters tab uses).
-                    Writing overwrites the current live values for every changed parameter listed above.
-                  </p>
-                </div>
-
-                <label className="snapshot-restore-ack">
-                  <input
-                    data-testid="snapshot-restore-ack"
-                    type="checkbox"
-                    checked={snapshotRestoreAcknowledged}
-                    onChange={(event) => setSnapshotRestoreAcknowledged(event.target.checked)}
-                    disabled={
-                      busyAction !== undefined ||
-                      (selectedSnapshotChangedEntries.length === 0 &&
-                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0))
-                    }
-                  />
-                  <span>I understand these staged changes will overwrite the current live values shown above when I write them.</span>
-                </label>
-
                 <div className="snapshots-action-row snapshots-action-row--detail">
-                  <button
-                    data-testid="apply-snapshot-restore-button"
-                    className="snapshots-button snapshots-button--primary"
-                    onClick={() => void handleApplySelectedSnapshotRestore()}
-                    disabled={
-                      busyAction !== undefined ||
-                      (selectedSnapshotChangedEntries.length === 0 &&
-                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
-                      !snapshotRestoreAcknowledged
-                    }
-                    title="Stage every changed parameter as a draft, then Write all from the draft bar to apply."
-                  >
-                    {`Stage All (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
-                  </button>
-                  {/* Drop next to Stage (field request) — clears every row from
-                   *  the restore diff and un-stages any drafts it already
-                   *  staged, mirroring the Parameters tab's "Discard All". */}
-                  <button
-                    data-testid="drop-all-snapshot-restore-button"
-                    className="snapshots-button snapshots-button--secondary"
-                    onClick={handleDropAllSnapshotRestoreEntries}
-                    disabled={
-                      busyAction !== undefined ||
-                      (selectedSnapshotChangedEntries.length === 0 && selectedSnapshotInvalidEntries.length === 0)
-                    }
-                    title="Drop every row from this restore diff (and un-stage any staged drafts). Keeps the live FC values as-is."
-                  >
-                    Drop All
-                  </button>
-                  {isExpertMode ? (
+                  {
                     <button
                       className="snapshots-button snapshots-button--secondary"
                       onClick={handleStageSelectedSnapshotDiff}
@@ -1238,7 +1215,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     >
                       Send Diff to Parameters
                     </button>
-                  ) : null}
+                  }
                   <UploadToLogServerButton
                     available={artifactUpload.available}
                     serverUrl={artifactUpload.serverUrl}
@@ -1335,7 +1312,6 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
             ) : (
               <div className="snapshots-empty-state snapshots-empty-state--detail">
                 <h4>Choose a snapshot to inspect its restore diff</h4>
-                <p>The active baseline becomes the app-wide restore reference and keeps drift visible across the rest of the product.</p>
               </div>
             )}
           </>
@@ -1857,7 +1833,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       ? 'Applying…'
                       : `Apply Provisioning Profile (${selectedProvisioningProfileChangedEntries.length})`}
                   </button>
-                  {isExpertMode ? (
+                  {
                     <button
                       className="snapshots-button snapshots-button--secondary"
                       onClick={handleStageSelectedProvisioningProfileDiff}
@@ -1865,7 +1841,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     >
                       Send Diff to Parameters
                     </button>
-                  ) : null}
+                  }
                   <button
                     className="snapshots-button snapshots-button--secondary"
                     onClick={handleExportSelectedProvisioningProfile}

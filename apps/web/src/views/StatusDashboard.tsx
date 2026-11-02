@@ -67,6 +67,7 @@ import {
   type ReactNode
 } from 'react'
 
+import { buttonStyle } from '@arduconfig/ui-kit'
 import type { StatusDashboardLayoutController } from '../hooks/use-status-dashboard-layout'
 import {
   STATUS_DASHBOARD_GRID_COLUMNS,
@@ -450,6 +451,41 @@ export interface StatusDashboardRegionProps {
  * every card is exactly as tall as its content, decided by the layout engine,
  * and a card that grows a row simply makes its column taller.
  */
+/**
+ * Tidy Up / Reset Layout to Default, shown once the operator has rearranged
+ * the page. Rendered inside a card (Vehicle actions), so it reads the
+ * controller from the provider rather than from a prop.
+ */
+export function StatusDashboardLayoutButtons(): ReactElement | null {
+  const { controller } = useDashboard()
+  if (!controller.customisable || !controller.customised) return null
+  return (
+    <div className="status-dash-toolbar" data-testid="status-dash-toolbar">
+      {/* Tidy is the way out of a mess that is not a full Reset: it drops the
+       *  columns the operator emptied and evens up the widths, keeping the
+       *  arrangement they built. */}
+      <button
+        type="button"
+        style={buttonStyle()}
+        data-testid="status-dash-tidy-layout"
+        onClick={controller.tidyLayout}
+        title="Close up empty columns and even out the widths, keeping your arrangement"
+      >
+        Tidy Up
+      </button>
+      <button
+        type="button"
+        style={buttonStyle()}
+        data-testid="status-dash-reset-layout"
+        onClick={controller.resetLayout}
+        title="Put every Status card back where it shipped"
+      >
+        Reset Layout to Default
+      </button>
+    </div>
+  )
+}
+
 export function StatusDashboardRegion({ region, className, testId }: StatusDashboardRegionProps): ReactElement {
   const { controller } = useDashboard()
   const bands = regionBands(controller.layout, region)

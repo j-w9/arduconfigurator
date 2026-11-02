@@ -63,6 +63,8 @@ import {
   ARDUCOPTER_COMPASS_EXTERNAL_LABELS,
   ARDUCOPTER_COMPASS_AUTO_ROT_LABELS,
   ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS,
+  ARDUCOPTER_INS_LOG_BAT_MASK_BIT_LABELS,
+  ARDUCOPTER_INS_LOG_BAT_OPT_BIT_LABELS,
   ARDUCOPTER_FENCE_ACTION_LABELS,
   ARDUCOPTER_FENCE_AUTOENABLE_LABELS,
   ARDUCOPTER_FENCE_TYPE_BIT_LABELS,
@@ -708,7 +710,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'motors',
       label: 'Motors',
-      description: 'Frame class, motor map, direction tests, ESC protocol, and verification review.',
+      description: 'Motor order, direction, motor test and spin thresholds.',
       order: 7
     },
     {
@@ -749,8 +751,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     {
       id: 'config',
-      label: 'Config',
-      description: 'Baseline misc — board orientation, arming behavior, system identity, statistics.',
+      label: 'Setup',
+      description: 'Setup — airframe and powertrain, RC, flight modes, arming, battery, and system settings.',
       order: 13.5
     },
     {
@@ -1370,6 +1372,33 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       minimum: 0,
       maximum: 3,
       options: enumOptions(ARDUCOPTER_COMPASS_AUTO_ROT_LABELS)
+    },
+    // The priority list (AP_Compass.cpp): device ids, 0 = fill in on boot.
+    // Read at boot only, so a change needs a reboot. The DEV_ID* parameters
+    // beside them are the firmware's own and are not curated here.
+    COMPASS_PRIO1_ID: {
+      id: 'COMPASS_PRIO1_ID',
+      label: 'Compass priority 1',
+      description: 'Device id of the compass used first. 0 fills it in automatically on boot. Reboot required after a change.',
+      category: 'sensors',
+      minimum: 0,
+      rebootRequired: true
+    },
+    COMPASS_PRIO2_ID: {
+      id: 'COMPASS_PRIO2_ID',
+      label: 'Compass priority 2',
+      description: 'Device id of the compass used second. 0 fills it in automatically on boot. Reboot required after a change.',
+      category: 'sensors',
+      minimum: 0,
+      rebootRequired: true
+    },
+    COMPASS_PRIO3_ID: {
+      id: 'COMPASS_PRIO3_ID',
+      label: 'Compass priority 3',
+      description: 'Device id of the compass used third. 0 fills it in automatically on boot. Reboot required after a change.',
+      category: 'sensors',
+      minimum: 0,
+      rebootRequired: true
     },
     COMPASS_DISBLMSK: {
       id: 'COMPASS_DISBLMSK',
@@ -2673,6 +2702,77 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 7,
       step: 1
     },
+    // libraries/AP_Motors/AP_MotorsMulticopter.cpp @Param THST_HOVER / HOVER_LEARN.
+    MOT_THST_HOVER: {
+      id: 'MOT_THST_HOVER',
+      label: 'Hover throttle',
+      description:
+        'Throttle needed to hover, 0 to 1. The altitude controller starts from it, and its accel gains should follow it (4.7: PSC_D_ACC_P = 0.1 x this, I = 0.2 x). It cannot go below 0.125: a quad that hovers lower is overpowered for the controller.',
+      category: 'tuning',
+      minimum: 0.125,
+      maximum: 0.6875,
+      step: 0.001
+    },
+    MOT_HOVER_LEARN: {
+      id: 'MOT_HOVER_LEARN',
+      label: 'Hover throttle learning',
+      description:
+        'Learns MOT_THST_HOVER in AltHold and similar modes. It only learns while the climb rate asked for is exactly zero, the quad is level and not climbing or sinking fast.',
+      category: 'tuning',
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Learn' },
+        { value: 2, label: 'Learn and save' }
+      ]
+    },
+    // The vertical acceleration controller, 4.7 names and the 4.6 names it
+    // replaced (ten times the scale). The hover-throttle step sets both from
+    // MOT_THST_HOVER (initial-tuning-flight.rst, "Test AltHold").
+    PSC_D_ACC_P: {
+      id: 'PSC_D_ACC_P',
+      label: 'Vertical accel P',
+      description: 'Acceleration (vertical) controller P gain: desired minus actual vertical acceleration into motor output. Set to 0.1 x MOT_THST_HOVER once the hover throttle is learned. Before 4.7 this was PSC_ACCZ_P at ten times the scale.',
+      category: 'tuning',
+      minimum: 0.01,
+      maximum: 0.25,
+      step: 0.001
+    },
+    PSC_D_ACC_I: {
+      id: 'PSC_D_ACC_I',
+      label: 'Vertical accel I',
+      description: 'Acceleration (vertical) controller I gain: corrects a long-term difference between desired and actual vertical acceleration. Set to 0.2 x MOT_THST_HOVER once the hover throttle is learned. Before 4.7 this was PSC_ACCZ_I at ten times the scale.',
+      category: 'tuning',
+      minimum: 0,
+      maximum: 0.5,
+      step: 0.001
+    },
+    PSC_ACCZ_P: {
+      id: 'PSC_ACCZ_P',
+      label: 'Vertical accel P (4.6)',
+      description: 'Acceleration (vertical) controller P gain on Copter 4.6 and earlier. Set to MOT_THST_HOVER once the hover throttle is learned. 4.7 renamed it PSC_D_ACC_P at a tenth of the scale.',
+      category: 'tuning',
+      minimum: 0.2,
+      maximum: 1.5,
+      step: 0.05
+    },
+    PSC_ACCZ_I: {
+      id: 'PSC_ACCZ_I',
+      label: 'Vertical accel I (4.6)',
+      description: 'Acceleration (vertical) controller I gain on Copter 4.6 and earlier. Set to 2 x MOT_THST_HOVER once the hover throttle is learned. 4.7 renamed it PSC_D_ACC_I at a tenth of the scale.',
+      category: 'tuning',
+      minimum: 0,
+      maximum: 3,
+      step: 0.05
+    },
+    ATC_THR_MIX_MAX: {
+      id: 'ATC_THR_MIX_MAX',
+      label: 'Throttle vs attitude priority (flight)',
+      description: 'How far attitude control may override throttle in active flight. Higher favours attitude. The autotune page suggests 0.9 after a good tune (default 0.5); too high with gains that oscillate can make descending hard.',
+      category: 'tuning',
+      minimum: 0.5,
+      maximum: 0.9,
+      step: 0.1
+    },
     AUTOTUNE_AXES: {
       id: 'AUTOTUNE_AXES',
       label: 'AutoTune Axes',
@@ -3712,6 +3812,19 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       // AP_Float; same reasoning as the centre frequency.
       step: 1
     },
+    // libraries/Filter/HarmonicNotchFilter.cpp @Param: ATT — AP_Float, dB, 5..50,
+    // default 40. How deep the notch cuts, which the card never showed.
+    INS_HNTCH_ATT: {
+      id: 'INS_HNTCH_ATT',
+      label: 'Notch attenuation',
+      description:
+        'How deep the notch cuts the motor noise, in dB. Above about 40 dB it is a hard notch rather than a modest attenuation; lower values cut less but add less phase lag.',
+      category: 'tuning',
+      unit: 'dB',
+      minimum: 5,
+      maximum: 50,
+      step: 1
+    },
     INS_HNTCH_HMNCS: {
       id: 'INS_HNTCH_HMNCS',
       label: 'Notch harmonics',
@@ -3837,6 +3950,19 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       minimum: 5,
       maximum: 250,
       // AP_Float; same reasoning as the centre frequency.
+      step: 1
+    },
+    // libraries/Filter/HarmonicNotchFilter.cpp @Param: ATT — AP_Float, dB, 5..50,
+    // default 40. How deep the notch cuts, which the card never showed.
+    INS_HNTC2_ATT: {
+      id: 'INS_HNTC2_ATT',
+      label: 'Notch attenuation 2',
+      description:
+        'How deep the notch cuts the motor noise, in dB. Above about 40 dB it is a hard notch rather than a modest attenuation; lower values cut less but add less phase lag.',
+      category: 'tuning',
+      unit: 'dB',
+      minimum: 5,
+      maximum: 50,
       step: 1
     },
     INS_HNTC2_HMNCS: {
@@ -4142,6 +4268,56 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       notes: loggingBehaviorNotes,
       options: enabledDisabledOptions
     },
+    // The IMU batch sampler: raw gyro / accel samples for the FFT behind
+    // notch tuning. Verbatim from libraries/AP_InertialSensor/BatchSampler.cpp.
+    // Copter gates the sampler on LOG_BITMASK's "Raw IMU" bit (MASK_LOG_IMU_RAW,
+    // bit 19: ArduCopter/system.cpp ins.set_log_raw_bit).
+    INS_LOG_BAT_MASK: {
+      id: 'INS_LOG_BAT_MASK',
+      label: 'Batch-log IMUs',
+      description: 'Bitmap of which IMUs to log batch data for. Takes effect on the next reboot.',
+      category: 'logging',
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_INS_LOG_BAT_MASK_BIT_LABELS),
+      rebootRequired: true
+    },
+    INS_LOG_BAT_OPT: {
+      id: 'INS_LOG_BAT_OPT',
+      label: 'Batch logging options',
+      description: 'Options for the batch sampler: sensor-rate logging, post-filter samples, or both pre- and post-filter. Leave all off for pre-filter samples at the loop rate, which is what notch placement wants.',
+      category: 'logging',
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_INS_LOG_BAT_OPT_BIT_LABELS)
+    },
+    INS_LOG_BAT_CNT: {
+      id: 'INS_LOG_BAT_CNT',
+      label: 'Samples per batch',
+      description: 'Number of samples to take when logging streams of IMU sensor readings. Rounded down to a multiple of 32. Takes effect on the next reboot.',
+      category: 'logging',
+      minimum: 32,
+      maximum: 8192,
+      step: 32,
+      rebootRequired: true
+    },
+    INS_LOG_BAT_LGIN: {
+      id: 'INS_LOG_BAT_LGIN',
+      label: 'Batch logging interval',
+      description: 'Interval between pushing samples to the log.',
+      category: 'logging',
+      unit: 'ms',
+      minimum: 1,
+      maximum: 1000,
+      step: 1
+    },
+    INS_LOG_BAT_LGCT: {
+      id: 'INS_LOG_BAT_LGCT',
+      label: 'Samples per push',
+      description: 'Number of samples to push to the log every INS_LOG_BAT_LGIN.',
+      category: 'logging',
+      minimum: 1,
+      maximum: 256,
+      step: 1
+    },
     LOG_DISARMED: {
       id: 'LOG_DISARMED',
       // Values verified against AP_Logger.cpp (@Values on LOG_DISARMED) — this
@@ -4162,7 +4338,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'link',
       title: 'Vehicle Link',
-      description: 'Bring the vehicle online and pull the first parameter snapshot.',
+      description: 'Connect and pull the parameters.',
       requiredParameters: [],
       actions: ['request-parameters']
     },
@@ -4176,13 +4352,13 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       // wire, then configure the things on those wires.
       id: 'ports',
       title: 'Ports',
-      description: 'Tell the flight controller what is wired to each serial port before setting up the peripherals on them.',
+      description: 'Tell the flight controller what is wired to each serial port.',
       requiredParameters: ['SERIAL1_PROTOCOL', 'SERIAL2_PROTOCOL']
     },
     {
       id: 'airframe',
       title: 'Airframe',
-      description: 'Verify the frame class and geometry before motor output setup.',
+      description: 'Check the frame class and type.',
       requiredParameters: ['FRAME_CLASS', 'FRAME_TYPE'],
       // FRAME_CLASS=0 means "no frame picked" — ArduPilot logs "Frame:
       // UNSUPPORTED", refuses every calibration COMMAND, and won't arm. Require
@@ -4192,7 +4368,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'outputs',
       title: 'Outputs',
-      description: 'Review the primary motor and peripheral output assignments before any props-on testing.',
+      description: 'Check which output drives each motor. Props off.',
       requiredParameters: ['SERVO1_FUNCTION', 'SERVO2_FUNCTION', 'SERVO3_FUNCTION', 'SERVO4_FUNCTION'],
       // At least one SERVOn_FUNCTION must be assigned (non-zero), else
       // nothing is wired to motors. Covers the first 8 channels (the slots
@@ -4212,7 +4388,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'accelerometer',
       title: 'Accelerometer Calibration',
-      description: 'Complete 6-pose IMU calibration before tuning or arming.',
+      description: 'Calibrate the accelerometer in six poses.',
       requiredParameters: ['AHRS_ORIENTATION'],
       completionStatusTexts: ['Accelerometer calibration complete.'],
       // INS_ACCOFFS_X/Y/Z are written by the 6-pose accel cal; a non-zero
@@ -4224,7 +4400,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'level',
       title: 'Level Calibration',
-      description: 'Trim the flight controller against a known-level surface. Run this whenever the FC is repositioned on the frame.',
+      description: 'Level the flight controller on a flat surface. Redo it if the board is moved.',
       requiredParameters: ['AHRS_TRIM_X', 'AHRS_TRIM_Y'],
       completionStatusTexts: ['Board level calibration complete.'],
       // Level cal writes AHRS_TRIM_X / AHRS_TRIM_Y; either being non-zero is
@@ -4246,7 +4422,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'radio',
       title: 'Radio',
-      description: 'Inspect primary RC channel calibration.',
+      description: 'Map and calibrate the sticks.',
       requiredParameters: [
         'RCMAP_ROLL',
         'RCMAP_PITCH',
@@ -4268,16 +4444,33 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       requiredLiveSignals: ['rc-input'],
     },
     {
+      // After Radio, as ArduPilot orders it: the all-at-once ESC calibration
+      // uses the stick's maximum, and the spin range is measured after the
+      // ESCs know their endpoints (set-motor-range.rst, esc-calibration.rst).
+      id: 'motor-range',
+      title: 'Motor Range',
+      description: 'Set the armed idle and the minimum in-flight spin. Props off.',
+      requiredParameters: ['MOT_SPIN_ARM', 'MOT_SPIN_MIN'],
+    },
+    {
+      // Starting gains, filters and limits from the prop size and the pack,
+      // before the first flight (setting-up-for-tuning.rst).
+      id: 'initial-tune',
+      title: 'Initial Tune',
+      description: 'Starting gains, filters and limits from the prop size and the pack, before the first flight.',
+      requiredParameters: ['INS_GYRO_FILTER', 'MOT_THST_EXPO'],
+    },
+    {
       id: 'modes',
       title: 'Flight Modes',
-      description: 'Check the first three mapped flight modes.',
+      description: 'Put Stabilize and AltHold on the mode switch.',
       requiredParameters: ['FLTMODE1', 'FLTMODE2', 'FLTMODE3'],
       requiredLiveSignals: ['rc-input'],
     },
     {
       id: 'power',
       title: 'Battery',
-      description: 'Validate battery monitoring before flight.',
+      description: 'Check the battery monitor reads right.',
       requiredParameters: ['BATT_MONITOR', 'BATT_CAPACITY', 'BATT_ARM_VOLT', 'BATT_ARM_MAH'],
       // BATT_MONITOR=0 disables battery monitoring entirely — no voltage,
       // no current, no battery failsafe. The autopilot still reports the
@@ -4290,7 +4483,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     {
       id: 'failsafe',
       title: 'Failsafe',
-      description: 'Review throttle and battery failsafe behavior.',
+      description: 'Review the throttle and battery failsafes.',
       requiredParameters: [
         'FS_THR_ENABLE',
         'FS_THR_VALUE',
@@ -4310,6 +4503,45 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'RTL_ALT_M'
       ],
       requiredLiveSignals: ['rc-input', 'battery-telemetry'],
+    },
+    {
+      // The last look before props go on. The bench phase used to end on
+      // Failsafe and report complete with nothing checked for flight.
+      id: 'readiness',
+      title: 'Ready to Fly',
+      description: 'Arming checks on, logging on, a way to arm, pre-arm clear, snapshot saved.',
+      requiredParameters: [],
+    },
+    {
+      // The first flight step: flown in Stabilize, read from its log.
+      id: 'maiden',
+      title: 'Maiden Hover',
+      description: 'The first flight, in Stabilize: arm, disarm, arm, a hand\u2019s width up and down, then a short hover. Bring the log back.',
+      requiredParameters: [],
+    },
+    {
+      // The second flight: a steady hover in AltHold, so the firmware learns
+      // MOT_THST_HOVER; then the vertical controller follows it.
+      id: 'hover',
+      title: 'Hover Throttle',
+      description: 'A steady AltHold hover learns the hover throttle. Accept it and set the throttle controller from it.',
+      requiredParameters: ['MOT_THST_HOVER', 'MOT_HOVER_LEARN'],
+    },
+    {
+      // The harmonic notch, placed from the hover: ESC telemetry when the
+      // build has it, throttle otherwise. Before autotune, as the wiki orders.
+      id: 'filters',
+      title: 'Filters',
+      description: 'Place the harmonic notch on the motor noise from the hover log, so the tune that follows is not tuned against noise.',
+      requiredParameters: ['INS_HNTCH_ENABLE', 'INS_HNTCH_MODE', 'INS_HNTCH_REF', 'INS_HNTCH_FREQ', 'INS_HNTCH_BW', 'INS_GYRO_FILTER'],
+    },
+    {
+      // Autotune, one axis at a time, in AltHold on a calm day; judged by the
+      // gains that moved.
+      id: 'autotune',
+      title: 'Autotune',
+      description: 'Autotune roll, pitch and yaw in AltHold, one axis at a time; the gains that moved say which axes are done.',
+      requiredParameters: ['AUTOTUNE_AXES', 'AUTOTUNE_AGGR'],
     }
   ]
 }

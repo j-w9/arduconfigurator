@@ -29,6 +29,7 @@ import type {
   UavcanNodeStatusMessage,
 } from '@arduconfig/protocol-mavlink'
 import type { MavlinkSignatureRejection } from '@arduconfig/protocol-mavlink'
+import type { CanFrame } from '@arduconfig/can-core'
 import {
   MAV_PROTOCOL_CAPABILITY,
   MAV_AUTOPILOT,
@@ -124,6 +125,8 @@ import {
   parseBoardNameFromBanner,
   parseFirmwareStringFromBanner,
   parsePwmOutputCountFromBanner,
+  guidedActionLabel,
+  GUIDED_ACTION_IDS,
   cloneLiveVerification,
   cloneMotorTestState,
   clonePreArmStatus,
@@ -213,6 +216,8 @@ export interface ArduPilotConfiguratorRuntimeOptions {
   accelerometerInitialWarmupMs?: number
   accelerometerStepAdvanceMs?: number
   accelerometerCompletionFallbackMs?: number
+  /** Test override for the accel-cal no-prompt watchdog (default 15 s). */
+  accelerometerPromptWatchdogMs?: number
   compassGuidanceTimeoutMs?: number
   /**
    * Test-injectable override for the param-sync stall-retry timer
@@ -583,6 +588,8 @@ export class ArduPilotConfiguratorRuntime {
   // per-frame rAF) so the heavy snapshot render can't starve inbound-frame
   // processing and crawl the batch on slow links/large apps.
   private batchEmitMode = false
+  /** True while setParameters() is applying a batch (and any rollback). */
+  private parameterBatchWriteActive = false
   /**
    * Depth of in-flight BULK TRANSFERS (log download over MAVFTP burst or the
    * LOG_* stream).
@@ -803,10 +810,12 @@ export class ArduPilotConfiguratorRuntime {
       sendCommand: (command, params, sendOptions) => this.sendCommand(command, params, sendOptions),
       appendStatusEntry: (severity, text) => this.appendStatusEntry(severity, text),
       emit: () => this.emit(),
+      refreshParameters: (patterns) => this.rereadParametersMatching(patterns),
       accelerometerInitialWarmupMs: options.accelerometerInitialWarmupMs,
       accelerometerStepAdvanceMs: options.accelerometerStepAdvanceMs,
       accelerometerCompletionFallbackMs: options.accelerometerCompletionFallbackMs,
-      compassGuidanceTimeoutMs: options.compassGuidanceTimeoutMs
+      compassGuidanceTimeoutMs: options.compassGuidanceTimeoutMs,
+      accelerometerPromptWatchdogMs: options.accelerometerPromptWatchdogMs
     })
     this.subscriptions = [
       this.session.onStatus((status: TransportStatus) => {
@@ -841,8 +850,11 @@ export class ArduPilotConfiguratorRuntime {
         // throughput to ~130x slower than a headless client. Skip the per-packet
         // emit for those two high-rate types; any status/state change they make
         // flushes on the next telemetry message, and completion emits explicitly.
+        // GENERIC (a message decoded only for the inspector) touches no
+        // snapshot state either, so it never emits — before the generic path
+        // those frames were dropped by the codec and emitted nothing.
         const messageType = envelope.message.type
-        if (messageType !== 'FILE_TRANSFER_PROTOCOL' && messageType !== 'LOG_DATA') {
+        if (messageType !== 'FILE_TRANSFER_PROTOCOL' && messageType !== 'LOG_DATA' && messageType !== 'GENERIC') {
           this.emit()
         }
       })
@@ -1474,6 +1486,7 @@ export class ArduPilotConfiguratorRuntime {
     // onProgress, which is independent of the snapshot). A final flush below
     // pushes the terminal state.
     this.batchEmitMode = true
+    this.parameterBatchWriteActive = true
     try {
     for (const request of requests) {
       const known = this.parameters.get(request.paramId)
@@ -1572,6 +1585,7 @@ export class ArduPilotConfiguratorRuntime {
     } finally {
       // Restore normal per-frame emits and push the terminal snapshot now.
       this.batchEmitMode = false
+      this.parameterBatchWriteActive = false
       this.cancelScheduledEmit()
       this.flushEmit()
     }
@@ -1917,7 +1931,42 @@ export class ArduPilotConfiguratorRuntime {
       return
     }
 
+    // Mutual exclusion lives here, not only in the web layer's button gate:
+    // two calibrations, or a calibration over a motor test or a batch write,
+    // share one COMMAND_ACK stream and one write gate. The reason texts are
+    // the ones the UI shows for the same condition
+    // (apps/web/src/guided-action-helpers.ts guidedActionBlockingReason).
+    const blockReason = this.guidedActionBlockReason(actionId)
+    if (blockReason) {
+      throw new Error(blockReason)
+    }
+
     await this.guidedActionService.runCalibrationAction(actionId)
+  }
+
+  private guidedActionBlockReason(actionId: GuidedActionId): string | undefined {
+    const actions = this.guidedActionService.getActions()
+    const isActive = (state: GuidedActionState): boolean => state.status === 'requested' || state.status === 'running'
+    const current = actions[actionId]
+    // The accelerometer's "Confirm <posture>" click re-enters its own
+    // running action on purpose.
+    const canContinueCurrentAction = actionId === 'calibrate-accelerometer' && isActive(current) && current.ctaLabel !== undefined
+
+    for (const otherId of GUIDED_ACTION_IDS) {
+      if (otherId !== actionId && isActive(actions[otherId])) {
+        return `${guidedActionLabel(otherId)} is already in progress.`
+      }
+    }
+    if (isActive(current) && !canContinueCurrentAction) {
+      return `${guidedActionLabel(actionId)} is already in progress.`
+    }
+    if (this.motorTestService.hasActiveTest()) {
+      return 'Finish the current motor test first.'
+    }
+    if (this.parameterBatchWriteActive) {
+      return 'Finish the parameter write in progress first.'
+    }
+    return undefined
   }
 
   /**
@@ -1928,12 +1977,14 @@ export class ArduPilotConfiguratorRuntime {
    * 'request-parameters' (owned by the parameter-sync state machine) and
    * for actions that aren't active.
    */
-  cancelGuidedAction(actionId: GuidedActionId): void {
+  async cancelGuidedAction(actionId: GuidedActionId): Promise<void> {
     if (actionId === 'request-parameters') {
       return
     }
 
-    this.guidedActionService.cancelAction(actionId)
+    // Resolves once the cancel is settled (compass: the DO_CANCEL_MAG_CAL
+    // ack, or its failure). Never rejects.
+    await this.guidedActionService.cancelAction(actionId)
   }
 
   async runMotorTest(request: MotorTestRequest, options: MotorTestEligibilityOptions = {}): Promise<void> {
@@ -2021,6 +2072,28 @@ export class ArduPilotConfiguratorRuntime {
    *  CAN tab uses this to drive its discovery + parameter UI. MAVLink
    *  stays alive on the same channel — this is the same mechanism
    *  Mission Planner uses for its DroneCAN inspector. */
+  /**
+   * Every raw CAN frame on the forwarded bus, and every frame this runtime
+   * sends to it, as they happen -- for the bus monitor and recorder. Outside
+   * the snapshot on purpose: a busy bus is thousands of frames a second.
+   * Returns the unsubscribe.
+   */
+  onCanFrame(listener: (frame: CanFrame) => void): () => void {
+    return this.canBusService.onFrame(listener)
+  }
+
+  /**
+   * Put raw frames on the forwarded CAN bus (the CAN tab's Send). Refused
+   * while armed: a frame on the bus can command ESCs and servos, and an
+   * operator composing frames by hand must never be doing it in flight.
+   */
+  async sendCanFrames(
+    frames: readonly { id: number; extended: boolean; data: Uint8Array; fd?: boolean; rtr?: boolean }[]
+  ): Promise<void> {
+    this.assertNotArmed('Disarm the vehicle before sending CAN frames.')
+    await this.canBusService.sendFrames(frames)
+  }
+
   async startCanBusForward(bus: number): Promise<void> {
     return this.canBusService.start(bus)
   }
@@ -2396,6 +2469,23 @@ export class ArduPilotConfiguratorRuntime {
     this.canBusService.cancelFirmwareUpdate()
   }
 
+  /** Give a DroneCAN node a new ID (CAN_NODE, save, restart). Refused while
+   *  armed: the node reboots, and a GPS or ESC rebooting in flight is a crash. */
+  async changeCanBusNodeId(nodeId: number, newNodeId: number): Promise<void> {
+    this.assertNotArmed('Disarm the vehicle before changing a node ID.')
+    return this.canBusService.changeNodeId(nodeId, newNodeId)
+  }
+
+  /** Switch this app's dynamic node ID allocator on or off for the forwarded bus. */
+  setCanNodeAllocator(enabled: boolean, seed?: readonly { nodeId: number; uniqueId: string }[]): void {
+    this.canBusService.setAllocatorEnabled(enabled, seed)
+  }
+
+  /** Forget the node IDs the allocator handed out or was seeded with. */
+  forgetCanNodeAllocations(): void {
+    this.canBusService.forgetAllocations()
+  }
+
   /**
    * Operator-triggered SET_MESSAGE_INTERVAL (MAV_CMD 511) for the MAVLink
    * inspector. `intervalUs` is the raw command interval: > 0 streams the
@@ -2698,9 +2788,10 @@ export class ArduPilotConfiguratorRuntime {
         })
       }
       // Carry the prior body forward so consumers can difference the counters.
-      // Only a body that actually differs is worth keeping: re-reading fast
-      // enough that nothing moved would otherwise replace a useful earlier
-      // sample with a zero-length window.
+      // An IDENTICAL re-read is a valid pair too: nothing moved on any port in
+      // the window, which is a zero-error, zero-traffic verdict, not a missing
+      // sample. Keeping only a differing body left the decode check "waiting
+      // for a second sample" forever on a quiet bench.
       const previous = this.uartsFile.rawText
       const previousFetchedAtMs = this.uartsFile.fetchedAtMs
       this.uartsFile = {
@@ -2708,20 +2799,33 @@ export class ArduPilotConfiguratorRuntime {
         path: UARTS_FILE_PATH,
         mappings: parseUartsFile(rawText),
         rawText,
-        previousRawText: previous !== undefined && previous !== rawText ? previous : this.uartsFile.previousRawText,
-        previousFetchedAtMs:
-          previous !== undefined && previous !== rawText ? previousFetchedAtMs : this.uartsFile.previousFetchedAtMs,
+        previousRawText: previous !== undefined ? previous : this.uartsFile.previousRawText,
+        previousFetchedAtMs: previous !== undefined ? previousFetchedAtMs : this.uartsFile.previousFetchedAtMs,
         fetchedAtMs: Date.now()
       }
       this.appendStatusEntry('info', `Fetched ${UARTS_FILE_PATH} via MAVFTP.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown MAVFTP error.'
       const status = /file not found/i.test(message) ? 'missing' : 'error'
+      // A failed REFRESH keeps the last good counters (the 'loading' branch
+      // above already does). Dropping them turned a detected port mismatch
+      // into "counters unavailable" for one MAVFTP timeout, which completed
+      // the Ports step, lit "Continue", and relocked everything 20 s later
+      // when the next read re-flagged it.
+      const hadBody = this.uartsFile.rawText !== undefined
       this.uartsFile = {
         status,
         path: UARTS_FILE_PATH,
-        mappings: [],
-        error: message
+        mappings: hadBody ? this.uartsFile.mappings : [],
+        error: message,
+        ...(hadBody
+          ? {
+              rawText: this.uartsFile.rawText,
+              fetchedAtMs: this.uartsFile.fetchedAtMs,
+              previousRawText: this.uartsFile.previousRawText,
+              previousFetchedAtMs: this.uartsFile.previousFetchedAtMs
+            }
+          : {})
       }
       this.appendStatusEntry('warning', `Unable to fetch ${UARTS_FILE_PATH}: ${message}`)
     }
@@ -2825,6 +2929,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'CAN_FRAME':
         this.canBusService.processCanFrame(envelope.message)
         break
+      case 'CANFD_FRAME':
+        this.canBusService.processCanFdFrame(envelope.message)
+        break
       case 'OPTICAL_FLOW':
         this.processOpticalFlow(envelope.message)
         break
@@ -2913,6 +3020,9 @@ export class ArduPilotConfiguratorRuntime {
       this.lastHeartbeatAtMs - previousHeartbeatAtMs > VEHICLE_RESTART_HEARTBEAT_GAP_MS
     ) {
       this.liveTelemetryRequestsIssued = false
+      // A fresh boot runs none of our calibrations and will never report
+      // one; a pending reboot request just got its proof.
+      this.guidedActionService.handleVehicleRestart()
     }
 
     if (!this.liveTelemetryRequestsIssued) {
@@ -3234,6 +3344,15 @@ export class ArduPilotConfiguratorRuntime {
         receivedAtMs: now
       })
       this.statusTexts.splice(STATUS_TEXT_HISTORY_LIMIT)
+    }
+    // Per-IMU thermal calibration ends inside the firmware: it saves
+    // INS_TCALn_ENABLE (1 on success, 0 on a failed fit), TMIN/TMAX and the
+    // coefficients with set_and_save_ifchanged, which sends no PARAM_VALUE.
+    // These two messages are the only sign it finished
+    // (AP_InertialSensor_tempcal.cpp finish_calibration), so re-read the
+    // TCAL parameters or the app keeps showing "learning".
+    if (/^TCAL\[\d+\]: (completed calibration|failed fit)/.test(text)) {
+      void this.rereadParametersMatching([/^INS_TCAL\d+_/])
     }
     // Resolve any one-shot substring waiters (e.g. the passthru-enabled gate).
     if (this.statusTextWaiters.length > 0) {
@@ -4053,6 +4172,9 @@ export class ArduPilotConfiguratorRuntime {
     if (foreign) {
       return
     }
+    // Before the waiters: the guided-action gate must flip in wire order,
+    // ahead of any frame that shared this chunk (see handleCommandAck).
+    this.guidedActionService.handleCommandAck(message, systemId, componentId)
     this.resolveCommandAckWaiters(message)
 
     if (message.result === MAV_RESULT.ACCEPTED || message.result === MAV_RESULT.IN_PROGRESS) {
@@ -4611,6 +4733,31 @@ export class ArduPilotConfiguratorRuntime {
       }
     }
     return missing
+  }
+
+  /**
+   * Targeted by-name PARAM_REQUEST_READ for every synced (non-mirror)
+   * parameter whose id matches one of `patterns`. The PARAM_VALUE replies
+   * flow through processParamValue like any other arrival, so the snapshot
+   * picks the fresh values up. Used after a calibration stores new offsets.
+   */
+  private async rereadParametersMatching(patterns: readonly RegExp[]): Promise<void> {
+    if (!this.vehicle || this.connection.kind !== 'connected') {
+      return
+    }
+    const ids = [...this.parameters.values()]
+      .filter((parameter) => parameter.aliasedFrom === undefined && patterns.some((pattern) => pattern.test(parameter.id)))
+      .map((parameter) => parameter.id)
+    for (const paramId of ids) {
+      await this.session.send({
+        type: 'PARAM_REQUEST_READ',
+        targetSystem: this.vehicle.systemId,
+        targetComponent: this.vehicle.componentId,
+        paramId,
+        // By name: the index is -1 (common.xml).
+        paramIndex: -1
+      })
+    }
   }
 
   // Refetch specific parameter slots by index with PARAM_REQUEST_READ. Bounded

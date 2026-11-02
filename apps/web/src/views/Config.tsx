@@ -3,8 +3,17 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { ImuMaskField } from './ImuMaskField'
+import { InfoDot } from './InfoDot'
 import { ParamInfoBubble } from './ParamInfoBubble'
-import { ScopedField, ScopedSelectField, ScopedBitmaskField, type ScopedFieldDraftMap } from './ScopedField'
+import {
+  ScopedField,
+  ScopedSelectField,
+  ScopedBitmaskField,
+  ScopedCheckboxField,
+  optionLabelsFitChips,
+  type ScopedFieldDraftMap
+} from './ScopedField'
 
 // BF-style "Configuration" catch-all surface. Mission Planner and BF
 // both collect a grab-bag of baseline knobs here: board orientation,
@@ -28,9 +37,6 @@ export interface ConfigSectionField {
   /** Decimal places for read-only float values. Editable fields go
    *  through the shared float formatter from param-metadata. */
   digits?: number
-  /** Rarely-touched field folded into a per-card "Advanced" disclosure,
-   *  so each card leads with the knobs an operator actually reaches for. */
-  advanced?: boolean
   /**
    * Keep this field in the same grid cell as its neighbours carrying the same
    * group id, stacked vertically.
@@ -42,11 +48,28 @@ export interface ConfigSectionField {
    * fields sharing a group render as one cell instead.
    */
   group?: string
+  /**
+   * A purpose-built editor in place of the generic metadata dispatch:
+   * `checkbox` renders a 0/1 enum as one box captioned with `label` (Active
+   * IMU); `imu-mask` renders a per-IMU bitmask as one small box per IMU
+   * (INS_FAST_SAMPLE).
+   */
+  editor?: 'checkbox' | 'imu-mask'
+  /** Force an enum's editor: a dropdown even when its options would fit as chips. */
+  layout?: 'select' | 'chips'
+  /**
+   * Named values computed from other params, in place of the metadata's own
+   * (FSTRATE_DIV offered as the PID loop rates the gyro rate allows). The
+   * editor also takes `label` as its caption.
+   */
+  options?: ReadonlyArray<{ value: number; label: string; description?: string }>
 }
 
 /** Config category ids — the top tab groups. */
 export type ConfigCategoryId =
   | 'airframe'
+  | 'initial-tune'
+  | 'calibration'
   | 'sensors'
   // Peripheral groups. These render on the dedicated Peripherals tab rather
   // than under Config — same section/category machinery, a second ConfigView
@@ -83,7 +106,13 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   // motor poles, reverse mask. Someone looking for ESC settings had no reason to
   // open a tab called Airframe.
   { id: 'airframe', label: 'Airframe & Powertrain' },
+  // The starting point for a new build (prop size, cells): set once, before
+  // the first flight, so it sits with the airframe rather than in Tuning.
+  // Copter only; the category shows only when its section exists.
+  { id: 'initial-tune', label: 'Initial Tune' },
   { id: 'sensors', label: 'Sensors' },
+  // The bench calibrations, right after the sensors they calibrate.
+  { id: 'calibration', label: 'Calibration' },
   // Peripherals-tab groups, in the order a build is worked through: the
   // position sources first, then the payloads hanging off them.
   { id: 'gps', label: 'GPS' },
@@ -94,19 +123,26 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   // strip and a relay are things wired to the board, not servo setup.
   { id: 'alerts', label: 'LEDs & Buzzer' },
   { id: 'relays', label: 'Relays' },
-  { id: 'rc', label: 'RC' },
-  // Flight modes sat in a top-level Modes tab whose content overlapped
-  // Receiver's own Flight Modes sub-tab. The tab is gone; the same panel lives
-  // here, next to RC, so mode setup is reachable from configuration as well as
-  // from the receiver workflow.
-  { id: 'flight-modes', label: 'Flight Modes' },
-  { id: 'arming', label: 'Arming' },
-  // Power was its own nav tab. It keeps its own panel — battery monitor
-  // selection, live telemetry and its own staged-change review — and now lives
-  // here as a category rather than a separate tab.
-  { id: 'power', label: 'Power' },
+  // Arming checks and arm/disarm behaviour sit with RC: the arm switch is an
+  // RC function. Flight modes live on the Receiver tab only.
+  { id: 'rc', label: 'RC & Arming' },
+  // The battery panel is a card under System: on its own it was a thin tab.
   { id: 'system', label: 'System' }
 ]
+
+/**
+ * Categories folded into another tab. The ids stay, so a section, a search
+ * hit or a guided-setup jump that names the old category still lands in the
+ * right place.
+ */
+const CATEGORY_FOLD: Partial<Record<ConfigCategoryId, ConfigCategoryId>> = {
+  arming: 'rc',
+  power: 'system'
+}
+
+function foldCategory(category: ConfigCategoryId | undefined): ConfigCategoryId | undefined {
+  return category === undefined ? undefined : CATEGORY_FOLD[category] ?? category
+}
 
 export interface ConfigSection {
   id: string
@@ -128,6 +164,17 @@ export interface ConfigSection {
    * narrow column and turns into a tall scroll with the rest of the row empty.
    */
   wide?: boolean
+  /**
+   * Optional node beside the card title, for a state that needs attention
+   * (a low battery, say). The title row carries nothing when all is well.
+   */
+  badge?: ReactNode
+  /**
+   * A purpose-built editor for a field, by parameter id, in place of the
+   * generic one (the ESC card's motor-only bidirectional-DShot boxes). The
+   * field stays in `fields`, so it keeps its place and its apply scope.
+   */
+  fieldEditors?: Readonly<Record<string, ReactNode>>
   /** Optional node rendered below the field grid — used for one-click
    *  helpers (e.g. the ESC section's "enable bidirectional DShot" button)
    *  and contextual warnings the generic field editors can't express. */
@@ -151,9 +198,9 @@ export interface ConfigViewProps {
    * wanted is not in the DOM at all.
    */
   requestedCategory?: ConfigCategoryId
-  /** Expert mode opts into the whole surface, so the per-card Advanced folds
-   *  start open rather than making the operator expand each one. */
-  isExpertMode: boolean
+  /** Bumped with each request, so asking for the category already requested
+   *  (after the operator moved off it) is honoured too. */
+  requestedCategoryNonce?: number
   parametersById: ReadonlyMap<string, ParameterState>
   // -------- editable-state plumbing (mirrors the OSD tab) ----------
   editedValues: Record<string, string>
@@ -189,14 +236,14 @@ function fieldHasUnsaved(draftStatusById: ScopedFieldDraftMap, paramId: string):
 
 export function ConfigView(props: ConfigViewProps) {
   const {
-    sections,
-    title = 'Config',
+    sections: rawSections,
+    title = 'Setup',
     // No default subtitle: the page title is enough under the tab of the
     // same name.
     subtitle,
     panelId = 'setup-panel-config',
     requestedCategory,
-    isExpertMode,
+    requestedCategoryNonce,
     parametersById,
     editedValues,
     onEditChange,
@@ -211,6 +258,10 @@ export function ConfigView(props: ConfigViewProps) {
     onRevert
   } = props
 
+  const sections = useMemo(
+    () => rawSections.map((section) => ({ ...section, category: foldCategory(section.category) })),
+    [rawSections]
+  )
   // Categories that actually have sections for this vehicle/build — an empty
   // group never gets a tab.
   const presentCategories = useMemo(
@@ -224,9 +275,9 @@ export function ConfigView(props: ConfigViewProps) {
   // the tab strip.
   useEffect(() => {
     if (requestedCategory !== undefined) {
-      setActiveCategory(requestedCategory)
+      setActiveCategory(foldCategory(requestedCategory) ?? requestedCategory)
     }
-  }, [requestedCategory])
+  }, [requestedCategory, requestedCategoryNonce])
   // Keep the active tab valid if the section set changes under us.
   const effectiveCategory = presentCategories.some((category) => category.id === activeCategory)
     ? activeCategory
@@ -259,10 +310,27 @@ export function ConfigView(props: ConfigViewProps) {
   // sub-tab, which holds exactly one card by construction.
   const spreadWide = visibleSections.length === 1
 
-  // One editable field row (or the "(not reported)" placeholder). Shared by the
-  // common set and the folded Advanced set.
-  function renderField(field: ConfigSectionField): ReactNode {
-    const parameter = parametersById.get(field.paramId)
+  // One editable field row (or the "(not reported)" placeholder).
+  function renderField(field: ConfigSectionField, fieldEditors?: Readonly<Record<string, ReactNode>>): ReactNode {
+    const reported = parametersById.get(field.paramId)
+    // A parameter the catalog has no entry for (BRD_BOOT_DELAY) titled itself
+    // with its raw id and had no "i". The section's own label and unit stand
+    // in, so it reads like its neighbours and the "i" still names the id.
+    let parameter =
+      reported && !reported.definition
+        ? {
+            ...reported,
+            definition: { id: reported.id, label: field.label, description: '', category: 'config', unit: field.unit }
+          }
+        : reported
+    const custom = parameter ? fieldEditors?.[field.paramId] : undefined
+    if (custom !== undefined && custom !== null) {
+      return (
+        <div key={field.paramId} className="config-section__field-row">
+          {custom}
+        </div>
+      )
+    }
     if (!parameter) {
       return (
         <div
@@ -283,9 +351,32 @@ export function ConfigView(props: ConfigViewProps) {
         </div>
       )
     }
-    const hasOptions = (parameter.definition?.options ?? []).length > 0
+    const options = field.options ?? parameter.definition?.options ?? []
+    const hasOptions = options.length > 0
+    if (field.options && parameter.definition) {
+      parameter = { ...parameter, definition: { ...parameter.definition, label: field.label, options: [...field.options] } }
+    }
     const editor =
-      parameter.definition?.bitmask && hasOptions ? (
+      field.editor === 'imu-mask' ? (
+        <ImuMaskField
+          parameter={parameter}
+          editedValues={editedValues}
+          onChange={onEditChange}
+          draftStatusById={draftStatusById}
+        />
+      ) : field.editor === 'checkbox' ? (
+        <ScopedCheckboxField
+          parameter={parameter}
+          liveValue={parameter.value}
+          editedValues={editedValues}
+          onChange={onEditChange}
+          draftStatusById={draftStatusById}
+          testId={`config-checkbox-${parameter.id}`}
+          // The card title names the setting; each box is just "IMU 1".
+          caption={field.label}
+          showTitle={false}
+        />
+      ) : parameter.definition?.bitmask && hasOptions ? (
         <ScopedBitmaskField
           parameter={parameter}
           liveValue={parameter.value}
@@ -300,7 +391,9 @@ export function ConfigView(props: ConfigViewProps) {
           editedValues={editedValues}
           onChange={onEditChange}
           draftStatusById={draftStatusById}
-          layout="chips"
+          // Chips only when every option fits on one line; a long-labelled
+          // enum is a dropdown rather than a stack of wrapped chips.
+          layout={field.layout ?? (optionLabelsFitChips(options) ? 'chips' : 'select')}
         />
       ) : (
         <ScopedField
@@ -324,12 +417,15 @@ export function ConfigView(props: ConfigViewProps) {
 
   /** Render fields in order, collapsing a run that shares a `group` into one
    *  cell so they stack together instead of flowing apart. */
-  function renderFields(fields: readonly ConfigSectionField[]): ReactNode[] {
+  function renderFields(
+    fields: readonly ConfigSectionField[],
+    fieldEditors?: Readonly<Record<string, ReactNode>>
+  ): ReactNode[] {
     const out: ReactNode[] = []
     for (let index = 0; index < fields.length; index += 1) {
       const field = fields[index]
       if (field.group === undefined) {
-        out.push(renderField(field))
+        out.push(renderField(field, fieldEditors))
         continue
       }
       const run = [field]
@@ -339,7 +435,7 @@ export function ConfigView(props: ConfigViewProps) {
       }
       out.push(
         <div className="config-section__field-group" key={`group:${field.group}`}>
-          {run.map((grouped) => renderField(grouped))}
+          {run.map((grouped) => renderField(grouped, fieldEditors))}
         </div>
       )
     }
@@ -374,25 +470,33 @@ export function ConfigView(props: ConfigViewProps) {
         ) : null}
 
         <div
-          className={`config-grid${spreadWide ? ' config-grid--wide' : ''}`}
+          className={`config-grid${spreadWide ? ' config-grid--wide' : ''} config-grid--cat-${effectiveCategory}`}
+          // The guided Airframe step scrolls here.
+          id={effectiveCategory === 'airframe' ? 'setup-panel-airframe' : undefined}
           data-testid="config-section-grid"
         >
           {visibleSections.map((section) => (
             <article
               key={section.id}
-              className={`config-section${section.planned ? ' config-section--planned' : ''}${section.readOnly ? ' config-section--readonly' : ''}${section.wide ? ' config-section--wide' : ''}`}
+              className={`config-section${section.planned ? ' config-section--planned' : ''}${section.readOnly ? ' config-section--readonly' : ''}${section.wide ? ' config-section--wide' : ''} config-section--id-${section.id}`}
               data-testid={`config-section-${section.id}`}
             >
               <header className="config-section__header">
-                <div>
-                  <strong>{section.title}</strong>
-                  {/* Per-section blurb dropped in the cleanup — the per-param "i"
-                      tooltips carry the detail now; the title names the group. */}
-                </div>
+                {/* One line: the title, its "i" (the card's explanation, which
+                    used to be prose under it), and a badge only when there is
+                    something to flag. */}
+                <strong>{section.title}</strong>
+                {section.description ? (
+                  <InfoDot label={`About ${section.title}`} testId={`config-section-info-${section.id}`} wide>
+                    {section.description}
+                  </InfoDot>
+                ) : null}
                 {section.planned ? (
-                  <StatusBadge tone="warning">planned</StatusBadge>
+                  <span className="config-section__badge"><StatusBadge tone="warning">planned</StatusBadge></span>
                 ) : section.readOnly ? (
-                  <StatusBadge tone="neutral">read-only</StatusBadge>
+                  <span className="config-section__badge"><StatusBadge tone="neutral">read-only</StatusBadge></span>
+                ) : section.badge ? (
+                  <span className="config-section__badge">{section.badge}</span>
                 ) : null}
               </header>
 
@@ -420,46 +524,20 @@ export function ConfigView(props: ConfigViewProps) {
                     )
                   })}
                 </dl>
-              ) : (
-                (() => {
-                  const commonFields = section.fields.filter((field) => !field.advanced)
-                  const advancedFields = section.fields.filter((field) => field.advanced)
-                  // If a card is ALL advanced (shouldn't happen, but guard),
-                  // show them as common rather than an empty card behind a fold.
-                  const [leadFields, foldedFields] =
-                    commonFields.length > 0 ? [commonFields, advancedFields] : [advancedFields, []]
-                  const foldedUnsaved = foldedFields.some((field) => fieldHasUnsaved(draftStatusById, field.paramId))
-                  return (
-                    <div className="config-section__editors">
-                      {renderFields(leadFields)}
-                      {foldedFields.length > 0 ? (
-                        <details
-                          className="config-section__advanced"
-                          data-testid={`config-advanced-${section.id}`}
-                          // Auto-open when a folded field has an unsaved edit (so
-                          // it's never hidden), and in Expert mode, where the
-                          // operator has already opted into the full surface and
-                          // was otherwise expanding every card by hand. Otherwise
-                          // `undefined` leaves the disclosure user-toggleable
-                          // rather than force-closed.
-                          open={foldedUnsaved || isExpertMode || undefined}
-                        >
-                          <summary>
-                            Advanced
-                            <span className="config-section__advanced-count">{foldedFields.length}</span>
-                            {foldedUnsaved ? <span className="config-category-nav__dot" aria-label="unsaved changes" /> : null}
-                          </summary>
-                          <div className="config-section__editors config-section__editors--advanced">
-                            {renderFields(foldedFields)}
-                          </div>
-                        </details>
-                      ) : null}
-                    </div>
-                  )
-                })()
-              )}
+              ) : section.fields.length > 0 ? (
+                // Every field in the card's grid. There used to be a per-card
+                // "Advanced N" fold here; the operator asked for every field
+                // shown, laid out cleanly, rather than a click to reach a few.
+                <div className="config-section__editors">{renderFields(section.fields, section.fieldEditors)}</div>
+              ) : null}
               {!section.planned && section.footer ? (
-                <div className="config-section__footer">{section.footer}</div>
+                // A card that is all footer (Flight modes, Battery) has no field
+                // grid to separate it from, so no rule and no gap above it.
+                <div
+                  className={`config-section__footer${section.fields.length === 0 ? ' config-section__footer--bare' : ''}`}
+                >
+                  {section.footer}
+                </div>
               ) : null}
             </article>
           ))}
@@ -477,7 +555,7 @@ export function ConfigView(props: ConfigViewProps) {
             disabled={isBusy || stagedCount === 0 || invalidCount > 0 || !canApply}
             data-testid="config-apply"
           >
-            {isApplying ? 'Applying…' : `Apply Config (${stagedCount})`}
+            {isApplying ? 'Applying…' : `Apply ${title} (${stagedCount})`}
           </button>
           <button
             type="button"

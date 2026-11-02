@@ -20,11 +20,6 @@ export function SetupView(props: SetupViewProps) {
         // "Status & Info". The panel underneath them saying "Setup" was a
         // leftover from the view's old name.
         title={mode === 'wizard' ? 'Guided Setup' : 'Status & Info'}
-        subtitle={
-          mode === 'wizard'
-            ? 'Work one setup step at a time with a single active task, clear evidence, and explicit next actions.'
-            : undefined
-        }
         actions={mode === 'wizard' ? actionsSlot : undefined}
       >
         <div className="setup-command-center">

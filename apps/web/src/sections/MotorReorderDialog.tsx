@@ -8,7 +8,7 @@
 // the FC-spinning intent lives in App.tsx. Gated by motorReorderDialogOpen at
 // the call site, so this renders unconditionally. Behavior-preserving.
 
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { InfoDot } from '../views/InfoDot'
 import { ParamIdHint } from '../views/ScopedField'
 
@@ -26,7 +26,6 @@ import type { MotorReorderRow } from '../hooks/use-motor-reorder'
 
 export interface MotorReorderDialogProps {
   snapshot: ConfiguratorSnapshot
-  airframe: { frameClassLabel: string; frameTypeLabel: string }
   busyAction: string | undefined
   editedValues: Record<string, string>
 
@@ -91,11 +90,16 @@ export interface MotorReorderDialogProps {
   /** Render inline (no lightbox backdrop / Close) for embedding directly in the
    *  Motor Setup tab instead of as a popout. */
   inline?: boolean
+  /** Rendered under the motor diagram (the Motors tab puts "Want props out?"
+   *  here, next to the picture it changes). */
+  diagramFooter?: ReactNode
+  /** Under the left box on both tabs (the Motors tab's spin thresholds), so
+   *  the left column is one block the right column cannot push down. */
+  leftFooter?: ReactNode
 }
 
 export function MotorReorderDialog({
   snapshot,
-  airframe,
   busyAction,
   editedValues,
   motorDialogTab,
@@ -134,7 +138,9 @@ export function MotorReorderDialog({
   canApplyMotorDrafts,
   rebootRecommended,
   onApplyAndRebootMotorDrafts,
-  inline = false
+  inline = false,
+  diagramFooter,
+  leftFooter
 }: MotorReorderDialogProps): ReactElement {
   const motorTestBusy =
     snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'
@@ -382,12 +388,8 @@ export function MotorReorderDialog({
                   <p>No mapped motor outputs are available to reorder yet.</p>
                 </div>
               )}
-
-              <div className="config-pills">
-                <span>{airframe.frameClassLabel}</span>
-                <span>{airframe.frameTypeLabel}</span>
-                <span>{motorReorderRows.length} mapped outputs</span>
-              </div>
+              {diagramFooter}
+              {leftFooter}
             </div>
           </section>
 
@@ -540,6 +542,9 @@ export function MotorReorderDialog({
                 </div>
               ) : null}
 
+              {/* Inline, Cancel and Stage only mean something once a reorder is
+                  under way; idle they were two dead buttons. */}
+              {!inline || guidedReorderActive || guidedReorderCompleted || motorReorderChangedCount > 0 ? (
               <div className="switch-exercise-controls">
                 <button type="button" style={buttonStyle()} onClick={onClose}>
                   Cancel
@@ -581,6 +586,7 @@ export function MotorReorderDialog({
                   </button>
                 )}
               </div>
+              ) : null}
             </div>
           </section>
         </div>
@@ -596,10 +602,7 @@ export function MotorReorderDialog({
               <strong>Spin individual motors</strong>
             </div>
             <div className="bf-gui-box__body">
-              <p className="bf-note">
-                Click a motor to spin it, 2.5 s at 6%. Arrows show the correct
-                direction seen from above; flip a Reverse toggle to fix one (DShot only).
-              </p>
+              <p className="bf-note">Click a motor to spin it.</p>
               {motorPreviewNodes.length > 0 ? (
                 <div className="motor-mixer-preview motor-mixer-preview--dialog">
                   <svg viewBox="0 0 260 260" role="img" aria-label="Clickable motor map — click a motor to spin it">
@@ -660,6 +663,7 @@ export function MotorReorderDialog({
               ) : (
                 <p className="bf-note">No mapped motor outputs are available to spin yet.</p>
               )}
+              {leftFooter}
             </div>
           </section>
           <section className="bf-gui-box">
@@ -693,8 +697,8 @@ export function MotorReorderDialog({
                       <div>
                         <strong>Reverse motor direction</strong>
                         <p>
-                          If the right motor spins the wrong way, reverse it here over DShot (BLHeli/AM32) instead
-                          of swapping wires. {eligibility.canReverse ? 'Takes effect on the next reboot/redetect.' : eligibility.blockedReason}
+                          Flip a motor that spins the wrong way, over DShot.{' '}
+                          {eligibility.canReverse ? 'Takes effect on reboot.' : eligibility.blockedReason}
                         </p>
                       </div>
                     </div>

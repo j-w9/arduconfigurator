@@ -149,18 +149,26 @@ export function FailsafeView(props: FailsafeViewProps) {
   const visibleBoxes = useMemo(() => {
     const boxes: Array<{ group?: string; rows: FailsafeViewRow[] }> = []
     const byGroup = new Map<string, { group?: string; rows: FailsafeViewRow[] }>()
+    // Ungrouped rows that share a source share a card: three cards each
+    // titled "RC failsafe" with one field apiece were three kickers for one
+    // decision set.
+    const ungroupedBySource = new Map<string, number>()
     for (const row of visibleRows) {
-      if (row.group === undefined) {
+      if (row.group === undefined) ungroupedBySource.set(row.source, (ungroupedBySource.get(row.source) ?? 0) + 1)
+    }
+    for (const row of visibleRows) {
+      const groupKey = row.group ?? ((ungroupedBySource.get(row.source) ?? 0) > 1 ? row.source : undefined)
+      if (groupKey === undefined) {
         boxes.push({ rows: [row] })
         continue
       }
-      const existing = byGroup.get(row.group)
+      const existing = byGroup.get(groupKey)
       if (existing) {
         existing.rows.push(row)
         continue
       }
-      const box = { group: row.group, rows: [row] }
-      byGroup.set(row.group, box)
+      const box = { group: groupKey, rows: [row] }
+      byGroup.set(groupKey, box)
       boxes.push(box)
     }
     return boxes
@@ -283,31 +291,6 @@ export function FailsafeView(props: FailsafeViewProps) {
               Revert
             </button>
           </div>
-
-          {effectiveCategory === 'advanced' ? (
-          <section
-            className="failsafe-placeholder failsafe-servo-position"
-            data-testid="failsafe-servo-position-placeholder"
-            aria-label="Servo failsafe positions"
-          >
-            <header className="failsafe-placeholder__header">
-              <div>
-                <strong>Servo failsafe positions</strong>
-                <p>
-                  Per-channel servo PWM target when an active failsafe triggers — a Mission Planner / BF style
-                  per-output failsafe-position editor (e.g. centre rudder + cut throttle on RC loss). Will edit
-                  SERVOn_FUNCTION sibling params for the failsafe pose; landing here under Failsafe instead of
-                  Servos so all loss-of-link behavior stays in one tab.
-                </p>
-              </div>
-              <StatusBadge tone="warning">planned</StatusBadge>
-            </header>
-            <p className="failsafe-placeholder__note">
-              Placeholder only. Until this ships, set per-servo failsafe positions via the autopilot&apos;s
-              Parameters tab.
-            </p>
-          </section>
-          ) : null}
 
         </div>
       </Panel>

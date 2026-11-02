@@ -181,10 +181,6 @@ export function PresetsView(props: PresetsViewProps) {
     headerBadgeLabel,
     notice,
     followUp,
-    familiesCount,
-    totalCount,
-    changedCount,
-    autoBackupCount,
     groups,
     selected,
     onToggleDropParam,
@@ -229,10 +225,6 @@ export function PresetsView(props: PresetsViewProps) {
           <div className="telemetry-header">
             <div>
               <h3>Preset library</h3>
-              <p>
-                Presets stay intentionally narrow: they touch only the small, high-value tuning controls already exposed in this product. Every
-                apply requires diff review, and a pre-apply snapshot is captured automatically before any write is sent.
-              </p>
             </div>
             <StatusBadge tone={headerTone}>{headerBadgeLabel}</StatusBadge>
           </div>
@@ -246,13 +238,6 @@ export function PresetsView(props: PresetsViewProps) {
 
           {sharing ? (
             <div className="presets-share" data-testid="presets-share">
-              <div className="presets-share__copy">
-                <strong>Share your presets</strong>
-                <p>
-                  Export the presets you have saved as a file, and import ones you have been sent. Only your own
-                  presets are exported — the curated ones ship with ArduConfigurator, so a recipient already has them.
-                </p>
-              </div>
               <div className="button-row">
                 <button
                   type="button"
@@ -382,26 +367,7 @@ export function PresetsView(props: PresetsViewProps) {
               <StatusBadge tone="neutral">unavailable</StatusBadge>
               <p>{libraryRestrictedNote}</p>
             </div>
-          ) : (
-            <div className="telemetry-metric-grid">
-              <article className="telemetry-metric-card">
-                <span>Preset families</span>
-                <strong>{familiesCount}</strong>
-              </article>
-              <article className="telemetry-metric-card">
-                <span>Total presets</span>
-                <strong>{totalCount}</strong>
-              </article>
-              <article className="telemetry-metric-card">
-                <span>Changed vs live</span>
-                <strong>{changedCount}</strong>
-              </article>
-              <article className="telemetry-metric-card">
-                <span>Auto backups</span>
-                <strong>{autoBackupCount}</strong>
-              </article>
-            </div>
-          )}
+          ) : null}
 
           {libraryRestrictedNote ? null : groups.length > 0 ? (
             <div className="preset-group-grid">
@@ -439,7 +405,6 @@ export function PresetsView(props: PresetsViewProps) {
                           ))}
                         </div>
 
-                        {card.note ? <p>{card.note}</p> : null}
                       </button>
                     ))}
                   </div>
@@ -803,10 +768,6 @@ export function PresetsView(props: PresetsViewProps) {
             </div>
           ) : null}
 
-          <p className="telemetry-note">
-            Presets are designed to stay explainable and reversible. They are not broad tune dumps, and they intentionally stop at the first small
-            set of flight-feel and rate/expo controls.
-          </p>
         </div>
       </Panel>
     </section>

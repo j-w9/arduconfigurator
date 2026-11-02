@@ -1501,3 +1501,21 @@ export const ARDUCOPTER_FENCE_AUTOENABLE_LABELS: Record<number, string> = {
   2: 'Enable on takeoff, disable floor on landing',
   3: 'Enable only when armed'
 }
+
+// INS_LOG_BAT_MASK: which IMUs the batch sampler logs raw samples for.
+// Verbatim from libraries/AP_InertialSensor/BatchSampler.cpp @Bitmask
+// (0:IMU1,1:IMU2,2:IMU3).
+export const ARDUCOPTER_INS_LOG_BAT_MASK_BIT_LABELS: Record<number, string> = {
+  0: 'IMU 1',
+  1: 'IMU 2',
+  2: 'IMU 3'
+}
+
+// INS_LOG_BAT_OPT: batch sampler options. Verbatim from BatchSampler.cpp
+// @Bitmask (0:Sensor-Rate Logging (sample at full sensor rate seen by AP),
+// 1: Sample post-filtering, 2: Sample pre- and post-filter).
+export const ARDUCOPTER_INS_LOG_BAT_OPT_BIT_LABELS: Record<number, string> = {
+  0: 'Sensor-rate logging',
+  1: 'Sample post-filter',
+  2: 'Sample pre- and post-filter'
+}

@@ -141,6 +141,19 @@ export function shouldRenderOptionChips(optionCount: number): boolean {
   return optionCount > 0 && optionCount <= SCOPED_CHIP_MAX_OPTIONS
 }
 
+/** Longest option label that still reads as a chip on one line. */
+export const SCOPED_CHIP_MAX_LABEL_LENGTH = 28
+
+/**
+ * Whether every option label is short enough to sit on one chip line. An enum
+ * with even one long label ("BLHeli32 / AM32 / KISS + Extended DShot
+ * Telemetry") turned into a stack of wrapped chips taller than the rest of the
+ * card; that enum reads better as a dropdown. Pure so it can be unit-tested.
+ */
+export function optionLabelsFitChips(options: readonly { label: string }[]): boolean {
+  return options.every((option) => option.label.length <= SCOPED_CHIP_MAX_LABEL_LENGTH)
+}
+
 /**
  * Whether a param's enumerated options are non-exhaustive HINTS rather than a
  * closed enum — true when they cover only a sparse fraction of a wide numeric
@@ -174,12 +187,17 @@ interface ScopedSelectFieldProps extends CommonScopedFieldProps {
    *  inert "N (unlisted)" label with no way to change it to another number.
    *  Opt-in — every other ScopedSelectField usage is unaffected. */
   allowCustomValue?: boolean
+  /** With allowCustomValue: told whether the staged value is outside the
+   *  listed options, so the host can set "Override and write anyway" for
+   *  it (a typed number the metadata does not list is otherwise an invalid
+   *  draft that can never be written — the case Custom… exists for). */
+  onEnumOverride?: (paramId: string, overridden: boolean) => void
 }
 
 const CUSTOM_VALUE_SENTINEL = '__custom__'
 
 export function ScopedSelectField(props: ScopedSelectFieldProps) {
-  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, layout = 'select', allowCustomValue = false } = props
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, layout = 'select', allowCustomValue = false, onEnumOverride } = props
   const options = parameter.definition?.options ?? []
   if (layout === 'chips' && shouldRenderOptionChips(options.length)) {
     return <ScopedOptionChipsField {...props} />
@@ -214,6 +232,7 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
                 setCustomModeForced(true)
               } else {
                 setCustomModeForced(false)
+                onEnumOverride?.(parameter.id, false)
                 onChange(parameter.id, event.target.value)
               }
             }}
@@ -232,7 +251,11 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
               className="scoped-select-with-custom__input"
               value={currentValue}
               aria-label={`Custom ${fieldLabel} value`}
-              onChange={(event) => onChange(parameter.id, event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value
+                onEnumOverride?.(parameter.id, next !== '' && !options.some((option) => String(option.value) === next))
+                onChange(parameter.id, next)
+              }}
             />
           ) : null}
         </span>
@@ -374,6 +397,52 @@ export function ScopedField(props: ScopedNumberFieldProps) {
 }
 
 /**
+ * Bits set in `value` that the definition does not list, lowest first. A
+ * firmware can carry an option the metadata does not know yet (a fork bit, a
+ * newer release); those still need to be visible and clearable.
+ */
+export function unlistedSetBits(value: number, options: readonly { value: number }[]): number[] {
+  const listed = new Set(options.map((option) => option.value))
+  const bits: number[] = []
+  for (let bit = 0; bit < 31; bit += 1) {
+    if ((value & (1 << bit)) !== 0 && !listed.has(bit)) {
+      bits.push(bit)
+    }
+  }
+  return bits
+}
+
+function UnlistedBitButtons({
+  paramId,
+  value,
+  options,
+  onChange
+}: {
+  paramId: string
+  value: number
+  options: readonly { value: number }[]
+  onChange: (paramId: string, value: string) => void
+}) {
+  return (
+    <>
+      {unlistedSetBits(value, options).map((bit) => (
+        <button
+          type="button"
+          key={`${paramId}:unlisted:${bit}`}
+          className="scoped-bitmask-bit is-set scoped-bitmask-bit--unlisted"
+          aria-pressed
+          data-testid={`scoped-bitmask-unlisted-${paramId}-${bit}`}
+          title="Set on the vehicle but not in this parameter's list. Click to clear it."
+          onClick={() => onChange(paramId, String((value & ~(1 << bit)) >>> 0))}
+        >
+          Bit {bit}
+        </button>
+      ))}
+    </>
+  )
+}
+
+/**
  * Render a bitmask parameter as a grid of per-bit checkboxes (instead of a
  * single dropdown). Each option's `value` is the BIT INDEX (0, 1, 2, …);
  * the staged value is the OR of the checked bits. Used by the generic
@@ -410,6 +479,7 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
             </button>
           )
         })}
+        <UnlistedBitButtons paramId={parameter.id} value={safeCurrent} options={options} onChange={onChange} />
       </div>
       {/* Raw value entry: paste/type a bitmask number directly (e.g. copying a
           value out of another param file). Shares the same edited value as the
@@ -529,6 +599,14 @@ export function ScopedOptionChipsField(props: CommonScopedFieldProps) {
  * per-bit checkbox grid as ScopedBitmaskField (single column, scrollable). Used
  * where the always-open inline grid would be too tall / overlap neighbours.
  */
+/** Collapsed-row text: the raw value, then how many listed bits are set. */
+export function formatBitmaskSummary(value: number, setCount: number, listedCount: number, unlisted: readonly number[]): string {
+  const parts: string[] = []
+  if (setCount > 0) parts.push(`${setCount} of ${listedCount} set`)
+  if (unlisted.length > 0) parts.push(`bit ${unlisted.join(', ')} not in list`)
+  return `${value} · ${parts.length > 0 ? parts.join(', ') : 'None set'}`
+}
+
 export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
   const { parameter, liveValue, editedValues, draftStatusById, onChange } = props
   const status = statusModifier(draftStatusById, parameter.id)
@@ -547,7 +625,9 @@ export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
       data-testid={`scoped-bitmask-${parameter.id}`}
     >
       <summary className="scoped-bitmask-popover__summary">
-        <span>{setCount > 0 ? `${setCount} of ${options.length} set` : 'None set'}</span>
+        <span data-testid={`scoped-bitmask-summary-${parameter.id}`}>
+          {formatBitmaskSummary(safeCurrent, setCount, options.length, unlistedSetBits(safeCurrent, options))}
+        </span>
       </summary>
       <div className="scoped-bitmask-popover__panel">
         <div className="scoped-bitmask-bits scoped-bitmask-bits--single">
@@ -567,6 +647,7 @@ export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
               </button>
             )
           })}
+          <UnlistedBitButtons paramId={parameter.id} value={safeCurrent} options={options} onChange={onChange} />
         </div>
         {/* Raw value entry: paste/type a bitmask number directly (e.g. copying a
             value out of another param file) — the checkboxes track it. */}

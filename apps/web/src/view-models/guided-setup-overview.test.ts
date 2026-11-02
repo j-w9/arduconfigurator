@@ -56,20 +56,17 @@ describe('buildGuidedSetupOverview', () => {
     expect(buildGuidedSetupOverview(baseInputs({ setupFlowSections: allComplete })).recommendedSetupSection?.id).toBe('a')
   })
 
-  it('falls back to the recommended section when the selected candidate is locked and no testing shortcut', () => {
+  it('keeps a locked selection: any step can be opened as a preview; only a missing one falls back', () => {
     const current = section({ id: 'current', sequenceState: 'current' })
     const locked = section({ id: 'locked', sequenceState: 'locked' })
     const sections = [current, locked]
 
-    const guarded = buildGuidedSetupOverview(baseInputs({ setupFlowSections: sections, selectedSetupSectionId: 'locked' }))
-    expect(guarded.selectedSetupSectionCandidate?.id).toBe('locked')
-    expect(guarded.selectedSetupSection?.id).toBe('current')
+    const previewed = buildGuidedSetupOverview(baseInputs({ setupFlowSections: sections, selectedSetupSectionId: 'locked' }))
+    expect(previewed.selectedSetupSection?.id).toBe('locked')
+    expect(previewed.selectedSetupSection?.sequenceState).toBe('locked')
 
-    // The testing shortcut unlocks selection of a locked section.
-    const shortcut = buildGuidedSetupOverview(
-      baseInputs({ setupFlowSections: sections, selectedSetupSectionId: 'locked', guidedSetupTestingShortcutActive: true })
-    )
-    expect(shortcut.selectedSetupSection?.id).toBe('locked')
+    const missing = buildGuidedSetupOverview(baseInputs({ setupFlowSections: sections, selectedSetupSectionId: 'gone' }))
+    expect(missing.selectedSetupSection?.id).toBe('current')
   })
 
   it('derives index, neighbours, completion count, progress, and the complete flag', () => {
@@ -117,7 +114,7 @@ describe('buildGuidedSetupOverview', () => {
       section({ id: 'd', confirmationOutcome: 'complete' })
     ]
     const result = buildGuidedSetupOverview(baseInputs({ setupFlowSections: sections }))
-    expect(result.setupOutcomeCounts).toEqual({ notApplicable: 1, alreadyDone: 1, deferred: 1 })
+    expect(result.setupOutcomeCounts).toEqual({ notApplicable: 1, alreadyDone: 1, deferred: 1, overridden: 0 })
     expect(result.guidedSetupHasExceptions).toBe(true)
     expect(result.guidedSetupOutcomeSummary).toBe('1 not applicable • 1 already done • 1 deferred')
 
@@ -197,17 +194,44 @@ describe('buildGuidedSetupOverview', () => {
     expect(result.guidedSetupSupportActions).toEqual([primary, support])
   })
 
+  it('never promotes the undo to the hero: a signed-off step whose only action is Clear has no primary', () => {
+    // After the final step is confirmed its action list is just the Clear
+    // (the confirm is gone and there is nothing to scroll to), and the
+    // any-action fallback made that Clear the hero button.
+    const clear = action({ kind: 'clear-confirmation', label: 'Clear Verify Review', tone: 'secondary' })
+    // A scroll to the wizard's own panel is dropped from the support bucket
+    // for the same reason; it must not become the hero either.
+    const scroll = action({ kind: 'scroll', label: 'Open guided', panelId: 'setup-panel-guided' })
+    const sections = [section({ id: 'verify', status: 'complete', sequenceState: 'complete', actions: [scroll, clear] })]
+
+    const result = buildGuidedSetupOverview(baseInputs({ setupFlowSections: sections, selectedSetupSectionId: 'verify' }))
+    expect(result.guidedSetupPrimaryAction).toBeUndefined()
+    // The undo is still offered, as a support action.
+    expect(result.guidedSetupSupportActions).toEqual([clear])
+
+    // A section whose actions are a Clear and something else still gets the
+    // something else.
+    const confirm = action({ kind: 'confirm-step', label: 'Confirm', disabled: true })
+    const withConfirm = buildGuidedSetupOverview(
+      baseInputs({
+        setupFlowSections: [section({ id: 'verify', sequenceState: 'current', actions: [clear, confirm] })],
+        selectedSetupSectionId: 'verify'
+      })
+    )
+    expect(withConfirm.guidedSetupPrimaryAction).toBe(confirm)
+  })
+
   it('surfaces the airframe and outputs context hints, undefined elsewhere', () => {
     const airframe = buildGuidedSetupOverview(
       baseInputs({ setupFlowSections: [section({ id: 'airframe', sequenceState: 'current' })], selectedSetupSectionId: 'airframe' })
     )
-    expect(airframe.guidedSetupContextHint).toContain('board-orientation page')
+    expect(airframe.guidedSetupContextHint).toContain('does not finish this step')
 
     const outputs = buildGuidedSetupOverview(
       baseInputs({ setupFlowSections: [section({ id: 'outputs', sequenceState: 'current' })], selectedSetupSectionId: 'outputs' })
     )
-    expect(outputs.guidedSetupContextHint).toContain('Motors bench')
-    expect(outputs.guidedSetupContextHint).toContain('reviewed and confirmed here')
+    expect(outputs.guidedSetupContextHint).toContain('Opening Motors')
+    expect(outputs.guidedSetupContextHint).toContain('confirm the output map here')
 
     const other = buildGuidedSetupOverview(
       baseInputs({ setupFlowSections: [section({ id: 'battery', sequenceState: 'current' })], selectedSetupSectionId: 'battery' })

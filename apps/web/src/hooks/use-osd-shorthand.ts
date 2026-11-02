@@ -1,7 +1,7 @@
 // OSD message shorthand table detection + edit state (ArduPilot fork feature).
 // The table lives on the FC behind a MAVLink-FTP mount (@OSD/shorthand.dat);
 // when the firmware exposes it the OSD Messages section shows an editable
-// from→to dictionary, otherwise the editor stays hidden. Mirrors use-vtx-table.
+// from→to dictionary, otherwise the editor stays hidden.
 
 import { useCallback, useEffect, useState } from 'react'
 

@@ -71,6 +71,53 @@ const ACCELEROMETER_AUTO_STILL_DEG = 15
 const ACCELCAL_SUCCESS_VALUE = 16777215
 const ACCELCAL_FAILED_VALUE = 16777216
 
+// PREFLIGHT_CALIBRATION param5=1 is acknowledged only AFTER a blocking gyro
+// calibration (GCS_Common.cpp _handle_command_preflight_calibration:
+// calibrate_gyros() then acal start(), under EXPECT_DELAY_MS(30000)). On a
+// still vehicle that is ~1 s; a vehicle that is being handled, or a board
+// with slow-to-converge gyros, takes many seconds. Same budget as level cal.
+const ACCELEROMETER_START_ACK_TIMEOUT_MS = 15000
+// If the ack still misses that budget, the autopilot may nevertheless go on
+// to start the calibration (the handler was merely slow). A late ACCEPTED
+// ack or a first pose prompt inside this window resumes the action instead
+// of leaving the operator with a 'failed' card while the vehicle is asking
+// for poses. Deliberate: before the 'running'-only gate this happened by
+// accident, because 'failed' was not excluded.
+const DEFAULT_ACCELEROMETER_LATE_START_RESUME_WINDOW_MS = 15000
+// No-prompt watchdog for a running accel cal. While it waits for a posture
+// AP_AccelCal re-sends ACCELCAL_VEHICLE_POS every second
+// (AP_ACCELCAL_POSITION_REQUEST_INTERVAL_MS), sample collection lasts at most
+// ~1.5 s, and after the sixth posture the verdict follows within seconds and
+// is then repeated every second. Fifteen seconds of silence therefore means
+// the autopilot is gone (rebooted, power-cycled) or the link no longer
+// delivers its commands — on a transport that survives a reboot (WebSocket
+// bridge, SITL, Ethernet) nothing else would ever end the action, and every
+// parameter write stays blocked behind it until the operator finds Cancel.
+const DEFAULT_ACCELEROMETER_PROMPT_WATCHDOG_MS = 15000
+
+// What an onboard mag cal does when our cancel cannot reach it. There is no
+// onboard timeout: CompassCalibrator keeps fitting until it reaches a result
+// (with autosave=1, which we request, a SUCCESS is stored to COMPASS_OFS* on
+// its own) or until a reboot; arming is refused while it runs.
+const COMPASS_CANCEL_UNDELIVERABLE_TEXT =
+  'Disconnected during compass calibration — the cancel could not be sent. The onboard calibration keeps running: with autosave it stores new offsets once the frame has been rotated enough, and it only stops on a reboot. Reboot the autopilot before flying if this calibration was not meant to finish.'
+
+// Parameters a successful calibration writes on the autopilot (AP_AccelCal
+// clients save INS_ACC*OFFS/SCAL + the trim; calibrate_trim saves AHRS_TRIM;
+// Compass::_accept_calibration saves COMPASS_OFS/DIA/ODI/SCALE and, with
+// auto-rotation, COMPASS_ORIENT). Re-read by name after success.
+const LEVEL_CALIBRATION_RESULT_PARAMETERS: readonly RegExp[] = [/^AHRS_TRIM_[XY]$/]
+const ACCELEROMETER_CALIBRATION_RESULT_PARAMETERS: readonly RegExp[] = [
+  /^INS_ACC\d?(OFFS|SCAL)_[XYZ]$/,
+  /^INS_ACC\d?_ID$/,
+  /^AHRS_TRIM_[XY]$/
+]
+const COMPASS_CALIBRATION_RESULT_PARAMETERS: readonly RegExp[] = [
+  /^COMPASS_(OFS|DIA|ODI)\d?_[XYZ]$/,
+  /^COMPASS_SCALE\d?$/,
+  /^COMPASS_ORIENT\d?$/
+]
+
 // MAG_CAL_STATUS enum (ArduPilot / MAVLink common).
 const MAG_CAL_STATUS_SUCCESS = 4
 const MAG_CAL_STATUS_FAILED = 5
@@ -104,6 +151,16 @@ function compassIdsFromMask(mask: number): number[] {
 interface AccelerometerCalibrationProgressState {
   stepIndex: number
   waitingForCompletion: boolean
+  /**
+   * True once the autopilot itself asked for `stepIndex` (an
+   * ACCELCAL_VEHICLE_POS prompt). False for a step we are merely showing —
+   * the warm-up fallback, or the step we just confirmed while its sample is
+   * being collected. Auto-confirm only acts on a prompted step: AP_AccelCal
+   * takes a GCS ack only while `_waiting_for_mavlink_ack` is set, i.e. after
+   * it printed a NEW pose, so an ack for a pose it has not asked for is at
+   * best dropped and at worst mistaken for the pose it is still on.
+   */
+  promptedByVehicle: boolean
 }
 
 export interface GuidedActionServiceOptions {
@@ -119,6 +176,14 @@ export interface GuidedActionServiceOptions {
   ) => Promise<CommandAckMessage | void>
   appendStatusEntry: (severity: StatusTextEntry['severity'], text: string) => void
   emit: () => void
+  /**
+   * Re-read the synced parameters whose ids match any pattern (targeted
+   * PARAM_REQUEST_READ by name). Called after a calibration succeeds so the
+   * snapshot — and every verdict the UI derives from it — reflects the
+   * offsets the autopilot just stored instead of the pre-cal values until
+   * the next full sync. Optional; best-effort.
+   */
+  refreshParameters?: (patterns: readonly RegExp[]) => Promise<void>
   accelerometerInitialWarmupMs?: number
   accelerometerStepAdvanceMs?: number
   accelerometerCompletionFallbackMs?: number
@@ -127,6 +192,12 @@ export interface GuidedActionServiceOptions {
   accelerometerAutoHoldMs?: number
   compassGuidanceTimeoutMs?: number
   compassReportWatchdogMs?: number
+  /** Test override for the late-start resume window (see
+   *  DEFAULT_ACCELEROMETER_LATE_START_RESUME_WINDOW_MS). */
+  accelerometerLateStartResumeWindowMs?: number
+  /** Test override for the no-prompt watchdog (see
+   *  DEFAULT_ACCELEROMETER_PROMPT_WATCHDOG_MS). */
+  accelerometerPromptWatchdogMs?: number
 }
 
 /**
@@ -149,17 +220,24 @@ export class GuidedActionService {
   private readonly sendCommand: GuidedActionServiceOptions['sendCommand']
   private readonly appendStatusEntry: GuidedActionServiceOptions['appendStatusEntry']
   private readonly emit: () => void
+  private readonly refreshParameters: GuidedActionServiceOptions['refreshParameters']
   private readonly accelerometerInitialWarmupMs: number
   private readonly accelerometerStepAdvanceMs: number
   private readonly accelerometerCompletionFallbackMs: number
   private readonly accelerometerAutoHoldMs: number
   private readonly compassGuidanceTimeoutMs: number
   private readonly compassReportWatchdogMs: number
+  private readonly accelerometerLateStartResumeWindowMs: number
+  private readonly accelerometerPromptWatchdogMs: number
 
   private guidedActions = createIdleGuidedActions()
   private accelerometerCalibration?: AccelerometerCalibrationProgressState
+  /** When the PREFLIGHT_CALIBRATION start ack timed out (not: was rejected);
+   *  a late ack / first prompt inside the resume window revives the action. */
+  private accelerometerStartTimedOutAtMs?: number
   private accelerometerPromptFallbackTimer?: ReturnType<typeof setTimeout>
   private accelerometerAdvanceTimer?: ReturnType<typeof setTimeout>
+  private accelerometerPromptWatchdogTimer?: ReturnType<typeof setTimeout>
   /** Auto-confirm hold tracker for the posture currently being requested.
    *  Reset whenever the frame leaves the window, moves, or the step changes. */
   private accelerometerHold?: {
@@ -178,6 +256,8 @@ export class GuidedActionService {
   // on cal start / finalize / reset.
   private magCalReports = new Map<number, { calStatus: number; autosaved: number }>()
   private magCalExpectedMask = 0
+  /** compassId → highest MAG_CAL_PROGRESS `attempt` seen above 1 this run. */
+  private magCalRetryAttempts = new Map<number, number>()
 
   constructor(options: GuidedActionServiceOptions) {
     this.session = options.session
@@ -188,6 +268,7 @@ export class GuidedActionService {
     this.sendCommand = options.sendCommand
     this.appendStatusEntry = options.appendStatusEntry
     this.emit = options.emit
+    this.refreshParameters = options.refreshParameters
     this.accelerometerInitialWarmupMs =
       options.accelerometerInitialWarmupMs ?? DEFAULT_ACCELEROMETER_INITIAL_WARMUP_MS
     this.accelerometerStepAdvanceMs =
@@ -200,6 +281,10 @@ export class GuidedActionService {
       options.compassGuidanceTimeoutMs ?? DEFAULT_COMPASS_GUIDANCE_TIMEOUT_MS
     this.compassReportWatchdogMs =
       options.compassReportWatchdogMs ?? DEFAULT_COMPASS_REPORT_WATCHDOG_MS
+    this.accelerometerLateStartResumeWindowMs =
+      options.accelerometerLateStartResumeWindowMs ?? DEFAULT_ACCELEROMETER_LATE_START_RESUME_WINDOW_MS
+    this.accelerometerPromptWatchdogMs =
+      options.accelerometerPromptWatchdogMs ?? DEFAULT_ACCELEROMETER_PROMPT_WATCHDOG_MS
   }
 
   getActions(): Record<GuidedActionId, GuidedActionState> {
@@ -224,6 +309,9 @@ export class GuidedActionService {
       this.clearCompassGuidanceTimer()
       this.clearCompassReportWatchdog()
     }
+    if (actionId === 'calibrate-accelerometer') {
+      this.clearAccelerometerPromptWatchdog()
+    }
     this.setAction(actionId, {
       ...this.guidedActions[actionId],
       status: 'failed',
@@ -237,48 +325,171 @@ export class GuidedActionService {
   /**
    * Operator-initiated abort of a stuck or abandoned calibration. An action
    * left 'running' write-blocks the session via hasActiveAction(); this is
-   * the recovery path that doesn't require a reboot. Marks the action failed
-   * with a cancelled summary so the write gate clears immediately.
+   * the recovery path that doesn't require a reboot.
+   *
+   * Compass: DO_CANCEL_MAG_CAL is awaited (3 s) — the card reads
+   * "Cancelling…" and stays active until the autopilot acknowledges, then
+   * resets to idle; a rejected or unanswered cancel is reported as a failed
+   * cancel instead of pretending the calibrators stopped. Accelerometer:
+   * MAVLink has no abort for AP_AccelCal, so it is a configurator-side reset
+   * with an honest note about the onboard routine.
+   *
+   * Never rejects: the UI calls this from a click handler without awaiting.
    */
-  cancelAction(actionId: GuidedActionId): void {
+  async cancelAction(actionId: GuidedActionId): Promise<void> {
     const current = this.guidedActions[actionId]
     if (current.status !== 'requested' && current.status !== 'running') {
       return
     }
 
     if (actionId === 'calibrate-compass') {
-      // Proven cancel path (same as reset()): stop the onboard calibrators.
-      if (this.isConnected()) {
-        void this.sendCommand(MAV_CMD.DO_CANCEL_MAG_CAL, [0, 0, 0, 0, 0, 0, 0]).catch(() => {})
-      }
-      this.magCalReports = new Map()
-      this.magCalExpectedMask = 0
+      await this.cancelCompassCalibration(current)
+      return
     }
 
     if (actionId === 'calibrate-accelerometer') {
-      // MAVLink has no accel-cal abort command; the onboard routine keeps
-      // waiting for pose confirmations until its own timeout or a reboot.
+      // There is no MAVLink command to abort AP_AccelCal. The onboard routine
+      // keeps waiting for pose confirmations (re-asking every second) until
+      // the autopilot reboots or is armed (acal_update cancels on arming);
+      // it has no timeout of its own while waiting.
       this.clearAccelerometerPromptFallbackTimer()
       this.clearAccelerometerAdvanceTimer()
+      this.clearAccelerometerPromptWatchdog()
       this.accelerometerCalibration = undefined
+      this.accelerometerStartTimedOutAtMs = undefined
       this.appendStatusEntry(
         'warning',
-        'Accelerometer calibration cancelled in the configurator — the onboard routine may keep waiting until it times out or the autopilot reboots.'
+        'Accelerometer calibration cancelled in the configurator. There is no MAVLink command to abort the onboard routine: the autopilot keeps asking for pose confirmations until it reboots (or the vehicle is armed). Reboot it before running another calibration or flying.'
       )
     }
 
-    // Reset to idle rather than marking it failed. Cancelling is a decision,
-    // not an error: leaving the card in a failure state means the operator has
-    // to get past an error they caused deliberately before they can start over,
-    // and for the accelerometer that matters most — its pose sequence is read
-    // from the action, so a cancelled run left the guide stranded partway
-    // through instead of back at the first pose.
-    //
-    // Idle unblocks parameter writes exactly as failed did; the reason the
-    // cancel exists at all is to escape a cal stuck in 'running'.
+    this.resetActionAfterCancel(actionId)
+  }
+
+  // Reset to idle rather than marking it failed. Cancelling is a decision,
+  // not an error: leaving the card in a failure state means the operator has
+  // to get past an error they caused deliberately before they can start over,
+  // and for the accelerometer that matters most — its pose sequence is read
+  // from the action, so a cancelled run left the guide stranded partway
+  // through instead of back at the first pose.
+  //
+  // Idle unblocks parameter writes exactly as failed did; the reason the
+  // cancel exists at all is to escape a cal stuck in 'running'.
+  private resetActionAfterCancel(actionId: GuidedActionId): void {
     this.setAction(actionId, createIdleGuidedAction(actionId))
     this.appendStatusEntry('info', `Guided action cancelled by operator (${actionId}) — reset to its first step.`)
     this.emit()
+  }
+
+  private compassCancelInFlight = false
+
+  private async cancelCompassCalibration(current: GuidedActionState): Promise<void> {
+    if (this.compassCancelInFlight) {
+      return
+    }
+    this.clearCompassGuidanceTimer()
+    this.clearCompassReportWatchdog()
+    this.magCalReports = new Map()
+    this.magCalExpectedMask = 0
+    this.magCalRetryAttempts = new Map()
+
+    if (!this.isConnected()) {
+      // Nothing can be delivered. Say what the vehicle will do instead of
+      // pretending the cancel went out.
+      this.appendStatusEntry('warning', COMPASS_CANCEL_UNDELIVERABLE_TEXT)
+      this.resetActionAfterCancel('calibrate-compass')
+      return
+    }
+
+    this.compassCancelInFlight = true
+    this.setAction('calibrate-compass', {
+      ...current,
+      status: 'running',
+      summary: 'Cancelling compass calibration — waiting for the autopilot to confirm it stopped.',
+      instructions: ['The onboard calibrators are being stopped with DO_CANCEL_MAG_CAL.'],
+      ctaLabel: undefined,
+      progressPct: undefined,
+      updatedAtMs: Date.now(),
+      completedAtMs: undefined
+    })
+    this.emit()
+
+    try {
+      const ack = await this.sendCommand(MAV_CMD.DO_CANCEL_MAG_CAL, [0, 0, 0, 0, 0, 0, 0], {
+        waitForAck: true,
+        ackTimeoutMs: 3000
+      })
+      if (ack && ack.result !== MAV_RESULT.ACCEPTED) {
+        throw new Error(`Autopilot did not accept DO_CANCEL_MAG_CAL (MAV_RESULT ${ack.result}).`)
+      }
+      this.resetActionAfterCancel('calibrate-compass')
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown cancel error.'
+      const message = `The autopilot did not confirm the compass calibration cancel (${reason}) — the onboard calibration may still be running: with autosave it will store new offsets once the frame has been rotated enough, and it only stops on a reboot. Reboot the autopilot before flying.`
+      this.failAction('calibrate-compass', new Error(message))
+      this.appendStatusEntry('warning', message)
+      this.emit()
+    } finally {
+      this.compassCancelInFlight = false
+    }
+  }
+
+  /**
+   * The runtime noticed the vehicle restarted on a link that stayed up (a
+   * heartbeat gap longer than VEHICLE_RESTART_HEARTBEAT_GAP_MS). A fresh boot
+   * is running no calibration of ours and will never report one, so every
+   * calibration still 'requested'/'running' is failed here and now rather
+   * than left blocking parameter writes until a watchdog or the operator
+   * catches up. A pending reboot request, conversely, just got its proof.
+   *
+   * Trade-off, stated: a multi-second heartbeat dropout on a lossy radio
+   * link mid-calibration is read the same way. The alternative — waiting on
+   * the per-calibration watchdogs — costs up to 90 s of write-block after a
+   * real reboot, and a cal whose progress we stopped seeing for 4 s on a
+   * link that drops heartbeats is not one to trust the result of anyway.
+   */
+  handleVehicleRestart(): void {
+    const now = Date.now()
+    let changed = false
+    for (const actionId of GUIDED_ACTION_IDS) {
+      if (actionId === 'request-parameters') {
+        continue
+      }
+      const current = this.guidedActions[actionId]
+      if (current.status !== 'requested' && current.status !== 'running') {
+        continue
+      }
+      changed = true
+      if (actionId === 'reboot-autopilot') {
+        this.setAction(actionId, {
+          ...current,
+          status: 'succeeded',
+          summary: 'Autopilot rebooted — its heartbeat is back.',
+          ctaLabel: undefined,
+          updatedAtMs: now,
+          completedAtMs: now
+        })
+        continue
+      }
+      if (actionId === 'calibrate-accelerometer') {
+        this.clearAccelerometerPromptFallbackTimer()
+        this.clearAccelerometerAdvanceTimer()
+        this.accelerometerCalibration = undefined
+        this.accelerometerStartTimedOutAtMs = undefined
+      }
+      if (actionId === 'calibrate-compass') {
+        this.magCalReports = new Map()
+        this.magCalExpectedMask = 0
+        this.magCalRetryAttempts = new Map()
+      }
+      const message =
+        'The autopilot restarted mid-calibration (its heartbeat stopped for several seconds and came back) — the calibration was abandoned. Re-run it once the vehicle has finished booting.'
+      this.failAction(actionId, new Error(message))
+      this.appendStatusEntry('warning', message)
+    }
+    if (changed) {
+      this.emit()
+    }
   }
 
   async runCalibrationAction(actionId: GuidedActionId): Promise<void> {
@@ -293,15 +504,7 @@ export class GuidedActionService {
         await this.runCompassCalibrationAction()
         return
       case 'reboot-autopilot':
-        await this.performCommandGuidedAction(
-          'reboot-autopilot',
-          'Autopilot reboot request queued.',
-          'Reboot request sent. Expect the link to drop if the autopilot accepts it.',
-          defaultInstructionsForAction('reboot-autopilot'),
-          async () => {
-            await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [1, 0, 0, 0, 0, 0, 0])
-          }
-        )
+        await this.runRebootAction()
         return
       default:
         return
@@ -315,16 +518,38 @@ export class GuidedActionService {
 
     const vehicle = this.getVehicle()
     const current = this.guidedActions['calibrate-accelerometer']
-    if (
-      !vehicle ||
-      vehicle.systemId !== systemId ||
-      vehicle.componentId !== componentId ||
-      (current.status === 'idle' && !this.accelerometerCalibration)
-    ) {
+    if (!vehicle || vehicle.systemId !== systemId || vehicle.componentId !== componentId) {
       return
     }
 
+    // Only a calibration we started AND the autopilot acknowledged is ours to
+    // drive (AP_AccelCal.cpp). Everything else on this command id is noise:
+    //
+    //  - Once any accel cal has finished, the autopilot re-sends the
+    //    SUCCESS/FAILED sentinel every second for the rest of the boot
+    //    (`_last_result != NOT_STARTED` branch of AP_AccelCal::update). Taking
+    //    it while 'succeeded' re-ran completeAccelerometerCalibration() each
+    //    second: a fresh status entry, completedAtMs advancing, and the
+    //    dismissable reboot prompt keyed on completedAtMs coming back forever.
+    //  - Before our PREFLIGHT_CALIBRATION is ACKed ('requested'), a sentinel
+    //    from the PREVIOUS run is still streaming; accepting it would finish
+    //    the new run before it began.
     const commandValue = Math.round(message.params[0] ?? 0)
+    const isPosePrompt = ACCELEROMETER_CALIBRATION_STEPS.some((step) => step.commandValue === commandValue)
+    if (current.status !== 'running') {
+      // A late start: the ack budget ran out but the autopilot is now asking
+      // for a pose. Only a pose prompt proves a live calibration (a sentinel
+      // may be the previous run's), and only inside the resume window.
+      if (isPosePrompt && this.canResumeLateAccelerometerStart(current)) {
+        this.resumeLateAccelerometerStart()
+      } else {
+        return
+      }
+    }
+
+    // Any ACCELCAL_VEHICLE_POS from a running cal is a sign of life.
+    this.scheduleAccelerometerPromptWatchdog()
+
     if (commandValue === ACCELCAL_SUCCESS_VALUE) {
       this.clearAccelerometerPromptFallbackTimer()
       this.clearAccelerometerAdvanceTimer()
@@ -345,11 +570,23 @@ export class GuidedActionService {
       return
     }
 
+    const state = this.accelerometerCalibration
+    if (state && state.promptedByVehicle && state.stepIndex === stepIndex && !state.waitingForCompletion) {
+      // The same prompt again. AP_AccelCal re-sends the posture it is waiting
+      // for every second (AP_ACCELCAL_POSITION_REQUEST_INTERVAL_MS); nothing
+      // about the step changed, so leave the auto-confirm hold alone. Tearing
+      // it down here (as a "step change") reset a 1.2 s hold every ~1 s — the
+      // reason auto-confirm never fired on a perfectly still, aligned frame.
+      this.clearAccelerometerPromptFallbackTimer()
+      return
+    }
+
     this.clearAccelerometerPromptFallbackTimer()
     this.clearAccelerometerAdvanceTimer()
     this.accelerometerCalibration = {
       stepIndex,
-      waitingForCompletion: false
+      waitingForCompletion: false,
+      promptedByVehicle: true
     }
     this.setAction(
       'calibrate-accelerometer',
@@ -357,10 +594,67 @@ export class GuidedActionService {
     )
   }
 
+  /**
+   * COMMAND_ACKs from the vehicle, in wire order. The runtime's sendCommand()
+   * promise resolves on the same ack, but a promise settles a microtask
+   * later — after every frame that shared the transport chunk with the ack
+   * has already been dispatched. Flipping 'requested' → 'running' HERE keeps
+   * the accept-gate wire-accurate: a MAG_CAL_REPORT / pose prompt that
+   * follows the start ack in the same chunk is taken, one that preceded it
+   * (a stale report from the previous run) is not.
+   *
+   * Only an ACCEPTED ack for the command the pending action sent counts;
+   * rejections and timeouts are reported by the awaiting runner.
+   */
+  handleCommandAck(message: CommandAckMessage, systemId: number, componentId: number): void {
+    const vehicle = this.getVehicle()
+    if (!vehicle || vehicle.systemId !== systemId || vehicle.componentId !== componentId) {
+      return
+    }
+    if (message.result !== MAV_RESULT.ACCEPTED) {
+      return
+    }
+
+    if (message.command === MAV_CMD.DO_START_MAG_CAL) {
+      const compass = this.guidedActions['calibrate-compass']
+      if (compass.status === 'requested') {
+        this.markCompassCalibrationStarted(compass)
+      }
+      return
+    }
+
+    if (message.command === MAV_CMD.PREFLIGHT_CALIBRATION) {
+      const accel = this.guidedActions['calibrate-accelerometer']
+      if (accel.status === 'requested' && !this.accelerometerCalibration) {
+        this.markAccelerometerCalibrationStarted(accel)
+      } else if (this.canResumeLateAccelerometerStart(accel)) {
+        this.resumeLateAccelerometerStart()
+        this.markAccelerometerCalibrationStarted(this.guidedActions['calibrate-accelerometer'])
+      }
+    }
+  }
+
+  private canResumeLateAccelerometerStart(current: GuidedActionState): boolean {
+    return (
+      current.status === 'failed' &&
+      this.accelerometerStartTimedOutAtMs !== undefined &&
+      Date.now() - this.accelerometerStartTimedOutAtMs <= this.accelerometerLateStartResumeWindowMs
+    )
+  }
+
+  private resumeLateAccelerometerStart(): void {
+    this.accelerometerStartTimedOutAtMs = undefined
+    this.appendStatusEntry(
+      'info',
+      'The autopilot started the accelerometer calibration after the acknowledgment window had closed — resuming the guided calibration.'
+    )
+  }
+
   /** Vehicle progress for an in-flight onboard mag calibration. */
   handleMagCalProgress(message: MagCalProgressMessage): void {
     const current = this.guidedActions['calibrate-compass']
-    if (current.status !== 'requested' && current.status !== 'running') {
+    // 'running' only — see handleMagCalReport for why 'requested' is excluded.
+    if (current.status !== 'running') {
       return
     }
 
@@ -376,10 +670,26 @@ export class GuidedActionService {
 
     const pct = Math.max(0, Math.min(100, Math.round(message.completionPct)))
     const now = Date.now()
+    // DO_START_MAG_CAL is sent with retry=1: a compass whose fit fails
+    // (FAILED / BAD_ORIENTATION / BAD_RADIUS) is restarted by the autopilot
+    // with `attempt` incremented (CompassCalibrator::set_status) instead of
+    // ever reporting a terminal status — so a compass that can never fit
+    // retries forever and the only visible trace is this field. Surface it,
+    // keep the action 'running' so Cancel stays available.
+    if (message.attempt > 1) {
+      this.magCalRetryAttempts.set(message.compassId, message.attempt)
+    }
+    const retrying = [...this.magCalRetryAttempts.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([compassId, attempt]) => `compass ${compassId + 1} failed its fit — retrying, attempt ${attempt}`)
+    const summary =
+      retrying.length > 0
+        ? `Compass calibration ${pct}% — ${retrying.join('; ')}; check for magnetic interference or the compass orientation, then keep rotating. Cancel if it never settles.`
+        : `Compass calibration ${pct}% — keep rotating the vehicle through all axes.`
     this.setAction('calibrate-compass', {
       ...current,
       status: 'running',
-      summary: `Compass calibration ${pct}% — keep rotating the vehicle through all axes.`,
+      summary,
       progressPct: pct,
       ctaLabel: undefined,
       startedAtMs: current.startedAtMs ?? now,
@@ -397,7 +707,16 @@ export class GuidedActionService {
    */
   handleMagCalReport(message: MagCalReportMessage): void {
     const current = this.guidedActions['calibrate-compass']
-    if (current.status !== 'requested' && current.status !== 'running') {
+    // Not 'requested': ArduPilot streams a MAG_CAL_REPORT for every calibrator
+    // that is in a terminal state until something calls stop() on it
+    // (Compass::send_mag_cal_report, AP_Compass_Calibration.cpp), and the
+    // autosave path never does. So after one successful run the SUCCESS
+    // report of that run keeps arriving at the EXTRA3 rate, and the next
+    // DO_START_MAG_CAL only restarts the calibrators once the autopilot has
+    // processed it — i.e. a stale SUCCESS can land between our send and its
+    // ACK and would finalize the new run before it started. The start ACK is
+    // the line (handleCommandAck flips to 'running' in wire order).
+    if (current.status !== 'running') {
       return
     }
 
@@ -444,6 +763,7 @@ export class GuidedActionService {
     const reports = expectedIds.map((id) => ({ id, ...this.magCalReports.get(id)! }))
     this.magCalReports = new Map()
     this.magCalExpectedMask = 0
+    this.magCalRetryAttempts = new Map()
 
     const failures = reports.filter((report) => report.calStatus !== MAG_CAL_STATUS_SUCCESS)
     if (failures.length === 0) {
@@ -462,6 +782,7 @@ export class GuidedActionService {
         updatedAtMs: now,
         completedAtMs: now
       })
+      this.refreshCalibrationResultParameters(COMPASS_CALIBRATION_RESULT_PARAMETERS)
       return
     }
 
@@ -524,12 +845,19 @@ export class GuidedActionService {
         completedAtMs: nextStatus === 'succeeded' || nextStatus === 'failed' ? now : undefined
       })
 
-      if (actionId === 'calibrate-accelerometer' && (nextStatus === 'succeeded' || nextStatus === 'failed')) {
-        this.accelerometerCalibration = undefined
-        this.clearAccelerometerPromptFallbackTimer()
-        this.clearAccelerometerAdvanceTimer()
-        if (nextStatus === 'succeeded') {
-          this.appendStatusEntry('info', 'Accelerometer calibration complete.')
+      if (actionId === 'calibrate-accelerometer') {
+        if (nextStatus === 'succeeded' || nextStatus === 'failed') {
+          this.accelerometerCalibration = undefined
+          this.clearAccelerometerPromptFallbackTimer()
+          this.clearAccelerometerAdvanceTimer()
+          this.clearAccelerometerPromptWatchdog()
+          if (nextStatus === 'succeeded') {
+            this.appendStatusEntry('info', 'Accelerometer calibration complete.')
+            this.refreshCalibrationResultParameters(ACCELEROMETER_CALIBRATION_RESULT_PARAMETERS)
+          }
+        } else if (nextStatus === 'running') {
+          // "Place vehicle …" texts travel with the prompts: sign of life.
+          this.scheduleAccelerometerPromptWatchdog()
         }
       }
     })
@@ -545,20 +873,20 @@ export class GuidedActionService {
         void this.sendCommand(MAV_CMD.DO_CANCEL_MAG_CAL, [0, 0, 0, 0, 0, 0, 0]).catch(() => {})
       } else {
         // Link already gone (cable pulled / transport error): the cancel
-        // cannot be delivered. Don't pretend it was — say plainly the
-        // onboard calibration will self-time-out on the vehicle.
-        this.appendStatusEntry(
-          'warning',
-          'Disconnected during compass calibration — the cancel could not be sent; the onboard magnetometer calibration will self-time-out on the vehicle.'
-        )
+        // cannot be delivered. Don't pretend it was — say what the vehicle
+        // actually does (it does NOT time out).
+        this.appendStatusEntry('warning', COMPASS_CANCEL_UNDELIVERABLE_TEXT)
       }
     }
     this.guidedActions = createIdleGuidedActions()
     this.accelerometerCalibration = undefined
+    this.accelerometerStartTimedOutAtMs = undefined
     this.magCalReports = new Map()
     this.magCalExpectedMask = 0
+    this.magCalRetryAttempts = new Map()
     this.clearAccelerometerPromptFallbackTimer()
     this.clearAccelerometerAdvanceTimer()
+    this.clearAccelerometerPromptWatchdog()
     this.clearCompassGuidanceTimer()
     this.clearCompassReportWatchdog()
   }
@@ -566,8 +894,44 @@ export class GuidedActionService {
   destroy(): void {
     this.clearAccelerometerPromptFallbackTimer()
     this.clearAccelerometerAdvanceTimer()
+    this.clearAccelerometerPromptWatchdog()
     this.clearCompassGuidanceTimer()
     this.clearCompassReportWatchdog()
+  }
+
+  private clearAccelerometerPromptWatchdog(): void {
+    if (!this.accelerometerPromptWatchdogTimer) {
+      return
+    }
+
+    clearTimeout(this.accelerometerPromptWatchdogTimer)
+    this.accelerometerPromptWatchdogTimer = undefined
+  }
+
+  /** Armed when the cal starts running, re-armed on every prompt/sentinel
+   *  and accel STATUSTEXT. See DEFAULT_ACCELEROMETER_PROMPT_WATCHDOG_MS. */
+  private scheduleAccelerometerPromptWatchdog(): void {
+    this.clearAccelerometerPromptWatchdog()
+    this.accelerometerPromptWatchdogTimer = setTimeout(() => {
+      this.accelerometerPromptWatchdogTimer = undefined
+      const current = this.guidedActions['calibrate-accelerometer']
+      if (current.status !== 'running') {
+        return
+      }
+
+      this.clearAccelerometerPromptFallbackTimer()
+      this.clearAccelerometerAdvanceTimer()
+      this.accelerometerCalibration = undefined
+      this.accelerometerStartTimedOutAtMs = undefined
+      const seconds = Math.round(this.accelerometerPromptWatchdogMs / 1000)
+      const message =
+        `No accelerometer calibration prompt arrived from the autopilot for ${seconds} seconds — it re-sends the current posture every second, so it has most likely rebooted or the link stopped delivering its commands. The calibration was abandoned so parameter writes are not blocked. Reboot the autopilot before running it again: there is no MAVLink command to abort the onboard routine, and it only stops on a reboot or when the vehicle is armed.`
+      this.failAction('calibrate-accelerometer', new Error(message))
+      this.appendStatusEntry('warning', message)
+      this.emit()
+    }, this.accelerometerPromptWatchdogMs)
+    // Must not hold a Node process open (tests, the desktop bridge).
+    ;(this.accelerometerPromptWatchdogTimer as unknown as { unref?: () => void }).unref?.()
   }
 
   private clearAccelerometerPromptFallbackTimer(): void {
@@ -624,6 +988,7 @@ export class GuidedActionService {
       }
       this.magCalReports = new Map()
       this.magCalExpectedMask = 0
+      this.magCalRetryAttempts = new Map()
       const message = `No compass calibration messages arrived for ${Math.round(
         this.compassReportWatchdogMs / 1000
       )} seconds — abandoning the wait so parameter writes are not blocked. Re-run the calibration and check the compass before flying.`
@@ -653,32 +1018,51 @@ export class GuidedActionService {
     }, this.accelerometerInitialWarmupMs)
   }
 
+  /**
+   * Runs after a posture was confirmed and the sample window has passed. It
+   * only changes WORDING: the step index moves on the autopilot's next
+   * ACCELCAL_VEHICLE_POS prompt and nowhere else. The timer used to advance
+   * the step itself, which put the guide a pose ahead of the vehicle
+   * whenever the autopilot re-asked for the same pose (a rejected sample) or
+   * was simply slower than 1.5 s, and let auto-confirm ack a pose the
+   * autopilot had not requested.
+   *
+   * A follow-up may replace the snooped COMMAND_ACK confirm with
+   * MAV_CMD_ACCELCAL_VEHICLE_POS (which names the pose); that needs
+   * hardware validation and is not part of this change.
+   */
   private scheduleAccelerometerStepAdvance(stepIndex: number): void {
     this.clearAccelerometerAdvanceTimer()
     this.accelerometerAdvanceTimer = setTimeout(() => {
       this.accelerometerAdvanceTimer = undefined
       const current = this.guidedActions['calibrate-accelerometer']
       const state = this.accelerometerCalibration
-      if (!state || state.stepIndex !== stepIndex || current.status === 'failed' || current.status === 'succeeded') {
+      if (!state || state.stepIndex !== stepIndex || current.status !== 'running') {
         return
       }
 
       if (stepIndex + 1 < ACCELEROMETER_CALIBRATION_STEPS.length) {
-        this.accelerometerCalibration = {
-          stepIndex: stepIndex + 1,
-          waitingForCompletion: false
-        }
-        this.setAction(
-          'calibrate-accelerometer',
-          buildAccelerometerCalibrationGuidedAction(stepIndex + 1, this.guidedActions['calibrate-accelerometer'])
-        )
+        const posture = ACCELEROMETER_CALIBRATION_STEPS[stepIndex].ctaLabel
+          .replace(/^Confirm /, '')
+          .replace(/ Position$/, '')
+          .toLowerCase()
+        this.setAction('calibrate-accelerometer', {
+          ...current,
+          status: 'running',
+          summary: `${posture.charAt(0).toUpperCase()}${posture.slice(1)} recorded — waiting for the autopilot's next posture prompt.`,
+          instructions: ['Keep the frame where it is until the next posture appears.'],
+          ctaLabel: undefined,
+          updatedAtMs: Date.now(),
+          completedAtMs: undefined
+        })
       } else {
         this.accelerometerCalibration = {
           stepIndex,
-          waitingForCompletion: true
+          waitingForCompletion: true,
+          promptedByVehicle: false
         }
         this.setAction('calibrate-accelerometer', {
-          ...this.guidedActions['calibrate-accelerometer'],
+          ...current,
           status: 'running',
           summary: 'Finalizing accelerometer calibration…',
           instructions: ['Keep the vehicle still while ArduPilot stores the new accelerometer calibration.'],
@@ -692,23 +1076,36 @@ export class GuidedActionService {
     }, this.accelerometerStepAdvanceMs)
   }
 
+  /**
+   * The verdict after the sixth posture comes from the autopilot — the
+   * "Calibration successful"/"FAILED" STATUSTEXT and then the sentinel
+   * ACCELCAL_VEHICLE_POS it repeats every second for the rest of the boot.
+   * Nothing is lost by waiting for it, so when this window closes the action
+   * says so and stays 'running' (bounded by the no-prompt watchdog) instead
+   * of declaring a success the vehicle never reported.
+   */
   private scheduleAccelerometerCompletionFallback(stepIndex: number): void {
     this.clearAccelerometerAdvanceTimer()
     this.accelerometerAdvanceTimer = setTimeout(() => {
       this.accelerometerAdvanceTimer = undefined
       const current = this.guidedActions['calibrate-accelerometer']
       const state = this.accelerometerCalibration
-      if (
-        !state ||
-        state.stepIndex !== stepIndex ||
-        !state.waitingForCompletion ||
-        current.status === 'failed' ||
-        current.status === 'succeeded'
-      ) {
+      if (!state || state.stepIndex !== stepIndex || !state.waitingForCompletion || current.status !== 'running') {
         return
       }
 
-      this.completeAccelerometerCalibration()
+      this.setAction('calibrate-accelerometer', {
+        ...current,
+        status: 'running',
+        summary: "Finalizing accelerometer calibration — waiting for the autopilot's verdict.",
+        instructions: [
+          'ArduPilot reports the result itself once the offsets are stored; keep the vehicle still.',
+          'If nothing arrives, the calibration is abandoned automatically and can be run again.'
+        ],
+        ctaLabel: undefined,
+        updatedAtMs: Date.now(),
+        completedAtMs: undefined
+      })
       this.emit()
     }, this.accelerometerCompletionFallbackMs)
   }
@@ -774,6 +1171,47 @@ export class GuidedActionService {
     }
   }
 
+  /**
+   * PREFLIGHT_REBOOT_SHUTDOWN. GCS_Common.cpp sends the ACCEPTED ack BEFORE
+   * rebooting ("send ack before we reboot"; AP_Vehicle::reboot then delays
+   * so it gets out), so the ack is the whole verdict: ACCEPTED means the
+   * board is going down, anything else means it is not. This used to be
+   * fire-and-forget and then sat 'running' waiting for a "reboot requested"
+   * STATUSTEXT ArduPilot never sends — on a transport that survives the
+   * reboot (WebSocket bridge, SITL, Ethernet) that blocked every parameter
+   * write until the operator disconnected.
+   */
+  private async runRebootAction(): Promise<void> {
+    await this.performCommandGuidedAction(
+      'reboot-autopilot',
+      'Autopilot reboot request queued.',
+      'Reboot accepted — the autopilot is restarting. Expect the link to drop on USB.',
+      defaultInstructionsForAction('reboot-autopilot'),
+      async () => {
+        const ack = await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [1, 0, 0, 0, 0, 0, 0], {
+          waitForAck: true,
+          ackTimeoutMs: 3000
+        })
+        if (ack && ack.result !== MAV_RESULT.ACCEPTED) {
+          throw new Error(`Autopilot did not accept the reboot request (MAV_RESULT ${ack.result}).`)
+        }
+      }
+    )
+
+    const current = this.guidedActions['reboot-autopilot']
+    if (current.status === 'running') {
+      const now = Date.now()
+      this.setAction('reboot-autopilot', {
+        ...current,
+        status: 'succeeded',
+        summary: 'Autopilot reboot accepted — it is restarting.',
+        updatedAtMs: now,
+        completedAtMs: now
+      })
+      this.emit()
+    }
+  }
+
   private async runLevelCalibrationAction(): Promise<void> {
     // Board-level calibration via MAV_CMD_PREFLIGHT_CALIBRATION param5=2:
     // samples a few seconds of level attitude and stores AHRS_TRIM_X/Y.
@@ -789,10 +1227,20 @@ export class GuidedActionService {
         // calibrate_trim() samples gravity for ~1-2s before ACKing, but the
         // FC can be slower under load; use a generous 15s ACK budget so a
         // healthy command isn't timed out while a genuine hang still fails.
-        await this.sendCommand(MAV_CMD.PREFLIGHT_CALIBRATION, [0, 0, 0, 0, 2, 0, 0], {
+        const ack = await this.sendCommand(MAV_CMD.PREFLIGHT_CALIBRATION, [0, 0, 0, 0, 2, 0, 0], {
           waitForAck: true,
           ackTimeoutMs: 15000
         })
+        // The ack IS the verdict, so read it. The waiter already rejects
+        // FAILED/DENIED/UNSUPPORTED/TEMPORARILY_REJECTED; what it resolves
+        // with that is not a success is an IN_PROGRESS beat whose final ack
+        // never came — calibrate_trim() returns its result synchronously, so
+        // that is not a stored trim either.
+        if (ack && ack.result !== MAV_RESULT.ACCEPTED) {
+          throw new Error(
+            `Autopilot acknowledged the level calibration with MAV_RESULT ${ack.result} but never confirmed it finished — the trim was not stored.`
+          )
+        }
       }
     )
 
@@ -803,12 +1251,11 @@ export class GuidedActionService {
         ...current,
         status: 'succeeded',
         summary: 'Board level calibration complete.',
-        instructions: [
-          'AHRS_TRIM_X and AHRS_TRIM_Y were updated; re-pull parameters if you want a clean post-cal snapshot.'
-        ],
+        instructions: ['AHRS_TRIM_X and AHRS_TRIM_Y were updated and re-read into the parameter table.'],
         updatedAtMs: now,
         completedAtMs: now
       })
+      this.refreshCalibrationResultParameters(LEVEL_CALIBRATION_RESULT_PARAMETERS)
       this.emit()
     }
   }
@@ -832,6 +1279,7 @@ export class GuidedActionService {
     // from an aborted previous cal must not contaminate the new one.
     this.magCalReports = new Map()
     this.magCalExpectedMask = 0
+    this.magCalRetryAttempts = new Map()
 
     await this.performCommandGuidedAction(
       'calibrate-compass',
@@ -885,6 +1333,9 @@ export class GuidedActionService {
     if (
       !state ||
       state.waitingForCompletion ||
+      // Only a posture the autopilot asked for can be acked; see
+      // AccelerometerCalibrationProgressState.promptedByVehicle.
+      !state.promptedByVehicle ||
       this.accelerometerAutoConfirmInFlight ||
       current.status !== 'running' ||
       // Level is the operator's own "I'm level" click — see above.
@@ -959,29 +1410,26 @@ export class GuidedActionService {
     this.emit()
 
     try {
+      this.accelerometerStartTimedOutAtMs = undefined
       await this.sendCommand(MAV_CMD.PREFLIGHT_CALIBRATION, [0, 0, 0, 0, 1, 0, 0], {
         waitForAck: true,
-        ackTimeoutMs: 3000
+        ackTimeoutMs: ACCELEROMETER_START_ACK_TIMEOUT_MS
       })
-      this.accelerometerCalibration = {
-        stepIndex: 0,
-        waitingForCompletion: false
+      // handleCommandAck normally got here first (same ack, wire order); this
+      // is the fallback for a host that resolves the ack without routing it.
+      const afterAck = this.guidedActions['calibrate-accelerometer']
+      if (afterAck.status === 'requested' && !this.accelerometerCalibration) {
+        this.markAccelerometerCalibrationStarted(afterAck)
       }
-      this.setAction('calibrate-accelerometer', {
-        ...this.guidedActions['calibrate-accelerometer'],
-        status: 'running',
-        summary: 'Preparing accelerometer calibration…',
-        instructions: ['Keep the vehicle level and still while ArduPilot prepares the first posture sample.'],
-        ctaLabel: undefined,
-        updatedAtMs: Date.now(),
-        completedAtMs: undefined
-      })
-      this.scheduleAccelerometerPromptFallback(0)
       this.emit()
     } catch (error) {
       this.clearAccelerometerPromptFallbackTimer()
       this.clearAccelerometerAdvanceTimer()
       this.accelerometerCalibration = undefined
+      // A timeout (the runtime's waiter text) is the one failure the vehicle
+      // may still turn into a running calibration; a rejection is final.
+      const message = error instanceof Error ? error.message : ''
+      this.accelerometerStartTimedOutAtMs = /timed out/i.test(message) ? Date.now() : undefined
       this.failAction('calibrate-accelerometer', error)
       this.emit()
       throw error
@@ -1009,6 +1457,13 @@ export class GuidedActionService {
     try {
       this.clearAccelerometerPromptFallbackTimer()
       this.clearAccelerometerAdvanceTimer()
+      // Confirmed: the autopilot is sampling this posture. The next step is
+      // whatever it prompts for next (possibly this one again).
+      this.accelerometerCalibration = {
+        stepIndex,
+        waitingForCompletion: false,
+        promptedByVehicle: false
+      }
       const vehicle = this.getVehicle()
       await this.session.send({
         type: 'COMMAND_ACK',
@@ -1031,11 +1486,51 @@ export class GuidedActionService {
     }
   }
 
+  private markCompassCalibrationStarted(current: GuidedActionState): void {
+    this.setAction('calibrate-compass', {
+      ...current,
+      status: 'running',
+      summary: 'Compass calibration started. Rotate the vehicle through all axes.',
+      updatedAtMs: Date.now(),
+      completedAtMs: undefined
+    })
+  }
+
+  private markAccelerometerCalibrationStarted(current: GuidedActionState): void {
+    this.accelerometerCalibration = {
+      stepIndex: 0,
+      waitingForCompletion: false,
+      promptedByVehicle: false
+    }
+    this.setAction('calibrate-accelerometer', {
+      ...current,
+      status: 'running',
+      summary: 'Preparing accelerometer calibration…',
+      instructions: ['Keep the vehicle level and still while ArduPilot prepares the first posture sample.'],
+      ctaLabel: undefined,
+      updatedAtMs: Date.now(),
+      completedAtMs: undefined
+    })
+    this.scheduleAccelerometerPromptFallback(0)
+    this.scheduleAccelerometerPromptWatchdog()
+  }
+
+  /** Best-effort post-calibration re-read; see GuidedActionServiceOptions.refreshParameters. */
+  private refreshCalibrationResultParameters(patterns: readonly RegExp[]): void {
+    if (!this.refreshParameters) {
+      return
+    }
+    void this.refreshParameters(patterns).catch(() => {
+      // The next full sync still corrects the snapshot; nothing to surface.
+    })
+  }
+
   private completeAccelerometerCalibration(): void {
     const current = this.guidedActions['calibrate-accelerometer']
     const now = Date.now()
     this.clearAccelerometerPromptFallbackTimer()
     this.clearAccelerometerAdvanceTimer()
+    this.clearAccelerometerPromptWatchdog()
     this.accelerometerCalibration = undefined
     this.appendStatusEntry('info', 'Accelerometer calibration complete.')
     this.setAction('calibrate-accelerometer', {
@@ -1047,5 +1542,6 @@ export class GuidedActionService {
       updatedAtMs: now,
       completedAtMs: now
     })
+    this.refreshCalibrationResultParameters(ACCELEROMETER_CALIBRATION_RESULT_PARAMETERS)
   }
 }

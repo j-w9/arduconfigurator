@@ -15,37 +15,17 @@ import type { UseTuningWorkbenchResult } from '../hooks/use-tuning-workbench'
 import { formatSnapshotTimestamp } from '../library-helpers'
 import { formatParameterDelta, formatParameterValue } from '../parameter-format'
 import type { SavedTuningProfile } from '../tuning-profile-library'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
-import { TUNING_ALL_PID_PARAM_IDS } from '../tuning-params'
+import { toneForScopedDraftReview } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
-import { DraftReviewBadge } from '../views/DraftReviewBadge'
 import { TuningView, type TuningTaskCard, type TuningTaskId } from '../views/Tuning'
 
-interface TuningAxisGroup {
-  id: string
-  label: string
-  paramIds: readonly string[]
-  parameters: readonly ParameterState[]
-}
 
 export interface TuningCopterSectionDerived {
   airframe: AirframeSummary
   activeTuningTaskId: TuningTaskId
   activeTuningTask: TuningTaskCard
   tuningTaskCards: readonly TuningTaskCard[]
-  flightFeelParameters: readonly ParameterState[]
-  acroTuningParameters: readonly ParameterState[]
-  tuningAccelerationParameters: readonly ParameterState[]
-  altHoldPilotParameters: readonly ParameterState[]
-  loiterPilotParameters: readonly ParameterState[]
-  tuningPidAxisGroups: readonly TuningAxisGroup[]
-  tuningAdvancedPidParameters: readonly ParameterState[]
-  tuningAdvancedPidAxisGroups: readonly TuningAxisGroup[]
   tuningFilterParameters: readonly ParameterState[]
-  tuningFilterAxisGroups: readonly TuningAxisGroup[]
-  tuningNotchAxisGroups: readonly TuningAxisGroup[]
-  tuningMasterPreviewEntries: readonly ParameterDraftEntry[]
-  tuningMasterDefaultsActive: boolean
   tuningProfileSourceUsesStaged: boolean
   canCreateTuningProfile: boolean
   // Saved profile data + the selected-profile entity diff
@@ -61,41 +41,21 @@ export interface TuningCopterSectionDerived {
   tuningProfileNotice: ParameterNotice | undefined
   tuningProfileStorageNotice: LibraryStorageNotice
   // Per-subsection draft slices
-  tuningDraftEntries: readonly ParameterDraftEntry[]
-  tuningStagedDrafts: readonly ParameterDraftEntry[]
-  tuningInvalidDrafts: readonly ParameterDraftEntry[]
-  tuningRateStagedDrafts: readonly ParameterDraftEntry[]
-  tuningRateInvalidDrafts: readonly ParameterDraftEntry[]
-  tuningPidStagedDrafts: readonly ParameterDraftEntry[]
-  tuningPidInvalidDrafts: readonly ParameterDraftEntry[]
   tuningFilterStagedDrafts: readonly ParameterDraftEntry[]
   tuningFilterInvalidDrafts: readonly ParameterDraftEntry[]
 }
 
 export interface TuningCopterSectionHandlers {
-  handleApplyScopedParameterDrafts: (
-    drafts: readonly ParameterDraftEntry[],
-    busyKey: string,
-    scopeLabel: string
-  ) => void | Promise<void>
-  handleDiscardScopedParameterDrafts: (paramIds: readonly string[], scopeLabel: string) => void
-  handleStageTuningMasterAdjustments: () => void
-  handleResetTuningMasterSliders: () => void
   handleStageSelectedTuningProfile: () => void
   handleCreateTuningProfile: () => void | Promise<void>
   handleDeleteSelectedTuningProfile: () => void | Promise<void>
   handleToggleSelectedTuningProfileProtection: () => void | Promise<void>
   setSelectedTuningProfileId: (id: string | undefined) => void
-  renderTuningControl: (parameter: ParameterState) => ReactElement
-  /** Slider for numerics, metadata editor for enums and bitmasks. */
-  renderFilterControl: (parameter: ParameterState) => ReactNode
   formatCategoryLabel: (categoryId: string | undefined) => string
 }
 
 export interface TuningCopterSectionProps {
   snapshot: ConfiguratorSnapshot
-  canApplyDraftParameters: boolean
-  busyAction: string | undefined
   parameterNotice: ParameterNotice | undefined
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
@@ -106,32 +66,40 @@ export interface TuningCopterSectionProps {
   /** The ArduCopter AUTOTUNE surface, rendered in the task body when the
    *  'autotune' tab is active (kept a slot so App owns its disjoint draft scope). */
   autotuneSlot?: ReactNode
+  /** The hover throttle flights. */
+  hoverSlot?: ReactNode
+  /** SmallFastDrone fork features (Z-bias, VALT, fork failsafe options). */
+  sfdSlot?: ReactNode
   logTuningSlot?: ReactNode
-  /** Starting-point tuning, rendered in the task body on the 'initial-tune' tab. */
-  initialTuneSlot?: ReactNode
   /** Notch suggestions and warnings, rendered under the Filters grid. */
   filterNotchSlot?: ReactNode
   /** The FILTn bank, when the firmware has one. Expert-only: raw per-slot
    *  notch fields, rendered with the manual grid rather than before it. */
-  filterBankSlot?: ReactNode
-  notchHelpSlot?: ReactNode
+  /** Pilot ▸ Alt Hold: the altitude controller's gains and the hover-throttle check. */
+  /** Pilot: the Angle / Acro / limits stick-feel cards, in place of the slider boxes. */
+  pilotFeelSlot?: ReactNode
+  /** PID Gains: the Roll | Pitch | Yaw grid, in place of the slider cards. */
+  pidGainsSlot?: ReactNode
+  /** Notches: Notch 1 | Notch 2 grid and the filter bank, in place of the cards. */
+  notchesSlot?: ReactNode
+  /** Filters: the manual sensor + Roll | Pitch | Yaw filter grids. */
+  filterManualSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
-  isExpertMode: boolean
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
   const {
-    canApplyDraftParameters,
-    busyAction,
     parameterNotice,
     autotuneSlot,
+    hoverSlot,
+    sfdSlot,
     logTuningSlot,
-    initialTuneSlot,
     filterNotchSlot,
-    filterBankSlot,
-    notchHelpSlot,
-    isExpertMode,
+    pilotFeelSlot,
+    pidGainsSlot,
+    notchesSlot,
+    filterManualSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -139,21 +107,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
   } = props
 
   const {
-    setTuningTaskOverride,
-    tuningRollPitchLinked,
-    setTuningRollPitchLinked,
-    showAdvancedTuningControls,
-    setShowAdvancedTuningControls,
-    tuningMasterPiGain,
-    setTuningMasterPiGain,
-    tuningMasterDGain,
-    setTuningMasterDGain,
-    tuningMasterFeedforwardGain,
-    setTuningMasterFeedforwardGain,
-    tuningMasterPitchRatio,
-    setTuningMasterPitchRatio,
-    tuningMasterFilterStrength,
-    setTuningMasterFilterStrength
+    setTuningTaskOverride
   } = tuningWorkbench
 
   const {
@@ -171,19 +125,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     activeTuningTaskId,
     activeTuningTask,
     tuningTaskCards,
-    flightFeelParameters,
-    acroTuningParameters,
-    tuningAccelerationParameters,
-    altHoldPilotParameters,
-    loiterPilotParameters,
-    tuningPidAxisGroups,
-    tuningAdvancedPidParameters,
-    tuningAdvancedPidAxisGroups,
-    tuningFilterParameters,
-    tuningFilterAxisGroups,
-    tuningNotchAxisGroups,
-    tuningMasterPreviewEntries,
-    tuningMasterDefaultsActive,
     tuningProfileSourceUsesStaged,
     canCreateTuningProfile,
     savedTuningProfiles,
@@ -192,13 +133,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     selectedTuningProfileDiffGroups,
     selectedTuningProfileChangedEntries,
     selectedTuningProfileInvalidEntries,
-    tuningDraftEntries,
-    tuningStagedDrafts,
-    tuningInvalidDrafts,
-    tuningRateStagedDrafts,
-    tuningRateInvalidDrafts,
-    tuningPidStagedDrafts,
-    tuningPidInvalidDrafts,
     tuningFilterStagedDrafts,
     tuningFilterInvalidDrafts,
     tuningProfileNotice,
@@ -206,17 +140,11 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
   } = derived
 
   const {
-    handleApplyScopedParameterDrafts,
-    handleDiscardScopedParameterDrafts,
-    handleStageTuningMasterAdjustments,
-    handleResetTuningMasterSliders,
     handleStageSelectedTuningProfile,
     handleCreateTuningProfile,
     handleDeleteSelectedTuningProfile,
     handleToggleSelectedTuningProfileProtection,
     setSelectedTuningProfileId,
-    renderTuningControl,
-    renderFilterControl,
     formatCategoryLabel
   } = handlers
 
@@ -239,340 +167,13 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
           <>
                 {activeTuningTaskId === 'rates' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack">
-                    <details className="bf-gui-box">
-                      <summary className="bf-gui-box__titlebar">
-                        <strong>Attitude (Acro)</strong>
-                      </summary>
-                      <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <span className="tuning-card-title">
-                              <strong>Rates, expo, and accel shaping</strong>
-                              <InfoDot label="About rates, expo, and accel shaping" testId="tuning-info-acro" wide wikiTopic="tuningPilot">
-                                <span className="info-dot-line">Rates set maximum rotation speed. Expo softens the center without reducing full-stick authority.</span>
-                                <span className="info-dot-line">Acceleration limits control how aggressively the controller tries to reach the commanded rate.</span>
-                                <span className="info-dot-line">Keep changes small and save a known-good snapshot before pushing responsiveness higher.</span>
-                              </InfoDot>
-                            </span>
-                            <p>Curated FPV-style rate shaping backed by real ArduPilot acro-rate and angular-acceleration parameters.</p>
-                          </div>
-                          <StatusBadge tone="neutral">{acroTuningParameters.length + tuningAccelerationParameters.length} controls</StatusBadge>
-                        </div>
-
-                        <div className="tuning-control-grid">
-                          {acroTuningParameters.map((parameter) => renderTuningControl(parameter))}
-                          {tuningAccelerationParameters.map((parameter) => renderTuningControl(parameter))}
-                        </div>
-                      </div>
-                    </details>
-
-                    <details className="bf-gui-box">
-                      <summary className="bf-gui-box__titlebar">
-                        <strong>Angle</strong>
-                      </summary>
-                      <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <span className="tuning-card-title">
-                              <strong>General response</strong>
-                              <InfoDot label="About general response" testId="tuning-info-angle" wide wikiTopic="tuningPilot">
-                                <span className="info-dot-line">Lower smoothing makes the quad feel more immediate; higher smoothing makes it calmer and softer.</span>
-                                <span className="info-dot-line">Lean-angle changes are shown in degrees even though ANGLE_MAX is stored in centidegrees.</span>
-                                <span className="info-dot-line">Increase yaw values slowly and validate feel with a short hover or line-of-sight test before pushing further.</span>
-                              </InfoDot>
-                            </span>
-                            <p>Smoothing, lean angle, and yaw authority for self-leveling and general handling.</p>
-                          </div>
-                          <StatusBadge tone={toneForScopedDraftReview(tuningRateStagedDrafts.length, tuningRateInvalidDrafts.length)}>
-                            {flightFeelParameters.length} controls
-                          </StatusBadge>
-                        </div>
-
-                        <div className="tuning-control-grid">
-                          {flightFeelParameters.map((parameter) => renderTuningControl(parameter))}
-                        </div>
-                      </div>
-                    </details>
-
-                    <details className="bf-gui-box">
-                      <summary className="bf-gui-box__titlebar">
-                        <strong>Alt Hold</strong>
-                      </summary>
-                      <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <strong>Vertical stick feel</strong>
-                            <p>Climb and descent speed, vertical acceleration, and throttle response in AltHold and other height-controlled modes — not the position PIDs.</p>
-                          </div>
-                          <StatusBadge tone="neutral">{altHoldPilotParameters.length} controls</StatusBadge>
-                        </div>
-                        {altHoldPilotParameters.length > 0 ? (
-                          <div className="tuning-control-grid">
-                            {altHoldPilotParameters.map((parameter) => renderTuningControl(parameter))}
-                          </div>
-                        ) : (
-                          <p className="bf-note">No altitude-hold pilot parameters reported by this firmware.</p>
-                        )}
-                      </div>
-                    </details>
-
-                    <details className="bf-gui-box">
-                      <summary className="bf-gui-box__titlebar">
-                        <strong>Loiter</strong>
-                      </summary>
-                      <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <strong>Position-hold feel</strong>
-                            <p>Max speed, acceleration, lean angle, and how hard it brakes when you release the sticks in Loiter.</p>
-                          </div>
-                          <StatusBadge tone="neutral">{loiterPilotParameters.length} controls</StatusBadge>
-                        </div>
-                        {loiterPilotParameters.length > 0 ? (
-                          <div className="tuning-control-grid">
-                            {loiterPilotParameters.map((parameter) => renderTuningControl(parameter))}
-                          </div>
-                        ) : (
-                          <p className="bf-note">No loiter pilot parameters reported by this firmware.</p>
-                        )}
-                      </div>
-                    </details>
+                    {pilotFeelSlot}
                   </div>
                 ) : null}
 
                 {activeTuningTaskId === 'pid-gains' ? (
-                  <div className="tuning-task-panel tuning-task-panel--stack">
-                    <section className="bf-gui-box">
-                      <div className="bf-gui-box__titlebar">
-                        <strong>PID Gains</strong>
-                      </div>
-                      <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <span className="tuning-card-title">
-                              <strong>Axis controller gains</strong>
-                              <InfoDot label="About axis controller gains" testId="tuning-info-pid" wide wikiTopic="tuningPidGains">
-                                <span className="info-dot-line">Keep roll and pitch close unless the aircraft has a real asymmetry that justifies diverging them.</span>
-                                <span className="info-dot-line">Feedforward increases stick-to-rate immediacy; use it deliberately rather than masking a weak base tune.</span>
-                                <span className="info-dot-line">If you move P, I, or D significantly, re-check filters and do a short test flight before stacking more changes.</span>
-                              </InfoDot>
-                            </span>
-                            <p>P, I, D, feedforward, and deeper controller limits stay grouped by axis so roll, pitch, and yaw can be reviewed deliberately.</p>
-                          </div>
-                          <StatusBadge tone={toneForScopedDraftReview(tuningPidStagedDrafts.length, tuningPidInvalidDrafts.length)}>
-                            {TUNING_ALL_PID_PARAM_IDS.length} gains
-                          </StatusBadge>
-                        </div>
-
-                        <div className="tuning-inline-toggle tuning-inline-toggle--review">
-                          <div>
-                            <strong>Roll / pitch link</strong>
-                            <p>
-                              Keep roll and pitch coupled while roughing in a baseline tune, then unlink them only if the airframe needs a deliberate
-                              asymmetry.
-                            </p>
-                          </div>
-                          <div className="tuning-inline-toggle__actions">
-                            <button
-                              type="button"
-                              data-testid="tuning-roll-pitch-link-button"
-                              style={buttonStyle(tuningRollPitchLinked ? 'primary' : 'secondary')}
-                              onClick={() => setTuningRollPitchLinked(true)}
-                              disabled={tuningRollPitchLinked}
-                            >
-                              Linked
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="tuning-roll-pitch-unlink-button"
-                              style={buttonStyle(!tuningRollPitchLinked ? 'primary' : 'secondary')}
-                              onClick={() => setTuningRollPitchLinked(false)}
-                              disabled={!tuningRollPitchLinked}
-                            >
-                              Unlink
-                            </button>
-                          </div>
-                        </div>
-
-                        <article className="tuning-master-card">
-                          <div className="tuning-master-card__header">
-                            <div>
-                              <strong>Grouped master sliders</strong>
-                              <p>Make a coordinated first-pass change, preview exactly which tuned parameters move, then stage the whole set at once.</p>
-                            </div>
-                            <StatusBadge tone={tuningMasterDefaultsActive ? 'neutral' : 'warning'}>
-                              {tuningMasterPreviewEntries.length > 0 ? `${tuningMasterPreviewEntries.length} preview` : 'neutral'}
-                            </StatusBadge>
-                          </div>
-
-                          <div className="tuning-master-slider-grid">
-                            {[
-                              {
-                                id: 'pi',
-                                label: 'P + I scale',
-                                detail: 'Scales roll, pitch, and yaw P/I gains together.',
-                                value: tuningMasterPiGain,
-                                min: 0.7,
-                                max: 1.3,
-                                step: 0.01,
-                                setValue: setTuningMasterPiGain
-                              },
-                              {
-                                id: 'd',
-                                label: 'D scale',
-                                detail: 'Raises or lowers derivative damping together across the tune.',
-                                value: tuningMasterDGain,
-                                min: 0.7,
-                                max: 1.3,
-                                step: 0.01,
-                                setValue: setTuningMasterDGain
-                              },
-                              {
-                                id: 'ff',
-                                label: 'Feedforward scale',
-                                detail: 'Adjusts stick immediacy without changing the rest of the controller stack.',
-                                value: tuningMasterFeedforwardGain,
-                                min: 0.7,
-                                max: 1.3,
-                                step: 0.01,
-                                setValue: setTuningMasterFeedforwardGain
-                              },
-                              {
-                                id: 'pitch-ratio',
-                                label: 'Pitch ratio',
-                                detail: 'Offsets pitch against roll when the airframe genuinely needs a pitch bias.',
-                                value: tuningMasterPitchRatio,
-                                min: 0.85,
-                                max: 1.15,
-                                step: 0.01,
-                                setValue: setTuningMasterPitchRatio
-                              },
-                              {
-                                id: 'filter',
-                                label: 'Filter frequency scale',
-                                detail: 'Moves the exposed filter frequencies together without hiding which real params will change.',
-                                value: tuningMasterFilterStrength,
-                                min: 0.8,
-                                max: 1.2,
-                                step: 0.01,
-                                setValue: setTuningMasterFilterStrength
-                              }
-                            ].map((slider) => (
-                              <label key={`tuning-master:${slider.id}`} className="tuning-master-slider">
-                                <div className="tuning-master-slider__header">
-                                  <span>
-                                    <strong>{slider.label}</strong>
-                                    <small>{slider.detail}</small>
-                                  </span>
-                                  <code>{slider.value.toFixed(2)}x</code>
-                                </div>
-                                <input
-                                  data-testid={`tuning-master-${slider.id}-range`}
-                                  type="range"
-                                  min={slider.min}
-                                  max={slider.max}
-                                  step={slider.step}
-                                  value={slider.value}
-                                  onChange={(event) => slider.setValue(Number(event.target.value))}
-                                />
-                              </label>
-                            ))}
-                          </div>
-
-                          {tuningMasterPreviewEntries.length > 0 ? (
-                            <div className="config-pills">
-                              {tuningMasterPreviewEntries.slice(0, 9).map((entry) => (
-                                <span key={`tuning-master-preview:${entry.id}`}>
-                                  {entry.label}: {formatParameterValue(entry.nextValue, entry.definition?.unit)}
-                                </span>
-                              ))}
-                              {tuningMasterPreviewEntries.length > 9 ? (
-                                <span>+{tuningMasterPreviewEntries.length - 9} more</span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <p className="telemetry-note">
-                              Leave every slider at <code>1.00x</code> to keep the preview neutral. The grouped stage button only enables once something
-                              moves.
-                            </p>
-                          )}
-
-                          <div className="switch-exercise-controls">
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              onClick={handleResetTuningMasterSliders}
-                              disabled={tuningMasterDefaultsActive}
-                            >
-                              Reset Master Sliders
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="tuning-stage-master-adjustments-button"
-                              style={buttonStyle('primary')}
-                              onClick={handleStageTuningMasterAdjustments}
-                              disabled={tuningMasterDefaultsActive || tuningMasterPreviewEntries.length === 0}
-                            >
-                              Stage Grouped Tuning Changes
-                            </button>
-                          </div>
-                        </article>
-
-                        <div className="tuning-axis-grid">
-                          {tuningPidAxisGroups.map((group) => (
-                            <article key={`tuning-pid-axis:${group.id}`} className="tuning-axis-card">
-                              <div className="tuning-axis-card__header">
-                                <strong>{group.label}</strong>
-                                <span>{group.parameters.length} controls</span>
-                              </div>
-                              <div className="tuning-control-grid tuning-control-grid--compact">
-                                {group.parameters.map((parameter) => renderTuningControl(parameter))}
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-
-                        {tuningAdvancedPidParameters.length > 0 ? (
-                          <div className="tuning-inline-toggle tuning-inline-toggle--review">
-                            <div>
-                              <strong>Advanced controller terms</strong>
-                              <p>
-                                D feedforward, integrator clamps, PD ceilings, and slew limits stay behind a foldout so the baseline PID pass stays clean.
-                              </p>
-                            </div>
-                            <div className="tuning-inline-toggle__actions">
-                              <button
-                                type="button"
-                                data-testid="tuning-toggle-advanced-button"
-                                style={buttonStyle(showAdvancedTuningControls ? 'primary' : 'secondary')}
-                                onClick={() => setShowAdvancedTuningControls((current) => !current)}
-                              >
-                                {showAdvancedTuningControls ? 'Hide Advanced Terms' : 'Show Advanced Terms'}
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {showAdvancedTuningControls && tuningAdvancedPidParameters.length > 0 ? (
-                          <div className="tuning-axis-grid">
-                            {tuningAdvancedPidAxisGroups.map((group) => (
-                              <article key={`tuning-advanced-axis:${group.id}`} className="tuning-axis-card">
-                                <div className="tuning-axis-card__header">
-                                  <strong>{group.label}</strong>
-                                  <span>{group.parameters.length} advanced</span>
-                                </div>
-                                <div className="tuning-control-grid tuning-control-grid--compact">
-                                  {group.parameters.map((parameter) => renderTuningControl(parameter))}
-                                </div>
-                              </article>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </section>
-                  </div>
+                  <div className="tuning-task-panel tuning-task-panel--stack">{pidGainsSlot}</div>
                 ) : null}
-
                 {activeTuningTaskId === 'filters' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack">
                     <section className="bf-gui-box">
@@ -590,11 +191,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                                 <span className="info-dot-line">Change filters carefully and listen for noise or oscillation before moving on to more aggressive gain changes.</span>
                               </InfoDot>
                             </span>
-                            <p>Gyro and accelerometer filters and the rate-loop target/error/D-term frequencies, as one grouped pass instead of a raw parameter list. The harmonic notches have their own task.</p>
                           </div>
-                          <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
-                            {tuningFilterParameters.length} filters
-                          </StatusBadge>
+                          {tuningFilterInvalidDrafts.length > 0 || tuningFilterStagedDrafts.length > 0 ? (
+                            <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
+                              {tuningFilterInvalidDrafts.length > 0 ? `${tuningFilterInvalidDrafts.length} invalid` : `${tuningFilterStagedDrafts.length} staged`}
+                            </StatusBadge>
+                          ) : null}
                         </div>
 
                         {/* Derived first, raw second.
@@ -625,47 +227,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           * gate. */}
                         {filterNotchSlot}
 
-                        {isExpertMode ? (
-                          <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
-                            <div className="tuning-filter-manual__header">
-                              <strong>Manual override</strong>
-                              <p>
-                                Every filter parameter as its own field. The panel above derives the
-                                gyro-linked ones from a single cutoff; edit here when you want a value it
-                                does not set, or one that deliberately departs from ArduPilot&apos;s ratios.
-                              </p>
-                            </div>
-                            <div className="tuning-axis-grid tuning-axis-grid--filters">
-                              {tuningFilterAxisGroups.map((group) => (
-                                <article
-                                  key={`tuning-filter-axis:${group.id}`}
-                                  // The notch groups carry eight fields each, including
-                                  // two bitmasks — they need the full width. The second
-                                  // notch is the same shape as the first, so it gets the
-                                  // same card.
-                                  className={
-                                    group.id === 'sensor' || group.id === 'notch' || group.id === 'notch2'
-                                      ? 'tuning-axis-card tuning-axis-card--wide'
-                                      : 'tuning-axis-card'
-                                  }
-                                  data-testid={`tuning-filter-group-${group.id}`}
-                                >
-                                  <div className="tuning-axis-card__header">
-                                    <strong>{group.label}</strong>
-                                    <span>{group.parameters.length} filters</span>
-                                  </div>
-                                  <div className="tuning-control-grid tuning-control-grid--compact">
-                                    {/* Slider for a frequency, named list for the
-                                        notch mode, per-bit toggles for its
-                                        bitmasks -- a slider dragged through an enum
-                                        produces states nobody asked for. */}
-                                    {group.parameters.map((parameter) => renderFilterControl(parameter))}
-                                  </div>
-                                </article>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
+                        {filterManualSlot}
                       </div>
                     </section>
                   </div>
@@ -673,72 +235,9 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
 
                 {activeTuningTaskId === 'notches' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-notches-panel">
-                    <section className="bf-gui-box">
-                      <div className="bf-gui-box__titlebar">
-                        <strong>Notches</strong>
-                      </div>
-                      <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <span className="tuning-card-title">
-                              <strong>Harmonic notches and the filter bank</strong>
-                              <InfoDot label="About harmonic notches" testId="tuning-info-notches" wide wikiTopic="tuningFilters">
-                                <span className="info-dot-line">A notch removes one narrow band — motor noise and its harmonics — without the latency a lower low-pass cutoff costs.</span>
-                                <span className="info-dot-line">ArduPilot carries two independent harmonic notches, so one can track ESC telemetry / FFT while the other sits at a fixed frequency.</span>
-                                <span className="info-dot-line">Place them from a log, not by ear: Log Tuning reads a .bin and recommends the frequency and bandwidth.</span>
-                              </InfoDot>
-                            </span>
-                            <p>
-                              Where the notches sit and what tracks them. Smoothing — the gyro cutoff and
-                              the rate-loop frequencies — is on the Filters task.
-                            </p>
-                          </div>
-                          <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
-                            {tuningNotchAxisGroups.reduce((total, group) => total + group.parameters.length, 0)} filters
-                          </StatusBadge>
-                        </div>
-
-                        {/* The evidence for a notch frequency is a log FFT, and
-                          * that analysis is a task of its own in this same
-                          * strip. Say so here rather than leaving an operator to
-                          * guess a frequency by ear. */}
-                        <p className="bf-note" data-testid="tuning-notches-log-hint">
-                          Placing these from a flight log? Log Tuning reads a .bin and recommends the
-                          notch frequency, bandwidth and reference.
-                        </p>
-
-                        {notchHelpSlot}
-
-                        <div className="tuning-axis-grid tuning-axis-grid--filters">
-                          {tuningNotchAxisGroups.map((group) => (
-                            <article
-                              key={`tuning-notch-axis:${group.id}`}
-                              // Eight fields each, two of them bitmasks: both
-                              // notches take the full width.
-                              className="tuning-axis-card tuning-axis-card--wide"
-                              data-testid={`tuning-filter-group-${group.id}`}
-                            >
-                              <div className="tuning-axis-card__header">
-                                <strong>{group.label}</strong>
-                                <span>{group.parameters.length} filters</span>
-                              </div>
-                              <div className="tuning-control-grid tuning-control-grid--compact">
-                                {group.parameters.map((parameter) => renderFilterControl(parameter))}
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-
-                        {/* The FILTn bank is raw per-slot fields — FILT1_TYPE,
-                          * _NOTCH_FREQ, _NOTCH_Q, _NOTCH_ATT — and it is
-                          * notching, so it travels with the notches rather than
-                          * with the smoothing pass. */}
-                        {isExpertMode ? filterBankSlot : null}
-                      </div>
-                    </section>
+                    {notchesSlot}
                   </div>
                 ) : null}
-
                 {activeTuningTaskId === 'profiles' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack">
                     {tuningProfileNotice ? (
@@ -755,76 +254,37 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                       </div>
                     ) : null}
 
-                    <section className="bf-gui-box">
+                    <section className="bf-gui-box pilot-feel-card" data-testid="tuning-profile-save">
                       <div className="bf-gui-box__titlebar">
-                        <strong>Tuning Profiles</strong>
+                        <strong>Save current tune</strong>
+                        <small className="pilot-feel-card__modes">
+                          {savedTuningProfiles.length > 0 ? `${savedTuningProfiles.length} saved` : 'none saved yet'}
+                        </small>
                       </div>
                       <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <strong>Save known-good tunes</strong>
-                            <p>Capture the live or staged tune into a reusable local profile, then restage it later through the same verified review path.</p>
-                          </div>
-                          <StatusBadge tone={savedTuningProfiles.length > 0 ? 'success' : 'neutral'}>
-                            {savedTuningProfiles.length > 0 ? `${savedTuningProfiles.length} saved` : 'empty'}
-                          </StatusBadge>
-                        </div>
-
-                        <div className="snapshots-form-grid">
-                          <label className="snapshots-field">
-                            <span>Profile Label</span>
-                            <input
-                              data-testid="tuning-profile-label-input"
-                              type="text"
-                              value={tuningProfileLabelInput}
-                              onChange={(event) => setTuningProfileLabelInput(event.target.value)}
-                              placeholder="5-inch baseline"
-                            />
-                            <small>Short, build-specific name for the saved tune.</small>
-                          </label>
-
-                          <label className="snapshots-field">
-                            <span>Source</span>
-                            <select
-                              data-testid="tuning-profile-source-select"
-                              value={tuningProfileSourceInput}
-                              onChange={(event) => setTuningProfileSourceInput(event.target.value as TuningProfileSourceMode)}
-                            >
-                              <option value="staged">Current staged tune</option>
-                              <option value="live">Current live controller tune</option>
-                            </select>
-                            <small>
-                              {tuningProfileSourceUsesStaged
-                                ? 'Captures the current staged tuning drafts on top of the live baseline.'
-                                : 'Captures the controller’s currently synced live tuning values.'}
-                            </small>
-                          </label>
-
-                          <label className="snapshots-field snapshots-field--wide">
-                            <span>Note</span>
-                            <textarea
-                              data-testid="tuning-profile-note-input"
-                              value={tuningProfileNoteInput}
-                              onChange={(event) => setTuningProfileNoteInput(event.target.value)}
-                              placeholder="Quiet freestyle tune for ducted builds, captured after the first clean hover pass."
-                            />
-                            <small>Keep notes concise so the saved profile remains easy to scan in the browser library.</small>
-                          </label>
-
-                          <label className="snapshots-setting-row snapshots-field--wide">
-                            <input
-                              type="checkbox"
-                              checked={tuningProfileProtectedInput}
-                              onChange={(event) => setTuningProfileProtectedInput(event.target.checked)}
-                            />
-                            <span>
-                              <strong>Protect this profile from deletion</strong>
-                              <small>Use protection for known-good baselines you do not want removed accidentally from the local browser library.</small>
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="switch-exercise-controls">
+                        <div className="tuning-profile-save">
+                          <input
+                            data-testid="tuning-profile-label-input"
+                            type="text"
+                            aria-label="Profile name"
+                            value={tuningProfileLabelInput}
+                            onChange={(event) => setTuningProfileLabelInput(event.target.value)}
+                            placeholder="Name, e.g. 5-inch baseline"
+                          />
+                          <select
+                            data-testid="tuning-profile-source-select"
+                            aria-label="What to save"
+                            value={tuningProfileSourceInput}
+                            onChange={(event) => setTuningProfileSourceInput(event.target.value as TuningProfileSourceMode)}
+                            title={
+                              tuningProfileSourceUsesStaged
+                                ? 'The live tune with your staged drafts on top.'
+                                : 'The tune on the vehicle now.'
+                            }
+                          >
+                            <option value="staged">Live + staged changes</option>
+                            <option value="live">Live tune only</option>
+                          </select>
                           <button
                             type="button"
                             data-testid="create-tuning-profile-button"
@@ -832,8 +292,26 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                             onClick={handleCreateTuningProfile}
                             disabled={!canCreateTuningProfile}
                           >
-                            Create Tuning Profile
+                            Save
                           </button>
+                        </div>
+                        <div className="tuning-profile-save tuning-profile-save--extra">
+                          <input
+                            data-testid="tuning-profile-note-input"
+                            type="text"
+                            aria-label="Note"
+                            value={tuningProfileNoteInput}
+                            onChange={(event) => setTuningProfileNoteInput(event.target.value)}
+                            placeholder="Note (optional)"
+                          />
+                          <label className="pid-gains__link">
+                            <input
+                              type="checkbox"
+                              checked={tuningProfileProtectedInput}
+                              onChange={(event) => setTuningProfileProtectedInput(event.target.checked)}
+                            />{' '}
+                            Protect from deletion
+                          </label>
                         </div>
                       </div>
                     </section>
@@ -894,7 +372,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                                 <h3>{selectedTuningProfile.label}</h3>
                                 <p>
                                   {selectedTuningProfile.source === 'staged'
-                                    ? 'Built from a staged tune so it can be reapplied later through the normal tuning review flow.'
+                                    ? 'Built from a staged tune so it can be restaged later and written from the draft bar.'
                                     : 'Built directly from the synced live controller tune.'}
                                 </p>
                               </div>
@@ -1005,64 +483,15 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   </div>
                 ) : null}
 
-                {activeTuningTaskId === 'review' ? (
-                  <div className="tuning-task-panel tuning-task-panel--stack">
-                    <div className="scoped-review-card">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>Tuning changes in review</strong>
-                          <p>All staged rates, gains, and filters stay grouped here before they are written to the controller.</p>
-                        </div>
-                        <DraftReviewBadge staged={tuningStagedDrafts.length} invalid={tuningInvalidDrafts.length} />
-                      </div>
+                {activeTuningTaskId === 'hover' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-hover-panel">
+                    {hoverSlot}
+                  </div>
+                ) : null}
 
-                      {tuningDraftEntries.length > 0 ? (
-                        <div className="scoped-draft-list">
-                          {tuningDraftEntries.map((draft) => (
-                            <article key={draft.id} className={`scoped-draft-item scoped-draft-item--${draft.status}`}>
-                              <div className="scoped-draft-item__header">
-                                <strong>{draft.label}</strong>
-                                <StatusBadge tone={toneForParameterDraftStatus(draft.status)}>{draft.status}</StatusBadge>
-                              </div>
-                              <p>{draft.id}</p>
-                              <small>
-                                {draft.status === 'staged'
-                                  ? `${formatParameterValue(draft.currentValue, draft.definition?.unit)} to ${formatParameterValue(
-                                      draft.nextValue,
-                                      draft.definition?.unit
-                                    )}`
-                                  : draft.reason ?? 'Draft matches the live controller value.'}
-                              </small>
-                            </article>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="success-copy">No tuning changes are staged right now.</p>
-                      )}
-
-                      <div className="switch-exercise-controls">
-                        <button
-                          data-testid="apply-tuning-changes-button"
-                          style={buttonStyle('primary')}
-                          onClick={() => void handleApplyScopedParameterDrafts(tuningDraftEntries, 'tuning:apply', 'Tuning')}
-                          disabled={
-                            busyAction !== undefined ||
-                            tuningStagedDrafts.length === 0 ||
-                            tuningInvalidDrafts.length > 0 ||
-                            !canApplyDraftParameters
-                          }
-                        >
-                          {busyAction === 'tuning:apply' ? 'Applying…' : `Apply Tuning Changes (${tuningStagedDrafts.length})`}
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          onClick={() => handleDiscardScopedParameterDrafts(tuningDraftEntries.map((entry) => entry.id), 'tuning')}
-                          disabled={busyAction !== undefined || tuningDraftEntries.length === 0}
-                        >
-                          Discard Tuning Changes
-                        </button>
-                      </div>
-                    </div>
+                {activeTuningTaskId === 'sfd' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-sfd-panel">
+                    {sfdSlot}
                   </div>
                 ) : null}
 
@@ -1078,11 +507,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   </div>
                 ) : null}
 
-                {activeTuningTaskId === 'initial-tune' ? (
-                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-initial-tune-panel">
-                    {initialTuneSlot}
-                  </div>
-                ) : null}
           </>
         }
       />

@@ -60,7 +60,6 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
   const {
     setupFlowSections,
     selectedSetupSectionId,
-    guidedSetupTestingShortcutActive,
     orientationExerciseStatus,
     motorVerificationStatus
   } = inputs
@@ -70,10 +69,10 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
     setupFlowSections.find((section) => section.status !== 'complete') ??
     setupFlowSections[0]
   const selectedSetupSectionCandidate = setupFlowSections.find((section) => section.id === selectedSetupSectionId)
-  const selectedSetupSection =
-    !selectedSetupSectionCandidate || (!guidedSetupTestingShortcutActive && selectedSetupSectionCandidate.sequenceState === 'locked')
-      ? recommendedSetupSection
-      : selectedSetupSectionCandidate
+  // A locked step stays selected: the operator may open any step to look
+  // ahead (the aside renders it read-only). Only a selection that no longer
+  // names a step falls back to the recommended one.
+  const selectedSetupSection = !selectedSetupSectionCandidate ? recommendedSetupSection : selectedSetupSectionCandidate
   const selectedSetupSectionIndex = selectedSetupSection
     ? setupFlowSections.findIndex((section) => section.id === selectedSetupSection.id)
     : -1
@@ -98,6 +97,9 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
         case 'deferred':
           counts.deferred += 1
           break
+        case 'overridden':
+          counts.overridden += 1
+          break
         default:
           break
       }
@@ -106,15 +108,20 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
     {
       notApplicable: 0,
       alreadyDone: 0,
-      deferred: 0
+      deferred: 0,
+      overridden: 0
     }
   )
   const guidedSetupHasExceptions =
-    setupOutcomeCounts.notApplicable > 0 || setupOutcomeCounts.alreadyDone > 0 || setupOutcomeCounts.deferred > 0
+    setupOutcomeCounts.notApplicable > 0 ||
+    setupOutcomeCounts.alreadyDone > 0 ||
+    setupOutcomeCounts.deferred > 0 ||
+    setupOutcomeCounts.overridden > 0
   const guidedSetupOutcomeSummary = [
     setupOutcomeCounts.notApplicable > 0 ? `${setupOutcomeCounts.notApplicable} not applicable` : undefined,
     setupOutcomeCounts.alreadyDone > 0 ? `${setupOutcomeCounts.alreadyDone} already done` : undefined,
-    setupOutcomeCounts.deferred > 0 ? `${setupOutcomeCounts.deferred} deferred` : undefined
+    setupOutcomeCounts.deferred > 0 ? `${setupOutcomeCounts.deferred} deferred` : undefined,
+    setupOutcomeCounts.overridden > 0 ? `${setupOutcomeCounts.overridden} overridden` : undefined
   ]
     .filter((item): item is string => item !== undefined)
     .join(' • ')
@@ -162,7 +169,15 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
             (action) =>
               action !== guidedSetupTaskAction && action.kind !== 'scroll' && action.kind !== 'clear-confirmation'
           ) ??
-          selectedSetupSection?.actions[0]
+          // The last resort is "any action at all" -- but never the undo. On a
+          // signed-off final step the only actions left are its Clear, so the
+          // hero button read "Clear Verify Review" and invited the operator to
+          // undo the step they had just finished.
+          selectedSetupSection?.actions.find(
+            (action) =>
+              action.kind !== 'clear-confirmation' &&
+              !(action.kind === 'scroll' && action.panelId === 'setup-panel-guided')
+          )
   // Must not re-offer whatever became the primary action. When a section's ONLY
   // action is a scroll (Ports), the primary chain falls through to actions[0]
   // and picks it — and this then picked the same object again, rendering the
@@ -183,9 +198,9 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
     ) ?? []
   const guidedSetupContextHint =
     selectedSetupSection?.id === 'airframe'
-      ? 'Opening the board-orientation page does not complete this step. The orientation check must pass and the airframe review must still be confirmed here.'
+      ? 'Opening that page does not finish this step. Pass the orientation check, then confirm the airframe here.'
       : selectedSetupSection?.id === 'outputs'
-        ? 'Opening the Motors bench does not complete this step. The output map still needs to be reviewed and confirmed here — motor order and direction are checked manually in Motors → Test / Motor Setup.'
+        ? 'Opening Motors does not finish this step. Check motor order and direction there, then confirm the output map here.'
         : undefined
 
   return {

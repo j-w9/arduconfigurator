@@ -32,7 +32,7 @@ describe('escCalibrationPathLabel / escCalibrationInstructions', () => {
   })
 
   it('returns a path-appropriate instruction set (digital protocols need none)', () => {
-    expect(escCalibrationInstructions({ calibrationPath: 'analog-calibration' } as Parameters<typeof escCalibrationInstructions>[0])[0]).toMatch(/Remove props/)
+    expect(escCalibrationInstructions({ calibrationPath: 'analog-calibration' } as Parameters<typeof escCalibrationInstructions>[0])[0]).toMatch(/Props off/)
     // Digital (DShot) protocols don't use ESC endpoint calibration — no steps.
     expect(escCalibrationInstructions({ calibrationPath: 'digital-protocol' } as Parameters<typeof escCalibrationInstructions>[0])).toEqual([])
     expect(escCalibrationInstructions({ calibrationPath: 'manual-review' } as Parameters<typeof escCalibrationInstructions>[0]).length).toBeGreaterThan(0)
@@ -43,8 +43,11 @@ describe('panelAnchorForSetupSection', () => {
   it('groups related sections onto one setup panel', () => {
     expect(panelAnchorForSetupSection('link').panelId).toBe('setup-panel-link')
     // airframe + outputs share the outputs panel
-    expect(panelAnchorForSetupSection('airframe')).toEqual(panelAnchorForSetupSection('outputs'))
-    expect(panelAnchorForSetupSection('outputs').panelLabel).toBe('Airframe & Outputs')
+    // Frame class/type live in Setup ▸ Airframe, not on Motors.
+    expect(panelAnchorForSetupSection('airframe').panelId).toBe('setup-panel-airframe')
+    expect(appViewForPanel('setup-panel-airframe')).toBe('config')
+    expect(configCategoryForPanel('setup-panel-airframe')).toBe('airframe')
+    expect(panelAnchorForSetupSection('outputs').panelLabel).toBe('Motors')
     // guided cal trio share the guided panel
     expect(panelAnchorForSetupSection('compass').panelId).toBe('setup-panel-guided')
     // Failsafe and Modes each route to their OWN tab. They used to be folded
@@ -53,7 +56,7 @@ describe('panelAnchorForSetupSection', () => {
     // neither being where those steps' parameters are edited. Both tabs had
     // carried a setup anchor all along that nothing referenced.
     expect(panelAnchorForSetupSection('failsafe').panelId).toBe('setup-panel-failsafe')
-    expect(panelAnchorForSetupSection('modes').panelId).toBe('setup-panel-modes')
+    expect(panelAnchorForSetupSection('modes').panelId).toBe('receiver-section-flight-modes')
     expect(panelAnchorForSetupSection('power').panelId).toBe('setup-panel-power')
     // unknown falls back to guided
     expect(panelAnchorForSetupSection('mystery').panelId).toBe('setup-panel-guided')
@@ -67,14 +70,14 @@ describe('panelAnchorForSetupSection', () => {
     // assertion used to say 'modes' — a view that no longer exists, which is
     // what the test's own name is about: the guided step routed there and
     // rendered an empty section with nothing selected in the nav.
-    expect(appViewForPanel('setup-panel-modes')).toBe('config')
+    expect(appViewForPanel('receiver-section-flight-modes')).toBe('receiver')
     expect(appViewForPanel('setup-panel-power')).toBe('config')
   })
 
   it('names the Config category a panel lives in, for the ones that live in one', () => {
     // Routing to Config is half the job: only the ACTIVE category renders, so
     // a scroll to a panel inside a different one finds nothing and expires.
-    expect(configCategoryForPanel('setup-panel-modes')).toBe('flight-modes')
+    expect(configCategoryForPanel('receiver-section-flight-modes')).toBeUndefined()
     expect(configCategoryForPanel('setup-panel-power')).toBe('power')
     expect(configCategoryForPanel('setup-panel-rc')).toBeUndefined()
     expect(configCategoryForPanel('setup-panel-outputs')).toBeUndefined()

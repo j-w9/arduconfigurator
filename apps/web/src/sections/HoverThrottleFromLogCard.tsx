@@ -17,6 +17,7 @@ import { useCallback, useState, type ReactElement } from 'react'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { flightCalibrationBlockedReason } from '../apply-gate'
+import { OnboardLogPicker, type OnboardLogPickerLogs } from './OnboardLogPicker'
 
 import { analyzeHoverThrottleBuffer, type HoverThrottleResult } from '@arduconfig/log-analysis'
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
@@ -26,28 +27,30 @@ export interface HoverThrottleFromLogCardProps {
   canApplyDraftParameters: boolean
   busyAction: string | undefined
   setDraft: (paramId: string, value: string) => void
+  /** When given, the card also offers the logs already on the vehicle. */
+  onboardLogs?: OnboardLogPickerLogs
 }
 
 export function HoverThrottleFromLogCard({
   snapshot,
   canApplyDraftParameters,
   busyAction,
-  setDraft
+  setDraft,
+  onboardLogs
 }: HoverThrottleFromLogCardProps): ReactElement | null {
   const [result, setResult] = useState<HoverThrottleResult | null>(null)
   const [logName, setLogName] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleBuffer = useCallback(async (buffer: ArrayBuffer, name: string) => {
     setBusy(true)
     setError(undefined)
     setResult(null)
     try {
-      const buffer = await file.arrayBuffer()
       // Yield once so the button can paint "Reading…" before the parse blocks.
       await new Promise((resolve) => setTimeout(resolve, 0))
-      setLogName(file.name)
+      setLogName(name)
       setResult(analyzeHoverThrottleBuffer(buffer))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
@@ -55,6 +58,11 @@ export function HoverThrottleFromLogCard({
       setBusy(false)
     }
   }, [])
+
+  const handleFile = useCallback(
+    async (file: File) => handleBuffer(await file.arrayBuffer(), file.name),
+    [handleBuffer]
+  )
 
   const canStage = canApplyDraftParameters && busyAction === undefined
   const live = snapshot.parameters.find((parameter) => parameter.id === 'MOT_THST_HOVER')
@@ -66,12 +74,7 @@ export function HoverThrottleFromLogCard({
         <strong>Hover throttle from a log</strong>
         <StatusBadge tone="neutral">new airframe</StatusBadge>
       </div>
-      <p>
-        Measures what this frame and powertrain actually hover at, from a flight you have already
-        flown. Do it once when a new build first flies, or when <strong>Hover throttle learning</strong>
-        came back with nothing because the firmware&apos;s own learner never ran. After that the
-        firmware keeps the value up to date and that card is the routine calibration.
-      </p>
+      <p>Measures the hover throttle from a flight you have already flown. Once, when a new build first flies.</p>
 
       <div className="config-pills">
         <span data-tone={liveValue === undefined ? 'neutral' : 'success'}>
@@ -95,6 +98,18 @@ export function HoverThrottleFromLogCard({
             }}
           />
         </label>
+        {onboardLogs ? (
+          <OnboardLogPicker
+            onboardLogs={onboardLogs}
+            busy={busy}
+            testIdPrefix="hover-throttle-log"
+            onBusy={setBusy}
+            // Copy into a standalone ArrayBuffer: a view onto a larger
+            // allocation would carry the rest with it.
+            onBytes={(bytes, name) => handleBuffer(bytes.slice().buffer as ArrayBuffer, name)}
+            onError={setError}
+          />
+        ) : null}
       </div>
 
       {error ? (
@@ -146,11 +161,7 @@ export function HoverThrottleFromLogCard({
         </div>
       ) : null}
 
-      <small>
-        {canStage
-          ? 'Staged like any other change — nothing is written until you apply it.'
-          : flightCalibrationBlockedReason(snapshot, busyAction)}
-      </small>
+      {canStage ? null : <small>{flightCalibrationBlockedReason(snapshot, busyAction)}</small>}
     </article>
   )
 }

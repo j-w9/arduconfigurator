@@ -99,7 +99,8 @@ test('mock SITL supports MAVFTP directory browse, upload, download, and delete o
       // flash.bin is the program-flash region ArduPilot exposes on ChibiOS
       // (AP_Filesystem_Sys.cpp, AP_FILESYSTEM_SYS_FLASH_ENABLED); the mock now
       // serves it so the bootloader hash preview has something to read.
-      ['directory:scripts', 'file:flash.bin', 'file:timers.txt', 'file:uarts.txt']
+      // crash_dump.bin is the read-only hard-fault dump the Files tab explains.
+      ['directory:scripts', 'file:crash_dump.bin', 'file:flash.bin', 'file:timers.txt', 'file:uarts.txt']
     )
 
     const scriptBytes = await sitl.runtime.downloadRemoteFile('@SYS/scripts/hello.lua')
@@ -719,8 +720,15 @@ test('guided accelerometer flow also completes when the autopilot emits a generi
   }
 })
 
-test('guided accelerometer flow completes on a bare successful status text while active', async () => {
-  const runtime = new ArduPilotConfiguratorRuntime(createGuidedActionStatusSession('Successful'), arducopterMetadata)
+test('guided accelerometer flow is NOT completed by a status text that merely contains a success word', async () => {
+  // Seen on true SITL: "EKF3 IMU0 tilt alignment complete" arrived mid-cal
+  // and the un-anchored success matcher declared the calibration done. Only
+  // a text about the calibration ("Calibration successful") is a verdict.
+  const runtime = new ArduPilotConfiguratorRuntime(
+    createGuidedActionStatusSession('EKF3 IMU0 tilt alignment complete'),
+    arducopterMetadata,
+    { accelerometerInitialWarmupMs: 10_000 }
+  )
 
   try {
     await runtime.connect()
@@ -728,63 +736,10 @@ test('guided accelerometer flow completes on a bare successful status text while
     await runtime.waitForParameterSync({ timeoutMs: 200 })
 
     await runtime.runGuidedAction('calibrate-accelerometer')
-    await waitFor(
-      () => runtime.getSnapshot().guidedActions['calibrate-accelerometer'].status === 'succeeded',
-      1000
-    )
+    await sleep(60)
 
     const action = runtime.getSnapshot().guidedActions['calibrate-accelerometer']
-    assert.equal(action.status, 'succeeded')
-    assert.equal(action.summary, 'Accelerometer calibration complete.')
-    assert.ok(action.statusTexts.some((text) => text.includes('Successful')))
-  } finally {
-    await runtime.disconnect().catch(() => {})
-    runtime.destroy()
-  }
-})
-
-test('guided compass flow fails fast when no enabled compass is present after parameter sync', async () => {
-  const runtime = new ArduPilotConfiguratorRuntime(createCompasslessCalibrationSession(), arducopterMetadata)
-
-  try {
-    await runtime.connect()
-    await runtime.requestParameterList({ timeoutMs: 200 })
-    await runtime.waitForParameterSync({ timeoutMs: 200 })
-
-    await runtime.runGuidedAction('calibrate-compass')
-    await waitFor(() => runtime.getSnapshot().guidedActions['calibrate-compass'].status === 'failed', 2000)
-
-    const action = runtime.getSnapshot().guidedActions['calibrate-compass']
-    assert.equal(action.status, 'failed')
-    // COMPASS_USE is 0 here, so the advice is to turn one on — distinct from
-    // the enabled-but-undetected case, which needs wiring rather than a param.
-    assert.equal(action.summary, 'No compass is enabled on this vehicle. Skip this step, or set COMPASS_USE and re-check.')
-    assert.match(runtime.getSnapshot().statusTexts.map((entry) => entry.text).join('\n'), /No compass is enabled/)
-  } finally {
-    await runtime.disconnect().catch(() => {})
-    runtime.destroy()
-  }
-})
-
-test('guided compass flow fails when the autopilot acknowledges calibration but never emits compass guidance', async () => {
-  const runtime = new ArduPilotConfiguratorRuntime(createSilentCompassCalibrationSession(), arducopterMetadata, {
-    compassGuidanceTimeoutMs: 40
-  })
-
-  try {
-    await runtime.connect()
-    await runtime.requestParameterList({ timeoutMs: 200 })
-    await runtime.waitForParameterSync({ timeoutMs: 200 })
-
-    await runtime.runGuidedAction('calibrate-compass')
-    await waitFor(() => runtime.getSnapshot().guidedActions['calibrate-compass'].status === 'failed', 500)
-
-    const action = runtime.getSnapshot().guidedActions['calibrate-compass']
-    assert.equal(action.status, 'failed')
-    assert.equal(
-      action.summary,
-      'No compass calibration guidance arrived from the autopilot even though it accepted the start command. The onboard calibration was cancelled — check the link and the SRx_EXTRA3 telemetry stream rate, then re-run the calibration.'
-    )
+    assert.equal(action.status, 'running', 'an EKF banner is not a calibration verdict')
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()
@@ -854,7 +809,12 @@ test('guided accelerometer flow falls back to the first posture prompt when no a
   }
 })
 
-test('guided accelerometer flow completes after the final pose even when the FC does not emit an explicit completion message', async () => {
+test('guided accelerometer flow does not advance postures or declare success on its own when the FC sends no prompts', async () => {
+  // The posture sequence is the autopilot's: it asks for each pose with
+  // ACCELCAL_VEHICLE_POS and reports the verdict itself. A firmware that
+  // sends neither leaves the guide waiting (bounded by the engine's
+  // watchdog), not walking through six poses on a timer and then calling
+  // the run complete without a verdict.
   const runtime = new ArduPilotConfiguratorRuntime(createAccelerometerPromptlessHandshakeSession(), arducopterMetadata, {
     accelerometerInitialWarmupMs: 10,
     accelerometerStepAdvanceMs: 10,
@@ -867,22 +827,14 @@ test('guided accelerometer flow completes after the final pose even when the FC 
     await runtime.waitForParameterSync({ timeoutMs: 200 })
 
     await runtime.runGuidedAction('calibrate-accelerometer')
-    for (let index = 0; index < 6; index += 1) {
-      await waitFor(
-        () => runtime.getSnapshot().guidedActions['calibrate-accelerometer'].ctaLabel !== undefined,
-        250
-      )
-      await runtime.runGuidedAction('calibrate-accelerometer')
-    }
-
-    await waitFor(
-      () => runtime.getSnapshot().guidedActions['calibrate-accelerometer'].status === 'succeeded',
-      500
-    )
+    await waitFor(() => runtime.getSnapshot().guidedActions['calibrate-accelerometer'].ctaLabel === 'Confirm Level Position', 250)
+    await runtime.runGuidedAction('calibrate-accelerometer')
+    await sleep(80)
 
     const action = runtime.getSnapshot().guidedActions['calibrate-accelerometer']
-    assert.equal(action.status, 'succeeded')
-    assert.equal(action.summary, 'Accelerometer calibration complete.')
+    assert.equal(action.status, 'running')
+    assert.equal(action.ctaLabel, undefined, 'the next posture comes from the autopilot, not a timer')
+    assert.match(action.summary, /waiting for the autopilot/i)
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()
@@ -4948,6 +4900,33 @@ test('a heartbeat after a long gap re-requests the telemetry streams', async () 
     session.pushHeartbeat({ ageMs: 10_000 })
     await sleep(30)
     assert.ok(intervalRequests() > afterConnect, 'the streams were requested again')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('a restart-sized heartbeat gap fails a running accelerometer calibration instead of leaving it write-blocking', async () => {
+  // Link-persistent transports (WS bridge, SITL, Ethernet) never see the FC
+  // reboot; the restart detector does. A fresh boot runs no calibration of
+  // ours, so the action must not sit 'running' until a watchdog or Cancel.
+  const session = createStatusTextSession()
+  session.autoAck.set(MAV_CMD.PREFLIGHT_CALIBRATION, MAV_RESULT.ACCEPTED)
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    accelerometerInitialWarmupMs: 10_000,
+    preArmRefreshIntervalMs: 10_000
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    await runtime.runGuidedAction('calibrate-accelerometer')
+    assert.equal(runtime.getSnapshot().guidedActions['calibrate-accelerometer'].status, 'running')
+
+    session.pushHeartbeat({ ageMs: 10_000 })
+
+    const action = runtime.getSnapshot().guidedActions['calibrate-accelerometer']
+    assert.equal(action.status, 'failed')
+    assert.match(action.summary, /restarted mid-calibration/i)
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

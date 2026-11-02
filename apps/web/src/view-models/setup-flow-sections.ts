@@ -40,11 +40,20 @@ import type {
   SetupSectionOutcome
 } from '../app-types'
 import type { ParameterFollowUp } from '../hooks/use-parameter-feedback'
+import { MAIDEN_MIN_AIRBORNE_S, STABILIZE_MODE, type MaidenFlightResult } from '@arduconfig/log-analysis'
+import { MOT_THST_HOVER_DEFAULT, deriveHoverLearnState } from './hover-learn-stage'
+import { deriveThrottleControllerGains } from './throttle-controller-from-hover'
+import { buildNotchSetupPlan } from './notch-setup'
+import { AUTOTUNE_AXES, compareAutotuneGains, type AutotuneGains } from './autotune-flight'
+import type { NotchPlanFromLog } from '@arduconfig/log-analysis'
 import type { RcDirectionResult } from './receiver-direction-check'
 import { canRunGuidedAction, deriveCompassStepSkipReason, guidedActionButtonLabel } from '../guided-action-helpers'
-import { readRoundedParameter } from '../selectors/parameter-read'
+import { readParameterValue, readRoundedParameter } from '../selectors/parameter-read'
 import { buildSetupPortsEvidence, describeDuplicateRcin, describeUnconfiguredPort } from './setup-ports-evidence'
 import { isReceiverSerialProtocol } from '../serial-port-helpers'
+import { SPIN_MIN_MAX, describeSpinThresholdProblem } from './spin-threshold-wizard'
+import { ARM_SWITCH_AIRMODE_OPTION_VALUE, ARM_SWITCH_OPTION_VALUE } from './arm-switch'
+import { OUTPUTS_SPIN_WIZARD_ID } from '../setup-flow-helpers'
 import {
   batteryHealthLabel,
   batteryHealthTone,
@@ -79,6 +88,16 @@ export interface SetupFlowSectionsInputs {
   rcRangeExercise: RcRangeExerciseState
   rcDirectionResults: Record<RcAxisId, RcDirectionResult>
   parameterFollowUp: ParameterFollowUp | undefined
+  /** Receiver-page drafts (RCMAP / RCn_MIN/MAX/TRIM) staged but not written. */
+  receiverDraftsPending?: boolean
+  /** Snapshots in the operator's library (the Ready to Fly step asks for one). */
+  savedSnapshotCount?: number
+  /** The maiden hover's log, once the operator has read one in. */
+  maidenFlight?: MaidenFlightResult
+  /** The hover log's notch plan, once the operator has read one in. */
+  notchPlan?: NotchPlanFromLog
+  /** The gains the autotune flight started from, as the Autotune card recorded them. */
+  autotuneFlight?: { axisMask: number; gains: AutotuneGains }
   setupFlowFollowUp: SetupFlowFollowUpDescriptor | undefined
   setupConfirmations: Record<string, SetupConfirmationRecord>
   setupConfirmationSignatures: Record<string, string>
@@ -120,6 +139,11 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
     rcRangeExercise,
     rcDirectionResults,
     parameterFollowUp,
+    receiverDraftsPending = false,
+    savedSnapshotCount = 0,
+    maidenFlight,
+    notchPlan,
+    autotuneFlight,
     setupFlowFollowUp,
     setupConfirmations,
     setupConfirmationSignatures,
@@ -174,49 +198,51 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
 
     const baseSections = snapshot.setupSections.map((section) => {
       const panel = panelAnchorForSetupSection(section.id)
-      const actions: SetupFlowActionDescriptor[] = [setupPanelActionForSection(section.id, panel)]
+      const panelAction = setupPanelActionForSection(section.id, panel)
+      const actions: SetupFlowActionDescriptor[] = [panelAction]
       let summary = section.description
-      let detail = section.notes[0] ?? `Use the ${panel.panelLabel} panel to continue this part of setup.`
+      let detail = section.notes[0] ?? `Continue in ${panel.panelLabel}.`
       let evidence: string[] = []
       let criteria: SetupFlowCriterion[] = []
       let confirmationOutcome: SetupSectionOutcome | undefined
       let blockingReason: string | undefined
+      let nextStep: string | undefined
 
       switch (section.id) {
         case 'link':
+          // A pending reboot / re-sync follow-up is NOT a Link criterion any
+          // more. It used to be: the moment a compass calibration or a port
+          // write asked for a reboot, step 1 went incomplete, every other step
+          // locked, and the operator was yanked from the step they were on to
+          // the top of the flow. The gate now rides on the CURRENT step (see
+          // the lock pass below), which keeps the reboot where the work was.
           criteria = [
             {
-              label: 'Heartbeat and vehicle identity detected',
+              label: 'Vehicle detected',
               met: snapshot.connection.kind === 'connected' && snapshot.vehicle !== undefined
             },
             {
-              label: 'Initial parameter snapshot synced',
+              label: 'Parameters synced',
               met: snapshot.parameterStats.status === 'complete'
-            },
-            {
-              label: 'No pending reboot or refresh follow-up',
-              met: !parameterFollowUp?.refreshRequired
             }
           ]
-          summary = parameterFollowUp
-            ? parameterFollowUp.requiresReboot
-              ? 'A reboot and fresh parameter pull are required before setup can continue.'
-              : 'Sync parameters again to confirm the controller state before moving on.'
-            : snapshot.connection.kind !== 'connected'
-              ? 'Connect to the vehicle and request the first parameter snapshot.'
+          summary =
+            snapshot.connection.kind !== 'connected'
+              ? 'Connect to the vehicle to pull its parameters.'
               : snapshot.parameterStats.status === 'complete'
-                ? `Initial sync complete at ${snapshot.parameterStats.downloaded}/${snapshot.parameterStats.total}.`
+                ? `Parameters synced, ${snapshot.parameterStats.downloaded}/${snapshot.parameterStats.total}.`
                 : formatParameterSync(snapshot)
-          detail = parameterFollowUp?.text
-            ?? (snapshot.connection.kind !== 'connected'
-              ? 'Use the header session strip first, then wait for heartbeat and the initial parameter sync.'
-              : 'Re-run parameter sync whenever you need a fresh snapshot before continuing guided setup.')
+          detail =
+            snapshot.connection.kind !== 'connected'
+              ? 'Connect, then wait for the parameters to sync.'
+              : 'Re-sync parameters any time you want a fresh copy.'
+          nextStep = 'Next: set each serial port to what is wired to it.'
           evidence = [
             `Link: ${snapshot.connection.kind}`,
             `Sync: ${formatParameterSync(snapshot)}`,
             parameterFollowUp
-              ? `Follow-up: ${parameterFollowUp.requiresReboot ? 'reboot + refresh pending' : 'refresh pending'}`
-              : 'Follow-up: clear'
+              ? `Follow-up: ${parameterFollowUp.requiresReboot ? 'reboot and re-sync pending' : 're-sync pending'}`
+              : 'Follow-up: none'
           ]
           actions.unshift({
             kind: 'guided',
@@ -245,9 +271,18 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           })
           const portsDuplicateRcin = portsEvidence.duplicateRcinPorts.length > 0
           const portsMismatched = portsEvidence.unconfigured.length > 0 || portsDuplicateRcin
+          // The operator's word that the wiring was reviewed. Not every
+          // flagged port is a misconfiguration software can fix: a leftover
+          // ESC-telemetry wire on a port deliberately set to -1, SBUS on a UART
+          // that needs an inverter, a receiver left unlinked on the bench. With
+          // no sign-off, each of those locked steps 3-11 until a wire was pulled.
+          // The signature pins the port map and the flagged ports, so the
+          // sign-off stops counting when either changes.
+          const portsConfirmation = getSetupConfirmationRecord('ports')
+          const portsReviewed = portsConfirmation?.outcome === 'not-applicable'
           criteria = [
             {
-              label: 'Serial port protocols are synced from the flight controller',
+              label: 'Port settings synced',
               met: snapshot.parameterStats.status === 'complete'
             },
             {
@@ -256,27 +291,31 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               // a step that blocks on evidence it may never receive is a dead
               // end, not a safeguard. The summary says the check could not run
               // rather than claiming the ports are right.
-              label: 'Every port carrying traffic can decode it, and only one port claims RC input',
-              met: !portsMismatched
+              label: portsReviewed && portsMismatched
+                ? 'Flagged wiring reviewed as intentional'
+                : 'Port protocols match the wiring',
+              met: !portsMismatched || portsReviewed
             }
           ]
           summary = portsDuplicateRcin
             ? `${portsEvidence.duplicateRcinPorts.length + 1} ports claim RC input — only the lowest-numbered one is used.`
             : portsMismatched
-            ? `${portsEvidence.unconfigured.length} port(s) carrying traffic the flight controller cannot use.`
+            ? `${portsEvidence.unconfigured.length} port${portsEvidence.unconfigured.length === 1 ? '' : 's'} carrying traffic the flight controller cannot read.`
             : portsEvidence.trafficUnknown
-              ? 'Port traffic counters are unavailable — review the assignments manually.'
-              : 'Configured port protocols match the ports that are carrying traffic.'
+              ? 'No port traffic data. Check the assignments yourself.'
+              : portsEvidence.decodeVerdictPending
+                ? 'Port assignments look right. Waiting for a second traffic sample.'
+                : 'Port protocols match the traffic seen.'
           detail = portsDuplicateRcin
-            ? 'ArduPilot accepts only one RC input port: the lowest-numbered one wins and the others are refused at boot, so a receiver on a later port is silently ignored. Disable RC input on the ports that are not carrying the receiver.'
+            ? 'Only the lowest-numbered RC input port is used; a receiver on a higher one is ignored. Turn off RC input on the ports without the receiver.'
             : portsMismatched
-            ? 'A peripheral is talking on a port the flight controller cannot decode it on, so whatever is wired there cannot work. Fix that port\u2019s protocol and baud before setting up the receiver, GPS or OSD that depends on it.'
-            : 'Set each serial port to whatever is physically wired to it. Do this before the receiver, GPS and OSD steps — they configure peripherals that only work once their port is right.'
+            ? 'Something is wired to a port set to the wrong protocol, so it cannot work. Fix that port\u2019s protocol and baud first.'
+            : 'Set each serial port to what is wired to it. The receiver, GPS and OSD steps depend on it.'
           evidence = [
             ...(portsDuplicateRcin ? [describeDuplicateRcin(portsEvidence.duplicateRcinPorts)] : []),
             ...portsEvidence.unconfigured.slice(0, 2).map(describeUnconfiguredPort),
             portsEvidence.trafficUnknown
-              ? 'Port traffic: counters unavailable'
+              ? 'Port traffic: unknown'
               : `Ports carrying traffic: ${portsEvidence.ports.filter((port) => port.rxBytes > 0).length}`,
             // Said out loud rather than left as silence. Framing errors are
             // cumulative since boot while byte counts are per-read deltas, so
@@ -284,20 +323,36 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             // decode verdict — and "no findings" would otherwise read as "all
             // ports check out".
             ...(portsEvidence.decodeVerdictPending
-              ? ['Decode check: waiting for a second port-counter sample']
+              ? ['Decode check: waiting for a second sample']
               : []),
             // No "Review: pending" pill — there is no confirm action on this
             // step, so promising a review would describe a control that does
             // not exist.
             ...section.notes
           ].slice(0, 4)
-          // No confirm-step action here. Completion is driven entirely by the
-          // traffic check, so a sign-off button would record a confirmation
-          // that satisfies no criterion and changes nothing on screen — it
-          // read as a dead button promoted to "do this now". When a mismatch
-          // IS found the remedy is to fix the port protocol, which is what the
-          // generic panel action already offers; that action is left as the
-          // step's own navigation rather than adding a second one beside it.
+          // No plain confirm-step here: completion is driven by the traffic
+          // check, and a sign-off that satisfies no criterion is a dead button.
+          // The one sign-off is the wiring review above, offered only when a
+          // mismatch is on screen (or already recorded, so it can be undone).
+          if (portsMismatched && !portsConfirmation) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Wiring Reviewed — Continue',
+              tone: 'secondary',
+              sectionId: 'ports',
+              confirmationOutcome: 'not-applicable',
+              disabled: busyAction !== undefined
+            })
+          } else if (portsConfirmation) {
+            actions.push({
+              kind: 'clear-confirmation',
+              label: 'Clear Wiring Review',
+              tone: 'secondary',
+              sectionId: 'ports'
+            })
+          }
+          confirmationOutcome = portsConfirmation?.outcome
+          nextStep = 'Next: confirm the frame and the board orientation.'
           break
         }
         case 'airframe': {
@@ -319,7 +374,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             ...(isCopterVehicle
               ? [
                   {
-                    label: 'A frame class is selected',
+                    label: 'Frame class selected',
                     // FRAME_CLASS=0 IS a defined value, but it means "unset" /
                     // "Frame: UNSUPPORTED". The criterion needs to reflect the
                     // real signal (a chosen frame class), not just presence.
@@ -328,7 +383,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                     met: airframe.frameClassValue !== undefined && airframe.frameClassValue !== 0
                   },
                   {
-                    label: 'Frame type identified or intentionally ignored for this frame class',
+                    label: 'Frame type set, or not needed',
                     met: airframe.frameTypeIgnored || airframe.frameTypeValue !== undefined
                   }
                 ]
@@ -339,14 +394,14 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                   }
                 ]),
             {
-              label: 'Board orientation parameter is present',
+              label: 'Board orientation reported',
               met: boardOrientation !== undefined
             },
             {
               // Waived alongside the exercise below: both depend on the same
               // live ATTITUDE stream, so leaving this one hard would rebuild the
               // wall the waiver exists to remove.
-              label: 'Live attitude telemetry is present',
+              label: 'Attitude telemetry live',
               met: snapshot.liveVerification.attitudeTelemetry.verified || airframeOrientationWaived
             },
             {
@@ -359,12 +414,12 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               // explicit operator waiver, exactly like the calibration steps'
               // "Already Calibrated — Continue".
               label: airframeOrientationWaived
-                ? 'Orientation verified outside the configurator'
-                : 'Orientation exercise passed',
+                ? 'Orientation verified elsewhere'
+                : 'Orientation check passed',
               met: orientationExercise.status === 'passed' || airframeOrientationWaived
             },
             {
-              label: 'Operator confirmed the detected frame geometry matches the build',
+              label: 'Airframe review confirmed',
               met: airframeConfirmation !== undefined
             }
           ]
@@ -376,10 +431,10 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // the actionable next step instead of leaving the operator to scan
           // the criteria list for what's wrong.
           detail = isCopterVehicle && airframe.frameClassValue === 0
-            ? 'FRAME_CLASS is unset (0) — set a valid frame class in Motors → ESC & Protocol (Frame) or Config → Frame before continuing. The autopilot reports "Frame: UNSUPPORTED" and will refuse every calibration command in this state.'
+            ? 'No frame class is set (FRAME_CLASS = 0), so the autopilot refuses every calibration. Pick one in Config ▸ Frame.'
             : airframeOrientationWaived
-              ? 'Orientation was signed off as verified outside the configurator, so the tilt exercise is not required for this build. Run the orientation check any time you want to confirm the horizon behavior in-app.'
-              : 'Confirm the detected frame geometry, verify the live horizon behavior against the board orientation, then explicitly sign off before moving on to output review or motor testing. If the aircraft cannot be tilted here, sign the orientation off as verified elsewhere.'
+              ? 'Orientation was verified elsewhere. Run the orientation check any time to confirm it here.'
+              : 'Check the frame matches the build, run the orientation check, then confirm. If you cannot tilt the aircraft here, sign orientation off as verified elsewhere.'
           evidence = [
             ...(isCopterVehicle
               ? [
@@ -391,7 +446,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                   `Configured outputs: ${configuredOutputs.length}`
                 ]),
             `Orientation: ${formatOrientationLabel(boardOrientation)}`,
-            `Review: ${airframeConfirmation ? `confirmed at ${formatConfirmationTime(airframeConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+            `Review: ${airframeConfirmation ? `confirmed at ${formatConfirmationTime(airframeConfirmation.confirmedAtMs)}` : 'pending'}`
           ]
           actions.unshift({
             kind: 'orientation-exercise',
@@ -413,7 +468,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             label: airframeConfirmation
               ? airframeOrientationWaived
                 ? 'Clear Orientation Waiver'
-                : 'Clear Review Confirmation'
+                : 'Clear Airframe Review'
               : 'Confirm Airframe Review',
             tone: 'secondary',
             sectionId: 'airframe',
@@ -423,7 +478,12 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // The escape hatch. Without it a vehicle that cannot be tilted past
           // ±12° (bench FC, large airframe, static attitude feed) leaves this
           // step permanently incomplete and every later step locked.
-          if (!airframeConfirmation && orientationExercise.status !== 'passed') {
+          // Offered while the exercise has not passed even when a plain
+          // review confirmation exists: pressing "Confirm Airframe Review" on
+          // a bench board used to remove this button, leaving the step at 4/5
+          // with a disabled hero and the undo as the only visible move. The
+          // waiver overwrites that record with the 'already-done' outcome.
+          if (!airframeOrientationWaived && orientationExercise.status !== 'passed') {
             actions.push({
               kind: 'confirm-step',
               label: 'Orientation Verified Elsewhere — Continue',
@@ -445,7 +505,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             (airframe.frameClassValue === undefined || (!airframe.frameTypeIgnored && airframe.frameTypeValue === undefined))
           ) {
             const missingParamName = airframe.frameClassValue === undefined ? 'FRAME_CLASS' : 'FRAME_TYPE'
-            blockingReason = `${missingParamName} has not reached the configurator (parameter sync ${snapshot.parameterStats.downloaded}/${snapshot.parameterStats.total}). The frame is set on the vehicle, but the value was dropped during sync, so this step cannot be confirmed yet. Re-sync parameters, then confirm the review.`
+            blockingReason = `${missingParamName} did not arrive in the sync (${snapshot.parameterStats.downloaded}/${snapshot.parameterStats.total}). Re-sync parameters, then confirm.`
             actions.push({
               kind: 'guided',
               label: guidedActionButtonLabel('request-parameters', snapshot, busyAction),
@@ -455,22 +515,30 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             })
           }
           confirmationOutcome = airframeConfirmation?.outcome
+          nextStep = 'Next: check motor order and spin direction, props off.'
           break
         }
         case 'outputs':
           criteria = isCopterVehicle
             ? [
                 {
-                  label: 'At least one motor output is mapped',
+                  // The protocol first: DShot/OneShot/PWM decides what every
+                  // motor test below sends, and a build left on the default
+                  // with DShot ESCs spins nothing.
+                  label: 'ESC protocol set (MOT_PWM_TYPE)',
+                  met: escSetup.pwmTypeValue !== undefined && (escSetup.pwmTypeValue !== 0 || outputsConfirmation !== undefined)
+                },
+                {
+                  label: 'A motor output is mapped',
                   met: outputMapping.motorOutputs.length > 0
                 },
                 {
-                  label: 'Motor output count matches the expected frame geometry',
+                  label: 'Motor count matches the frame',
                   met:
                     airframe.expectedMotorCount === undefined || outputMapping.motorOutputs.length === airframe.expectedMotorCount
                 },
                 {
-                  label: 'No missing motor assignments are reported in the current mapping',
+                  label: 'No motors missing from the map',
                   met: !outputMapping.notes.some((note) => note.startsWith('Missing motor assignments:'))
                 },
                 {
@@ -485,42 +553,31 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                   // mixer diagram and per-motor spin); this says what signing off
                   // actually asserts. The signature below already pins the
                   // SERVOn_FUNCTION map, so a remap voids it.
-                  label: 'Operator verified motor order and spin direction in Motors',
+                  label: 'Motor order and direction verified',
                   met: outputsConfirmation !== undefined
                 },
-                // ESC endpoint calibration applies ONLY to analog output --
-                // MOT_PWM_TYPE 0/1/2 (Normal PWM, OneShot, OneShot125). DShot,
-                // brushed and the PWMRange/Angle types have no throttle
-                // endpoints to learn, so on those builds this is not a step the
-                // operator can pass or fail and it must not gate anything.
-                // deriveEscSetupSummary already draws exactly that line.
-                ...(escSetup.calibrationPath === 'analog-calibration'
-                  ? [
-                      {
-                        label: 'ESC throttle endpoints calibrated, or reviewed as already done',
-                        met: outputsConfirmation !== undefined
-                      }
-                    ]
-                  : [])
+                // ESC endpoint calibration lives on the Motor Range step now: the
+                // all-at-once calibration uses the stick's maximum, so it comes
+                // after Radio, as ArduPilot orders it.
               ]
             : [
                 {
                   // Plane/Rover/Sub are not a quad motor matrix; the
                   // SERVOx_FUNCTION map is reviewed via the Outputs view +
                   // raw Parameters until per-vehicle output surfaces land.
-                  label: `${airframe.frameClassLabel} output assignments reviewed before any powered testing`,
+                  label: `${airframe.frameClassLabel} outputs reviewed`,
                   met: outputsConfirmation !== undefined
                 }
               ]
           summary = isCopterVehicle
-            ? `${outputMapping.motorOutputs.length} mapped motor outputs, ${outputMapping.configuredAuxOutputs.length} configured auxiliary outputs.`
+            ? `${outputMapping.motorOutputs.length} motor outputs, ${outputMapping.configuredAuxOutputs.length} auxiliary outputs.`
             : `${configuredOutputs.length} configured ${airframe.frameClassLabel} outputs (SERVOx_FUNCTION).`
           detail =
             outputMapping.notes[0]
-            ?? 'Review the output map, then check motor order/direction manually in Motors → Test / Motor Setup before any props-on activity.'
+            ?? 'Check the output map, then spin each motor in Motors to check order and direction. Props off.'
           evidence = [
             ...outputMapping.notes.slice(0, 2),
-            `Output review: ${outputsConfirmation ? `confirmed at ${formatConfirmationTime(outputsConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+            `Output review: ${outputsConfirmation ? `confirmed at ${formatConfirmationTime(outputsConfirmation.confirmedAtMs)}` : 'pending'}`
           ].slice(0, 4)
           actions.unshift({
             kind: outputsConfirmation ? 'clear-confirmation' : 'confirm-step',
@@ -533,25 +590,180 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 (airframe.expectedMotorCount !== undefined && outputMapping.motorOutputs.length !== airframe.expectedMotorCount)
               : (snapshot.vehicle?.vehicle ?? 'Unknown') === 'Unknown'
           })
-          if (escSetup.calibrationPath === 'analog-calibration') {
+          // The guided motor-direction verification, ESC-range confirm, and
+          // bench-test actions were retired with the Motors-tab redesign —
+          // order/direction is now checked manually in Motors → Test / Motor
+          // Setup. Replace the generic panel action with a jump there, found by
+          // identity: replacing "the last action" clobbered "Open ESC
+          // Calibration" on analog-ESC builds and kept the retired label.
+          // Plane/Rover/Sub have no motor matrix to verify; their output map is
+          // the Servos page.
+          actions[actions.indexOf(panelAction)] = {
+            kind: 'scroll',
+            label: isCopterVehicle ? 'Open Motors' : 'Open Servos',
+            panelId: isCopterVehicle ? panel.panelId : 'setup-panel-servos'
+          }
+          nextStep = isCopterVehicle ? 'Next: calibrate the accelerometer on a level surface.' : undefined
+          break
+        case 'motor-range': {
+          // MOT_SPIN_ARM (idle when armed) and MOT_SPIN_MIN (the least the mixer
+          // ever commands in flight). Too low a MIN stops a motor on a fast
+          // descent; too high an ARM has the aircraft creeping on the bench.
+          // Motors ▸ Motor Setup measures both on this build, props off.
+          const motorRangeConfirmation = getSetupConfirmationRecord('motor-range')
+          const motorRangeWaived = motorRangeConfirmation?.outcome === 'already-done'
+          // Fractions of throttle (0.08, 0.12): rounding them would read 0.
+          const spinArm = readParameterValue(snapshot, 'MOT_SPIN_ARM')
+          const spinMin = readParameterValue(snapshot, 'MOT_SPIN_MIN')
+          const spinProblem =
+            spinArm !== undefined && spinMin !== undefined ? describeSpinThresholdProblem(spinArm, spinMin) : undefined
+          const spinRangeValid = spinArm !== undefined && spinMin !== undefined && spinProblem === undefined
+          const analogEscs = escSetup.calibrationPath === 'analog-calibration'
+          criteria = [
+            {
+              label: 'Armed idle below the in-flight minimum',
+              met: spinArm !== undefined && spinMin !== undefined && spinArm < spinMin
+            },
+            {
+              label: `MOT_SPIN_MIN at or below ${SPIN_MIN_MAX}`,
+              met: spinMin !== undefined && spinMin <= SPIN_MIN_MAX
+            },
+            // ESC endpoint calibration applies ONLY to analog output --
+            // MOT_PWM_TYPE 0/1/2 (Normal PWM, OneShot, OneShot125). DShot,
+            // brushed and the PWMRange/Angle types have no throttle endpoints
+            // to learn, so on those builds it must not gate anything.
+            ...(analogEscs
+              ? [
+                  {
+                    label: 'ESC endpoints calibrated',
+                    met: motorRangeConfirmation !== undefined
+                  }
+                ]
+              : []),
+            {
+              label: motorRangeWaived
+                ? 'Spin range measured elsewhere'
+                : 'Spin range confirmed',
+              met: motorRangeConfirmation !== undefined
+            }
+          ]
+          summary =
+            spinArm === undefined || spinMin === undefined
+              ? 'Spin range not reported yet.'
+              : `Armed idle ${spinArm.toFixed(2)}, minimum in flight ${spinMin.toFixed(2)}${spinProblem ? ` — ${spinProblem}` : '.'}`
+          detail = spinProblem
+            ? `${spinProblem} Props off, then run the spin wizard in Motors ▸ Motor Setup to measure both values.`
+            : motorRangeWaived
+              ? 'Spin range measured elsewhere. Run the spin wizard any time to measure it here.'
+              : 'Props off. Run the spin wizard in Motors ▸ Motor Setup, then confirm the values it sets.'
+          evidence = [
+            `Spin range: ${spinArm === undefined ? '?' : spinArm.toFixed(2)} armed, ${spinMin === undefined ? '?' : spinMin.toFixed(2)} minimum`,
+            `ESCs: ${analogEscs ? 'analog — calibrate the endpoints first' : 'digital — no endpoint calibration needed'}`,
+            `Review: ${motorRangeConfirmation ? `confirmed at ${formatConfirmationTime(motorRangeConfirmation.confirmedAtMs)}` : 'pending'}`
+          ]
+          actions[actions.indexOf(panelAction)] = {
+            kind: 'scroll',
+            label: 'Open Spin Wizard',
+            tone: 'primary',
+            panelId: panel.panelId,
+            targetElementId: OUTPUTS_SPIN_WIZARD_ID
+          }
+          actions.unshift({
+            kind: motorRangeConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: motorRangeConfirmation
+              ? motorRangeWaived
+                ? 'Clear Spin Range Waiver'
+                : 'Clear Spin Range Review'
+              : 'Confirm Spin Range Measured',
+            tone: 'secondary',
+            sectionId: 'motor-range',
+            confirmationOutcome: 'complete',
+            disabled: motorRangeConfirmation ? false : !spinRangeValid
+          })
+          if (analogEscs) {
             actions.push({
               kind: 'scroll',
               label: 'Open ESC Calibration',
               panelId: 'setup-panel-calibration'
             })
           }
-          if (isCopterVehicle) {
-            // The guided motor-direction verification, ESC-range confirm, and
-            // bench-test actions were retired with the Motors-tab redesign —
-            // order/direction is now checked manually in Motors → Test / Motor
-            // Setup. Replace the generic panel action with a jump there.
-            actions[actions.length - 1] = {
-              kind: 'scroll',
-              label: 'Open Motors',
-              panelId: panel.panelId
-            }
+          if (!motorRangeConfirmation) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Measured Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'motor-range',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined || !spinRangeValid
+            })
           }
+          confirmationOutcome = motorRangeConfirmation?.outcome
+          nextStep = 'Next: the initial tune, from the prop size and the pack.'
           break
+        }
+        case 'initial-tune': {
+          // The Initial Tune form (prop size, pack) stages the starting
+          // values; the step judges what is on the vehicle: a gyro filter
+          // chosen for the props (the 20 Hz default is nobody's choice), and
+          // a battery voltage range so thrust scales with the pack.
+          const initialTuneConfirmation = getSetupConfirmationRecord('initial-tune')
+          const initialTuneWaived = initialTuneConfirmation?.outcome === 'already-done'
+          const gyroFilter = readParameterValue(snapshot, 'INS_GYRO_FILTER')
+          const gyroFilterSet = gyroFilter !== undefined && Math.abs(gyroFilter - 20) > 1e-6
+          const voltMax = readParameterValue(snapshot, 'MOT_BAT_VOLT_MAX')
+          const voltMin = readParameterValue(snapshot, 'MOT_BAT_VOLT_MIN')
+          const batteryRangeSet = voltMax !== undefined && voltMax > 0 && voltMin !== undefined && voltMin > 0
+          criteria = [
+            {
+              label: initialTuneWaived ? 'Initial tune set elsewhere' : 'Gyro filter set for the props (INS_GYRO_FILTER not the 20 Hz default)',
+              met: gyroFilterSet || initialTuneWaived
+            },
+            {
+              label: 'Battery voltage range set (MOT_BAT_VOLT_MAX / MIN)',
+              met: batteryRangeSet || initialTuneWaived
+            },
+            {
+              label: 'Initial tune confirmed',
+              met: initialTuneConfirmation !== undefined
+            }
+          ]
+          summary = initialTuneWaived
+            ? 'Initial tune set elsewhere.'
+            : gyroFilterSet && batteryRangeSet
+              ? `Gyro filter ${gyroFilter} Hz, pack ${voltMin}–${voltMax} V.`
+              : 'Starting values not set yet.'
+          detail = initialTuneWaived
+            ? 'Stage the starting values any time from the form below.'
+            : 'Enter the prop size and the pack below. The form stages the gyro filter, the rate-loop filters, the acceleration limits, the thrust curve and the battery voltage range the first flight needs. Write them, then confirm.'
+          evidence = [
+            `INS_GYRO_FILTER: ${gyroFilter ?? '—'} Hz`,
+            `MOT_BAT_VOLT: ${voltMin ?? '—'}–${voltMax ?? '—'} V`,
+            `MOT_THST_EXPO: ${readParameterValue(snapshot, 'MOT_THST_EXPO') ?? '—'}`,
+            `Review: ${initialTuneConfirmation ? `confirmed at ${formatConfirmationTime(initialTuneConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+          ]
+          actions[actions.indexOf(panelAction)] = { kind: 'scroll', label: 'Open Tuning', panelId: 'setup-panel-tuning' }
+          actions.unshift({
+            kind: initialTuneConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: initialTuneConfirmation ? (initialTuneWaived ? 'Clear Initial Tune Waiver' : 'Clear Initial Tune Review') : 'Confirm Initial Tune',
+            tone: 'primary',
+            sectionId: 'initial-tune',
+            confirmationOutcome: 'complete',
+            disabled: initialTuneConfirmation ? false : !(gyroFilterSet && batteryRangeSet)
+          })
+          if (!initialTuneConfirmation) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Initial Tune Set Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'initial-tune',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined
+            })
+          }
+          confirmationOutcome = initialTuneConfirmation?.outcome
+          nextStep = 'Next: put Stabilize and AltHold on the mode switch.'
+          break
+        }
         case 'accelerometer': {
           const actionState = snapshot.guidedActions['calibrate-accelerometer']
           confirmationOutcome = accelerometerConfirmation?.outcome
@@ -569,12 +781,22 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           if (accelerometerConfirmation?.outcome === 'already-done') {
             criteria = [
               {
-                label: 'Operator marked accelerometer calibration as already completed externally',
+                label: 'Accelerometer calibrated elsewhere',
                 met: true
-              }
+              },
+              // The firmware's own verdict outranks the waiver: an aircraft
+              // whose offsets are all zero will not arm, whatever was signed.
+              ...(accelerometerVerdict === 'not-calibrated'
+                ? [
+                    {
+                      label: 'Accelerometer offsets stored on the vehicle',
+                      met: false
+                    }
+                  ]
+                : [])
             ]
-            summary = 'Accelerometer calibration marked as already completed outside the configurator.'
-            detail = 'This step was resolved from known-good external setup rather than rerun here. Re-run the calibration in ArduConfigurator any time you want to reconfirm it in-app.'
+            summary = 'Accelerometer calibrated elsewhere.'
+            detail = 'Calibrated elsewhere. Run the calibration here any time.'
             evidence = [
               `Outcome: ${formatSetupOutcome(accelerometerConfirmation.outcome)}`,
               `Review: confirmed at ${formatConfirmationTime(accelerometerConfirmation.confirmedAtMs)}`,
@@ -596,31 +818,31 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           } else {
             criteria = [
               {
-                label: 'Accelerometer calibration completed successfully',
+                label: 'Accelerometer calibrated',
                 met:
                   actionState.status === 'succeeded' ||
-                  section.status === 'complete' ||
+                  (section.status === 'complete' && accelerometerVerdict !== 'not-calibrated') ||
                   accelerometerCalibratedOnVehicle
               },
               {
-                label: 'Calibration was recorded in-app, confirmed from prior review, or already stored on the vehicle',
+                label: 'Calibration recorded',
                 met: accelerometerCalibrationRecorded
               }
             ]
             summary = actionState.summary
             detail =
               actionState.status === 'succeeded'
-                ? 'Accelerometer calibration completed successfully in the shared runtime. Guided setup now counts this step as complete, and you can rerun it any time to verify it again.'
-                : actionState.instructions[0] ?? 'Run the accelerometer calibration and follow each posture prompt in order.'
+                ? 'Accelerometer calibrated. Reboot before flight.'
+                : actionState.instructions[0] ?? 'Run the calibration and follow each pose prompt.'
             evidence = [
               ...actionState.statusTexts.slice(-2),
               ...section.notes,
               accelerometerConfirmation
                 ? `Review: confirmed at ${formatConfirmationTime(accelerometerConfirmation.confirmedAtMs)}`
                 : actionState.status === 'succeeded'
-                  ? `Recorded from in-app calibration at ${formatConfirmationTime(actionState.completedAtMs)}`
+                  ? `Calibrated here at ${formatConfirmationTime(actionState.completedAtMs)}`
                   : accelerometerCalibratedOnVehicle
-                    ? 'The vehicle reports stored accelerometer offsets and scales (INS_ACC*OFFS / INS_ACC*SCAL) — calibrated outside this app, or restored from a snapshot.'
+                    ? 'Calibration stored on the vehicle (INS_ACC*OFFS)'
                     : 'Review: pending calibration'
             ].slice(0, 4)
             actions.unshift({
@@ -647,20 +869,32 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 tone: 'secondary',
                 sectionId: 'accelerometer',
                 confirmationOutcome: 'complete',
-                disabled: actionState.status !== 'succeeded'
+                // An undo is never gated: guided actions reset to idle on every
+                // reboot, which used to grey out the Clear button of a
+                // confirmation the operator had just made.
+                disabled: accelerometerConfirmation ? false : actionState.status !== 'succeeded'
               })
             }
             if (!accelerometerConfirmation && actionState.status !== 'succeeded') {
+              // Withheld when the vehicle itself says it is not calibrated
+              // (all-zero INS offsets -- the pre-arm "3D Accel calibration
+              // needed" condition): a waiver cannot be truer than the firmware.
+              const vehicleSaysNotCalibrated = accelerometerVerdict === 'not-calibrated'
+              if (vehicleSaysNotCalibrated) {
+                detail =
+                  'The vehicle has no accelerometer calibration stored (INS_ACC*OFFS are zero), so it cannot be signed off. Run the calibration.'
+              }
               actions.push({
                 kind: 'confirm-step',
                 label: 'Already Calibrated — Continue',
                 tone: 'secondary',
                 sectionId: 'accelerometer',
                 confirmationOutcome: 'already-done',
-                disabled: busyAction !== undefined
+                disabled: busyAction !== undefined || vehicleSaysNotCalibrated
               })
             }
           }
+          nextStep = 'Next: level calibration, with the vehicle sitting flat.'
           break
         }
         case 'level': {
@@ -669,7 +903,13 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // a few seconds and stores AHRS_TRIM_X/Y. No per-pose loop.
           const actionState = snapshot.guidedActions['calibrate-level']
           confirmationOutcome = levelConfirmation?.outcome
-          const levelCalRecorded = actionState.status === 'succeeded' || levelConfirmation !== undefined
+          nextStep = 'Next: compass calibration, or skip it on a build with no compass.'
+          // Stored AHRS_TRIM_X/Y on the vehicle count as the record: guided
+          // actions reset to idle on every reboot, so a level cal run in-app
+          // and never explicitly confirmed un-completed the step after the
+          // compass step's reboot and locked everything behind it.
+          const levelCalRecorded =
+            actionState.status === 'succeeded' || levelConfirmation !== undefined || section.status === 'complete'
           // "Already Calibrated — Continue" has to actually let you continue.
           //
           // Accelerometer and compass both collapse to a single met criterion
@@ -683,13 +923,13 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           if (levelConfirmation?.outcome === 'already-done') {
             criteria = [
               {
-                label: 'Operator marked board-level calibration as already completed externally',
+                label: 'Level calibrated elsewhere',
                 met: true
               }
             ]
-            summary = 'Board-level calibration marked as already completed outside the configurator.'
+            summary = 'Level calibrated elsewhere.'
             detail =
-              'This step was resolved from known-good external setup rather than rerun here. Re-run the level calibration here any time you want to reconfirm it in-app.'
+              'Calibrated elsewhere. Run level calibration here any time.'
             evidence = [
               `Outcome: ${formatSetupOutcome(levelConfirmation.outcome)}`,
               `Review: confirmed at ${formatConfirmationTime(levelConfirmation.confirmedAtMs)}`,
@@ -715,26 +955,26 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           }
           criteria = [
             {
-              label: 'Board-level calibration completed successfully',
+              label: 'Level calibrated',
               met: actionState.status === 'succeeded' || section.status === 'complete'
             },
             {
-              label: 'Calibration was recorded in-app or confirmed from prior review',
+              label: 'Calibration recorded',
               met: levelCalRecorded
             }
           ]
           summary = actionState.summary
           detail =
             actionState.status === 'succeeded'
-              ? 'AHRS_TRIM_X and AHRS_TRIM_Y were updated. Re-pull parameters if you want a clean post-cal snapshot.'
-              : actionState.instructions[0] ?? 'Run the board-level calibration with the vehicle on a flat surface.'
+              ? 'Level calibrated. Re-sync parameters if you want a fresh copy.'
+              : actionState.instructions[0] ?? 'Set the vehicle on a flat surface, then run level calibration.'
           evidence = [
             ...actionState.statusTexts.slice(-2),
             ...section.notes,
             levelConfirmation
               ? `Review: confirmed at ${formatConfirmationTime(levelConfirmation.confirmedAtMs)}`
               : actionState.status === 'succeeded'
-                ? `Recorded from in-app calibration at ${formatConfirmationTime(actionState.completedAtMs)}`
+                ? `Calibrated here at ${formatConfirmationTime(actionState.completedAtMs)}`
                 : 'Review: pending calibration'
           ].slice(0, 4)
           actions.unshift({
@@ -751,7 +991,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               tone: 'secondary',
               sectionId: 'level',
               confirmationOutcome: 'complete',
-              disabled: actionState.status !== 'succeeded'
+              disabled: levelConfirmation ? false : actionState.status !== 'succeeded'
             })
           }
           if (!levelConfirmation && actionState.status !== 'succeeded') {
@@ -767,14 +1007,23 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           break
         }
         case 'compass': {
+          nextStep = 'Next: bind the receiver and map the sticks.'
           const actionState = snapshot.guidedActions['calibrate-compass']
           const compassStepSkipReason = deriveCompassStepSkipReason(snapshot)
           confirmationOutcome = compassConfirmation?.outcome
+          // Stored COMPASS_OFS* on the vehicle count as the record, for the same
+          // reason as the level step: the in-app cal demands a reboot, and the
+          // reboot resets the action state that used to be the only record.
           const compassCalibrationRecorded =
-            actionState.status === 'succeeded' || compassConfirmation !== undefined
+            actionState.status === 'succeeded' || compassConfirmation !== undefined || section.status === 'complete'
           // A live global position — from a real GPS fix or the synthetic
-          // GPS_INPUT the "Set location (no GPS)" control streams. Either
-          // satisfies the EKF; the cal cannot complete without one.
+          // GPS_INPUT the "Set location (no GPS)" control streams. The ONBOARD
+          // calibration (DO_START_MAG_CAL) does not need one: without a
+          // location CompassCalibrator::fix_radius() logs "No location,
+          // fix_radius skipped" and succeeds, and _start_calibration requires
+          // GPS only when COMPASS_OPTIONS asks for it. So this is a hint for a
+          // stalled run, not a criterion -- as a criterion it made an indoor
+          // bench unable to complete a calibration the firmware had accepted.
           const hasCompassCalibrationPosition =
             snapshot.liveVerification.globalPosition.verified &&
             snapshot.liveVerification.globalPosition.latitudeDeg !== undefined &&
@@ -782,16 +1031,16 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           if (compassConfirmation?.outcome === 'not-applicable') {
             criteria = [
               {
-                label: 'No enabled compass was detected on COMPASS_USE settings',
+                label: 'No compass enabled (COMPASS_USE)',
                 met: compassSetupAvailability.enabledCompassCount === 0
               },
               {
-                label: 'Operator confirmed this aircraft has no compass and can skip this step',
+                label: 'No compass on this build, confirmed',
                 met: true
               }
             ]
-            summary = 'Compass step skipped because this aircraft is configured without an enabled compass.'
-            detail = 'The guided flow will not block on compass calibration for this build. If compass hardware is added later, enable it and return to this step.'
+            summary = 'Skipped: no compass enabled on this build.'
+            detail = 'Skipped for this build. If you add a compass later, enable it and come back here.'
             evidence = [
               `Outcome: ${formatSetupOutcome(compassConfirmation.outcome)}`,
               `GPS: ${compassSetupAvailability.gpsConfigured ? 'configured' : 'not detected'}`,
@@ -814,12 +1063,12 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           } else if (compassConfirmation?.outcome === 'already-done') {
             criteria = [
               {
-                label: 'Operator marked compass calibration as already completed externally',
+                label: 'Compass calibrated elsewhere',
                 met: true
               }
             ]
-            summary = 'Compass calibration marked as already completed outside the configurator.'
-            detail = 'This step was resolved from known-good external setup rather than rerun here. Re-run compass calibration here any time you want to reconfirm it in-app.'
+            summary = 'Compass calibrated elsewhere.'
+            detail = 'Calibrated elsewhere. Run compass calibration here any time.'
             evidence = [
               `Outcome: ${formatSetupOutcome(compassConfirmation.outcome)}`,
               `Review: confirmed at ${formatConfirmationTime(compassConfirmation.confirmedAtMs)}`,
@@ -843,32 +1092,26 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               {
                 label:
                   compassStepSkipReason === 'no-enabled-compass'
-                    ? 'No enabled compass was detected on COMPASS_USE settings'
-                    : 'Compass calibration is unsupported or no usable compass was detected on this build',
+                    ? 'No compass enabled (COMPASS_USE)'
+                    : 'Compass calibration unavailable on this build',
                 met: true
               },
               {
-                label:
-                  compassStepSkipReason === 'no-enabled-compass'
-                    ? 'This build can skip compass calibration until compass hardware is added or enabled'
-                    : 'The flight controller reported that compass calibration is unavailable on this build',
+                label: 'Compass calibration skipped',
                 met: true
               }
             ]
             summary =
               compassStepSkipReason === 'unsupported'
                 ? actionState.summary
-                : 'No enabled compass was detected on this build.'
-            detail =
-              compassStepSkipReason === 'unsupported'
-                ? 'Guided setup will not block on compass calibration for this aircraft. If compass hardware is later fitted or enabled, return to this step and run calibration again.'
-                : 'Guided setup will skip compass calibration for this aircraft unless compass hardware is later added or enabled.'
+                : 'No compass enabled on this build.'
+            detail = 'Skipped for this build. If you add a compass later, enable it and come back here.'
             evidence = [
               ...(compassStepSkipReason === 'unsupported' ? [actionState.summary] : []),
               `GPS: ${compassSetupAvailability.gpsConfigured ? 'configured' : 'not detected'}`,
               `Enabled compasses: ${compassSetupAvailability.enabledCompassCount}`,
               ...section.notes,
-              `Skip reason: ${compassStepSkipReason === 'unsupported' ? 'autopilot reported unsupported' : 'no enabled compass detected'}`
+              `Skip reason: ${compassStepSkipReason === 'unsupported' ? 'unsupported by the autopilot' : 'no compass enabled'}`
             ].slice(0, 4)
             actions.unshift({
               kind: 'guided',
@@ -883,7 +1126,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             if (compassStepSkipReason === 'no-enabled-compass') {
               actions.push({
                 kind: 'confirm-step',
-                label: 'Record No-Compass Skip',
+                label: 'No Compass — Continue',
                 tone: 'secondary',
                 sectionId: 'compass',
                 confirmationOutcome: 'not-applicable',
@@ -892,37 +1135,29 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             }
           } else {
             criteria = [
-              // Compass calibration needs the EKF to have a position to finish
-              // yaw alignment. Without a fix it starts and then silently never
-              // progresses — the reported "doesn't progress in guided setup,
-              // works in the Calibration tab", where a fake-GPS control exists.
-              // Naming it as a criterion makes a stalled cal explain itself
-              // instead of just sitting at 0%.
               {
-                label: 'Vehicle has a position (GPS fix, or a location set below) for yaw alignment',
-                met: hasCompassCalibrationPosition
-              },
-              {
-                label: 'Compass calibration completed successfully',
+                label: 'Compass calibrated',
                 met: actionState.status === 'succeeded' || section.status === 'complete'
               },
               {
-                label: 'Calibration was recorded in-app or confirmed from operator review',
+                label: 'Calibration recorded',
                 met: compassCalibrationRecorded
               }
             ]
             summary = actionState.summary
             detail =
               actionState.status === 'succeeded'
-                ? 'Compass calibration completed successfully in the shared runtime. Guided setup now counts this step as complete, and you can rerun it any time to verify it again.'
-                : actionState.instructions[0] ?? 'Run compass calibration when the vehicle is fully powered and magnetometer hardware is available.'
+                ? 'Compass calibrated. Reboot before flight.'
+                : actionState.status === 'running' && !hasCompassCalibrationPosition
+                  ? 'Rotate the vehicle through every axis. If progress stays at 0%, set a location below or move outdoors for a GPS fix.'
+                  : actionState.instructions[0] ?? 'Power the vehicle fully, then run compass calibration.'
             evidence = [
               ...actionState.statusTexts.slice(-2),
               ...section.notes,
               compassConfirmation
                 ? `Review: confirmed at ${formatConfirmationTime(compassConfirmation.confirmedAtMs)}`
                 : actionState.status === 'succeeded'
-                  ? `Recorded from in-app calibration at ${formatConfirmationTime(actionState.completedAtMs)}`
+                  ? `Calibrated here at ${formatConfirmationTime(actionState.completedAtMs)}`
                   : 'Review: pending calibration'
             ].slice(0, 4)
             actions.unshift({
@@ -949,7 +1184,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 tone: 'secondary',
                 sectionId: 'compass',
                 confirmationOutcome: 'complete',
-                disabled: actionState.status !== 'succeeded'
+                disabled: compassConfirmation ? false : actionState.status !== 'succeeded'
               })
             }
             if (!compassConfirmation && actionState.status !== 'succeeded') {
@@ -966,13 +1201,18 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           break
         }
         case 'radio': {
-          const radioDirectionAxes = ['roll', 'pitch', 'throttle', 'yaw'] as const
+          // A Rover radio drives steering (RCMAP_ROLL) and throttle; pitch and
+          // yaw never move, so asking for four correct axes could only be met
+          // by the waiver. Copter/Plane/Sub keep all four.
+          const isRover = snapshot.vehicle?.vehicle === 'ArduRover'
+          const radioDirectionAxes = isRover ? (['roll', 'throttle'] as const) : (['roll', 'pitch', 'throttle', 'yaw'] as const)
+          const radioAxisName = (axis: string): string => (isRover && axis === 'roll' ? 'steering' : axis)
           const radioDirectionsVerified = radioDirectionAxes.every((axis) => rcDirectionResults[axis] === 'correct')
           const radioReversedAxes = radioDirectionAxes.filter((axis) => rcDirectionResults[axis] === 'reversed')
           const radioDirectionsSummary = radioDirectionsVerified
             ? 'all axes correct'
             : radioReversedAxes.length > 0
-              ? `reversed: ${radioReversedAxes.join(', ')}`
+              ? `reversed: ${radioReversedAxes.map(radioAxisName).join(', ')}`
               : 'not checked yet'
           // Same waiver shape as the airframe orientation check and the
           // calibration steps: an 'already-done' sign-off means the radio was
@@ -983,11 +1223,13 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           const radioWaived = radioConfirmation?.outcome === 'already-done'
           criteria = [
             {
-              label: 'Live RC telemetry is present',
+              label: 'RC input live',
               met: snapshot.liveVerification.rcInput.verified || radioWaived
             },
             {
-              label: 'RC mapping exercise captured roll, pitch, throttle, and yaw',
+              label: isRover
+                ? 'Sticks mapped: steering and throttle'
+                : 'Sticks mapped: roll, pitch, throttle, yaw',
               met: rcMappingSession.status === 'ready' || radioWaived
             },
             {
@@ -995,20 +1237,26 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               met: rcRangeExercise.status === 'passed' || radioWaived
             },
             {
-              label: 'RC endpoint capture completed',
+              label: 'Endpoints captured',
               met: rcCalibrationSession.status === 'ready' || radioWaived
             },
             {
               label: radioWaived
-                ? 'RC channel directions verified outside the configurator'
-                : 'RC channel directions verified — no axis reads backwards',
+                ? 'Stick directions verified elsewhere'
+                : 'Stick directions correct',
               met: radioDirectionsVerified || radioWaived
             },
             {
-              label: 'Operator reviewed RC mapping and calibration values',
+              label: 'Radio review confirmed',
               met: radioConfirmation !== undefined
             }
           ]
+          const radioExercisesDone =
+            snapshot.liveVerification.rcInput.verified &&
+            rcMappingSession.status === 'ready' &&
+            rcRangeExercise.status === 'passed' &&
+            rcCalibrationSession.status === 'ready' &&
+            radioDirectionsVerified
           summary =
             rcMappingSession.status === 'running'
               ? rcMappingSummary
@@ -1017,10 +1265,10 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 : rcCalibrationSession.status === 'capturing'
                   ? rcCalibrationSummary
                   : rcRangeExercise.status === 'passed' && rcCalibrationSession.status === 'ready'
-                    ? 'RC mapping, stick range, and endpoint capture are ready for operator review.'
+                    ? 'Mapping, stick range and endpoints done. Confirm the review.'
                 : snapshot.liveVerification.rcInput.verified
-                  ? 'Live RC telemetry is present, but the full mapping and calibration flow still needs to complete.'
-                  : 'Waiting for live RC telemetry before the RC mapping flow can start.'
+                  ? 'RC input is live. Mapping and calibration still to do.'
+                  : 'Waiting for RC input.'
           detail =
             rcMappingSession.status === 'failed'
               ? rcMappingSession.failureReason ?? 'RC mapping exercise failed.'
@@ -1029,22 +1277,26 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 : rcCalibrationSession.status === 'failed'
                   ? rcCalibrationSession.failureReason ?? 'RC endpoint capture failed.'
                   : radioWaived
-                    ? 'The radio was signed off as mapped, ranged and direction-checked outside the configurator, so the in-app exercises are not required for this build. Run them any time you want to reconfirm the channel directions here.'
-                    : 'Use the guided one-axis-at-a-time receiver mapping first, then verify stick travel, capture endpoints, and sign off the full radio review. If this radio was already set up and direction-checked elsewhere, sign it off as verified elsewhere instead.'
+                    ? 'Radio verified elsewhere. Run the exercises any time to check it here.'
+                    : isRover
+                  ? 'Map steering and throttle, check stick travel, capture endpoints, then confirm. A radio set up elsewhere can be signed off as verified elsewhere.'
+                  : 'Run guided mapping, check stick travel, capture endpoints, then confirm. A radio already set up elsewhere can be signed off as verified elsewhere.'
           // Include directions + review: they're the two things most likely to
           // be the actual blocker, and the old 5-item .slice(0,4) always dropped
           // the Review pill and never surfaced directions at all.
+          const describeExercise = (name: string, status: string): string =>
+            `${name} ${status === 'ready' || status === 'passed' ? 'done' : status === 'idle' ? 'not run' : status}`
           evidence = [
             snapshot.liveVerification.rcInput.verified
               ? `${snapshot.liveVerification.rcInput.channelCount} RC channels live`
-              : 'No live RC telemetry yet',
-            `Mapping ${rcMappingSession.status}, ranges ${rcRangeExercise.status}, endpoints ${rcCalibrationSession.status}`,
+              : 'No RC input yet',
+            `${describeExercise('Mapping', rcMappingSession.status)}, ${describeExercise('stick range', rcRangeExercise.status)}, ${describeExercise('endpoints', rcCalibrationSession.status)}`,
             `Directions: ${radioDirectionsSummary}`,
-            `Review: ${radioConfirmation ? `confirmed at ${formatConfirmationTime(radioConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+            `Review: ${radioConfirmation ? `confirmed at ${formatConfirmationTime(radioConfirmation.confirmedAtMs)}` : 'pending'}`
           ]
           actions.unshift({
             kind: 'rc-mapping-exercise',
-            label: rcMappingSession.status === 'ready' ? 'Run Guided Mapping Again' : 'Begin Guided Mapping',
+            label: rcMappingSession.status === 'ready' ? 'Run Guided Mapping Again' : 'Start Guided Mapping',
             tone: 'primary',
             disabled: !canRunRcMappingExercise || rcMappingSession.status === 'running'
           })
@@ -1063,24 +1315,29 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             // Gate on directions too: without this the operator could "Confirm RC
             // Review" (ticking the confirmation) while the step stays incomplete
             // because the directions criterion is unmet, with the real blocker
-            // hidden in the collapsed criteria list.
-            disabled:
-              !snapshot.liveVerification.rcInput.verified ||
-              rcMappingSession.status !== 'ready' ||
-              rcRangeExercise.status !== 'passed' ||
-              rcCalibrationSession.status !== 'ready' ||
-              !radioDirectionsVerified
+            // hidden in the collapsed criteria list. Staged-but-unwritten RC
+            // drafts gate it as well: the signature pins the LIVE values, so a
+            // review confirmed over drafts went stale the moment they were
+            // applied and relocked every step behind it. An undo (Clear) is
+            // never gated -- that was the no-undo trap the waiver had.
+            disabled: radioConfirmation ? false : !radioExercisesDone || receiverDraftsPending
           })
-          actions.splice(1, 0, {
+          if (!radioConfirmation && radioExercisesDone && receiverDraftsPending) {
+            detail = 'Apply the staged receiver values first, then confirm the RC review.'
+          }
+          // ONE jump to the Receiver page, replacing the generic panel action
+          // rather than sitting beside it: the step stacked eight buttons,
+          // three of which opened the same page.
+          actions[actions.indexOf(panelAction)] = {
             kind: 'scroll',
             label:
               rcCalibrationSession.status === 'ready'
-                ? 'Stage RC Calibration'
+                ? 'Open Receiver to Apply Endpoints'
                 : rcMappingSession.status === 'ready'
-                  ? 'Run RC Calibration'
-                  : 'Open Guided RC Mapping',
+                  ? 'Open Receiver for Endpoints'
+                  : 'Open Receiver',
             panelId: panel.panelId
-          })
+          }
           // RCIN preflight: no live RC telemetry AND no UART assigned to RC
           // input. On serial-receiver builds (ELRS/CRSF/SBUS on a UART — the
           // common FPV case) the step used to just say "waiting for live RC
@@ -1093,7 +1350,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             ).some((protocolValue) => isReceiverSerialProtocol(protocolValue))
             if (!hasReceiverSerialPort) {
               detail =
-                'No live RC telemetry, and no serial port is assigned to RC input. If this build uses a serial receiver (ELRS/CRSF/SBUS on a UART), open Ports, set that UART to RCIN (SERIALn_PROTOCOL = 23), write, then reboot — guided-setup progress is preserved across the reboot. Receivers on the dedicated RCIN pin need no port change.'
+                'No RC input, and no serial port is set to RC input. For a serial receiver (ELRS, CRSF, SBUS), open Ports, set its UART to RCIN (SERIALn_PROTOCOL = 23), write and reboot. A receiver on the RCIN pin needs no port change.'
               evidence = ['No serial port set to RC input (RCIN)', ...evidence].slice(0, 4)
               actions.unshift({
                 kind: 'scroll',
@@ -1117,24 +1374,103 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             })
           }
           confirmationOutcome = radioConfirmation?.outcome
+          nextStep = 'Next: set the motor spin range, props off.'
           break
         }
-        case 'failsafe':
+        case 'failsafe': {
+          // Each vehicle's failsafe is a different set of parameters, and the
+          // Copter-shaped review let the others through on the wrong ones:
+          //   Plane  THR_FAILSAFE=2 is "enabled, NO failsafe action" and ticked
+          //          the box; FS_LONG_ACTN (where the failsafe goes) was never read.
+          //   Rover  FS_THR_ENABLE defaults on, so a fresh Rover passed while
+          //          FS_ACTION=0 ("Nothing") -- the dangerous one -- went unread.
+          //   Sub    has FS_THR_ENABLE but defaults it to 0 and a tethered,
+          //          joystick-driven ROV leaves it there, so the step could NEVER
+          //          complete; its real failsafes are leak and surface link.
+          // Copter (and an unrecognised vehicle) keep the original criteria.
+          const failsafeVehicle =
+            snapshot.vehicle?.vehicle === 'ArduPlane'
+              ? 'plane'
+              : snapshot.vehicle?.vehicle === 'ArduRover'
+                ? 'rover'
+                : snapshot.vehicle?.vehicle === 'ArduSub'
+                  ? 'sub'
+                  : 'copter'
+          const planeThrottleFailsafe = readRoundedParameter(snapshot, 'THR_FAILSAFE')
+          const planeLongAction = readRoundedParameter(snapshot, 'FS_LONG_ACTN')
+          const roverAction = readRoundedParameter(snapshot, 'FS_ACTION')
+          const subLeakFailsafe = readRoundedParameter(snapshot, 'FS_LEAK_ENABLE')
+          const subGcsFailsafe = readRoundedParameter(snapshot, 'FS_GCS_ENABLE')
+          const hasAction = (value: number | undefined): boolean => value !== undefined && value !== 0
+          // BATT_MONITOR=0: ArduPilot does not even register BATT_FS_LOW_ACT, so
+          // a build without a battery monitor could never satisfy (or confirm)
+          // this step. Say so instead of asking for a parameter that does not
+          // exist; the Power step is where a monitor gets configured.
+          const noBatteryMonitor = batteryMonitor === 0
+          const failsafeConfigMissing =
+            failsafeVehicle === 'plane'
+              ? planeThrottleFailsafe === undefined || planeLongAction === undefined
+              : failsafeVehicle === 'rover'
+                ? throttleFailsafe === undefined || roverAction === undefined
+                : failsafeVehicle === 'sub'
+                  ? subLeakFailsafe === undefined || subGcsFailsafe === undefined
+                  : throttleFailsafe === undefined
+          const failsafeConfirmDisabled = failsafeConfigMissing || (batteryFailsafe === undefined && !noBatteryMonitor)
           criteria = [
-            {
-              // Presence, not value, used to satisfy these -- so FS_THR_ENABLE=0
-              // (disabled) and BATT_FS_LOW_ACT=0 ("warn only") ticked the boxes and
-              // the step rendered complete on an aircraft with no RC failsafe and no
-              // battery failsafe at all. Firmware's own FS_THR_VALUE sanity check
-              // (AP_Arming_Copter.cpp:209) only runs when the throttle failsafe is
-              // enabled, so nothing else would have told the operator either.
-              label: 'Throttle failsafe is enabled',
-              met: throttleFailsafe !== undefined && throttleFailsafe !== 0
-            },
-            {
-              label: 'Battery failsafe has an action, not just a warning',
-              met: batteryFailsafe !== undefined && batteryFailsafe !== 0
-            },
+            ...(failsafeVehicle === 'plane'
+              ? [
+                  {
+                    label: 'Throttle failsafe on (THR_FAILSAFE = 1)',
+                    met: planeThrottleFailsafe === 1
+                  },
+                  {
+                    label: 'Long failsafe has an action (FS_LONG_ACTN)',
+                    met: hasAction(planeLongAction)
+                  }
+                ]
+              : failsafeVehicle === 'rover'
+                ? [
+                    {
+                      label: 'Throttle failsafe is enabled',
+                      met: hasAction(throttleFailsafe)
+                    },
+                    {
+                      label: 'Failsafe action is set (FS_ACTION)',
+                      met: hasAction(roverAction)
+                    }
+                  ]
+                : failsafeVehicle === 'sub'
+                  ? [
+                      {
+                        label: 'Leak failsafe has an action (FS_LEAK_ENABLE)',
+                        met: hasAction(subLeakFailsafe)
+                      },
+                      {
+                        label: 'Surface-link failsafe has an action (FS_GCS_ENABLE)',
+                        met: hasAction(subGcsFailsafe)
+                      }
+                    ]
+                  : [
+                      {
+                        // Presence, not value, used to satisfy these -- so FS_THR_ENABLE=0
+                        // (disabled) and BATT_FS_LOW_ACT=0 ("warn only") ticked the boxes and
+                        // the step rendered complete on an aircraft with no RC failsafe and no
+                        // battery failsafe at all. Firmware's own FS_THR_VALUE sanity check
+                        // (AP_Arming_Copter.cpp:209) only runs when the throttle failsafe is
+                        // enabled, so nothing else would have told the operator either.
+                        label: 'Throttle failsafe is enabled',
+                        met: hasAction(throttleFailsafe)
+                      }
+                    ]),
+            noBatteryMonitor
+              ? {
+                  label: 'No battery monitor, so no battery failsafe',
+                  met: true
+                }
+              : {
+                  label: 'Battery failsafe has an action, not just a warning',
+                  met: batteryFailsafe !== undefined && batteryFailsafe !== 0
+                },
             // The step reviewed WHETHER the failsafe fires and never WHERE it
             // goes. FS_THR_ENABLE defaults to ALWAYS_RTL, so RTL is the default
             // response to a lost link, and RTL_ALT defaults to 15 m -- below the
@@ -1146,18 +1482,40 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             // failsafe does not fly home and a Sub's cannot; asserting an
             // altitude they never report made this criterion permanently
             // false, which blocked the failsafe step and every step behind it.
-            ...(rtlAltitudeMetres !== undefined
+            // A Copter with no GPS configured cannot return: RTL without a
+            // position falls through to LAND after a wait, so the honest
+            // setting is FS_THR_ENABLE = 3 (Land) or 7 (Brake or Land).
+            ...(isCopterVehicle && compassSetupAvailability.gpsConfigured === false
               ? [
                   {
-                    label: 'RTL return altitude is set above typical tree height (20 m)',
-                    met: rtlAltitudeMetres >= 20
+                    label: 'Throttle failsafe lands (no GPS: FS_THR_ENABLE 3 or 7)',
+                    met: throttleFailsafe === 3 || throttleFailsafe === 7
                   }
                 ]
-              : []),
-            {
-              label: 'Live RC link is verified during review',
-              met: snapshot.liveVerification.rcInput.verified
-            },
+              : rtlAltitudeMetres !== undefined
+                ? [
+                    {
+                      label: 'Return altitude above tree height (20 m)',
+                      met: rtlAltitudeMetres >= 20
+                    }
+                  ]
+                : []),
+            // The Radio step owns RC presence. Requiring it again here, with no
+            // waiver, meant a radio legitimately signed off as "verified
+            // elsewhere" (receiver not yet bound, TX off) hit a wall two steps
+            // later. A Sub has no RC receiver at all (joystick over MAVLink), so
+            // it is not asked.
+            ...(failsafeVehicle === 'sub'
+              ? []
+              : [
+                  {
+                    label: 'RC link seen, or radio verified elsewhere',
+                    met:
+                      snapshot.liveVerification.rcInput.verified ||
+                      radioConfirmation?.outcome === 'already-done' ||
+                      failsafeConfirmation !== undefined
+                  }
+                ]),
             {
               // Battery telemetry needs SYS_STATUS voltage > 1000 mV, i.e. a real
               // pack. On a bench board on USB with props off -- the posture this
@@ -1165,95 +1523,134 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               // the confirm gate, and failsafe was the only step in the flow with no
               // waiver, so modes and power (both AFTER it) stayed locked forever.
               // Kept as evidence with an operator escape below.
-              label: 'Live battery telemetry is verified during review',
+              label: 'Battery telemetry live',
               met: snapshot.liveVerification.batteryTelemetry.verified || failsafeConfirmation !== undefined
             },
             {
-              label: 'Operator reviewed the configured failsafe behavior',
+              label: 'Failsafe review confirmed',
               met: failsafeConfirmation !== undefined
             }
           ]
           // failsafeActionLabel resolves the enum labels off the parameter
           // definition, so it needs whichever id this vehicle actually exposes --
           // Copter/Rover/Sub use FS_THR_ENABLE, Plane uses THR_FAILSAFE.
-          summary = `Throttle failsafe ${failsafeActionLabel(
-            snapshot,
-            readRoundedParameter(snapshot, 'FS_THR_ENABLE') !== undefined ? 'FS_THR_ENABLE' : 'THR_FAILSAFE',
-            throttleFailsafe,
-            formatArducopterThrottleFailsafe
-          )}, battery action ${failsafeActionLabel(
-            snapshot,
-            'BATT_FS_LOW_ACT',
-            batteryFailsafe,
-            formatArducopterBatteryFailsafeAction
-          )}.`
+          const describeEnable = (value: number | undefined): string =>
+            value === undefined ? 'not reported' : value === 0 ? 'disabled' : `action ${value}`
+          const batterySummary = noBatteryMonitor
+            ? 'no battery monitor'
+            : `battery action ${failsafeActionLabel(snapshot, 'BATT_FS_LOW_ACT', batteryFailsafe, formatArducopterBatteryFailsafeAction)}`
+          summary =
+            failsafeVehicle === 'sub'
+              ? `Leak failsafe ${failsafeActionLabel(snapshot, 'FS_LEAK_ENABLE', subLeakFailsafe, describeEnable)}, surface-link failsafe ${failsafeActionLabel(snapshot, 'FS_GCS_ENABLE', subGcsFailsafe, describeEnable)}, ${batterySummary}.`
+              : failsafeVehicle === 'plane'
+                ? `Throttle failsafe ${failsafeActionLabel(snapshot, 'THR_FAILSAFE', planeThrottleFailsafe, describeEnable)}, long failsafe ${failsafeActionLabel(snapshot, 'FS_LONG_ACTN', planeLongAction, describeEnable)}, ${batterySummary}.`
+                : failsafeVehicle === 'rover'
+                  ? `Throttle failsafe ${failsafeActionLabel(snapshot, 'FS_THR_ENABLE', throttleFailsafe, describeEnable)}, failsafe action ${failsafeActionLabel(snapshot, 'FS_ACTION', roverAction, describeEnable)}, ${batterySummary}.`
+                  : `Throttle failsafe ${failsafeActionLabel(
+                      snapshot,
+                      readRoundedParameter(snapshot, 'FS_THR_ENABLE') !== undefined ? 'FS_THR_ENABLE' : 'THR_FAILSAFE',
+                      throttleFailsafe,
+                      formatArducopterThrottleFailsafe
+                    )}, ${batterySummary}.`
           detail =
             snapshot.liveVerification.batteryTelemetry.verified && snapshot.liveVerification.rcInput.verified
-              ? 'Failsafe settings are visible with live RC and battery telemetry present.'
-              : 'Keep both RC and battery telemetry live while reviewing the failsafe configuration.'
+              ? 'RC and battery are live. Review the failsafes.'
+              : 'Keep RC and battery live while you review.'
           evidence = [
             rtlAltitudeMetres === undefined
-              ? 'RTL altitude not reported by this firmware'
+              ? failsafeVehicle === 'rover' || failsafeVehicle === 'sub'
+                ? 'RTL altitude: not applicable'
+                : 'RTL altitude: not reported'
               : `RTL returns at ${rtlAltitudeMetres.toFixed(0)} m`,
-            snapshot.liveVerification.rcInput.verified ? 'RC link live' : 'RC link not yet verified',
-            snapshot.liveVerification.batteryTelemetry.verified ? 'Battery telemetry live' : 'Battery telemetry not yet verified',
-            `Review: ${failsafeConfirmation ? `confirmed at ${formatConfirmationTime(failsafeConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+            ...(failsafeVehicle === 'sub'
+              ? []
+              : [snapshot.liveVerification.rcInput.verified ? 'RC link live' : 'RC link: not seen']),
+            snapshot.liveVerification.batteryTelemetry.verified ? 'Battery telemetry live' : 'Battery telemetry: not seen',
+            `Review: ${failsafeConfirmation ? `confirmed at ${formatConfirmationTime(failsafeConfirmation.confirmedAtMs)}` : 'pending'}`
           ]
           actions.unshift({
             kind: failsafeConfirmation ? 'clear-confirmation' : 'confirm-step',
             label: failsafeConfirmation ? 'Clear Failsafe Review' : 'Confirm Failsafe Review',
             tone: 'primary',
             sectionId: 'failsafe',
-            disabled: throttleFailsafe === undefined || batteryFailsafe === undefined
+            disabled: failsafeConfirmation ? false : failsafeConfirmDisabled
           })
           if (!failsafeConfirmation && !snapshot.liveVerification.batteryTelemetry.verified) {
             actions.push({
               kind: 'confirm-step',
-              label: 'No Pack Connected — Review On Battery Later',
+              label: 'No Pack Connected — Review Later',
               tone: 'secondary',
               sectionId: 'failsafe',
-              confirmationOutcome: 'already-done'
+              confirmationOutcome: 'already-done',
+              // Same gate as the confirm: a waiver that records while the
+              // step cannot complete hides the real blocker behind an undo.
+              disabled: failsafeConfirmDisabled
             })
           }
+          if (failsafeConfigMissing) {
+            detail =
+              failsafeVehicle === 'sub'
+                ? 'FS_LEAK_ENABLE or FS_GCS_ENABLE has not been reported by the vehicle. Re-sync parameters, or check the firmware exposes them.'
+                : 'Not all failsafe parameters have arrived. Re-sync parameters, or check the firmware has them.'
+          }
           break
+        }
         case 'modes': {
           // Modes previously had NO operator escape of any kind: the switch
           // exercise had to pass, full stop. On a build the exercise cannot
           // drive that left the final steps of the wizard unreachable.
           const modesConfirmation = getSetupConfirmationRecord('modes')
           const modesWaived = modesConfirmation?.outcome === 'already-done'
+          // The first flights are flown in Stabilize, and hover-throttle
+          // learning and Autotune need an altitude-holding mode. The step used
+          // to count positions without reading what they were.
+          const hasStabilize = modeExerciseAssignments.some((assignment) => assignment.value === 0)
+          const hasAltHold = modeExerciseAssignments.some((assignment) => assignment.value === 2)
           criteria = [
             {
-              label: 'Mode channel is configured',
+              label: 'Mode channel set',
               met: modeSwitchEstimate.channelNumber !== undefined || modesWaived
             },
             {
-              label: 'At least two distinct flight-mode positions are assigned',
+              label: 'Two or more switch positions assigned',
               met: modeExerciseAssignments.length >= 2 || modesWaived
             },
+            ...(isCopterVehicle
+              ? [
+                  {
+                    // The waiver covers it: "verified elsewhere" is the
+                    // operator taking the mode choice on themselves (an
+                    // acro-only build is a deliberate one).
+                    label: 'Stabilize and AltHold on the switch',
+                    met: (hasStabilize && hasAltHold) || modesWaived
+                  }
+                ]
+              : []),
             {
               label: modesWaived
-                ? 'Flight modes verified outside the configurator'
+                ? 'Flight modes verified elsewhere'
                 : 'Mode switch exercise passed',
               met: modeSwitchExercise.status === 'passed' || modesWaived
             }
           ]
           summary =
             modeSwitchExercise.status === 'passed'
-              ? 'Mode switch exercise passed with all distinct configured positions observed.'
+              ? 'Switch exercise passed: every position seen.'
               : modeSwitchExercise.status === 'running'
-                ? modeSwitchExerciseSummary
+                ? modeSwitchExercise.unexpectedSlots.length > 0
+                  ? `${modeSwitchExerciseSummary} Position${modeSwitchExercise.unexpectedSlots.length > 1 ? 's' : ''} ${modeSwitchExercise.unexpectedSlots.join(', ')} ${modeSwitchExercise.unexpectedSlots.length > 1 ? 'have' : 'has'} no mode assigned.`
+                  : modeSwitchExerciseSummary
                 : modeSwitchEstimate.estimatedSlot !== undefined
                   ? modeSwitchEstimate.channelNumber === undefined
-                    ? 'A mode switch is moving, but the flight-mode channel is not set. Set it in Modes, then run the switch check.'
-                    : `Live mode switch detected on CH${modeSwitchEstimate.channelNumber}, but the full switch check still needs to pass.`
-                  : 'Waiting for a configured live mode channel before starting the switch exercise.'
+                    ? 'A switch is moving but no mode channel is set. Set it in Flight Modes, then run the exercise.'
+                    : `Mode switch seen on CH${modeSwitchEstimate.channelNumber}. Run the switch exercise.`
+                  : 'Waiting for a mode channel with live input.'
           detail =
             modeSwitchExercise.status === 'failed'
               ? modeSwitchExercise.failureReason ?? 'Mode switch exercise failed.'
-              : 'Walk through every configured flight-mode position and confirm the app observes each slot.'
+              : 'Move the switch through every position.'
           evidence = [
-            modeSwitchEstimate.channelNumber !== undefined ? `Mode channel: CH${modeSwitchEstimate.channelNumber}` : 'Mode channel not configured',
+            modeSwitchEstimate.channelNumber !== undefined ? `Mode channel: CH${modeSwitchEstimate.channelNumber}` : 'Mode channel: not set',
             `Exercise: ${modeSwitchExercise.status}`
           ]
           actions.unshift({
@@ -1281,73 +1678,101 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           }
           if (modesWaived) {
             detail =
-              'Flight modes were signed off as verified outside the configurator, so the in-app switch exercise is not required for this build. Run it any time you want to reconfirm every switch position here.'
+              'Flight modes verified elsewhere. Run the switch exercise any time to check them here.'
+          }
+          if (isCopterVehicle && !modesWaived && !(hasStabilize && hasAltHold)) {
+            detail = `Put ${!hasStabilize && !hasAltHold ? 'Stabilize and AltHold' : !hasStabilize ? 'Stabilize' : 'AltHold'} on the switch: the first flight is flown in Stabilize, and the hover-throttle and Autotune flights need AltHold.`
           }
           confirmationOutcome = modesConfirmation?.outcome
+          nextStep = 'Next: the battery monitor, with a pack plugged in.'
           break
         }
-        case 'power':
+        case 'power': {
+          // Two bench postures this step could not get past:
+          //   - no pack on USB: telemetry never verifies (SYS_STATUS voltage
+          //     stays ~0) and the "No Pack" waiver lived on Failsafe, one step
+          //     LATER; a build with no battery monitor at all (BATT_MONITOR=0)
+          //     had no route whatsoever;
+          //   - ARMING_CHECK=0: the firmware computes no pre-arm verdict, so the
+          //     criterion below was false while `healthy` read true, and the
+          //     acknowledge button keyed on `!healthy` was never offered.
+          // 'not-applicable' here = "no pack / no monitor -- review on battery
+          // later"; it defers every live reading. 'already-done' stays the
+          // pre-arm acknowledgement.
+          const powerDeferred = powerConfirmation?.outcome === 'not-applicable'
+          const batteryMonitorConfigured = batteryMonitor !== undefined && batteryMonitor > 0
+          // Cell count from the live pack voltage (3.3–4.35 V per cell; an
+          // ambiguous voltage gives up), then every non-zero threshold has to
+          // make sense for that pack: 3S numbers on a 6S pack never trip.
+          const packVoltage = snapshot.liveVerification.batteryTelemetry.verified
+            ? snapshot.liveVerification.batteryTelemetry.voltageV
+            : undefined
+          const cellCandidates =
+            packVoltage === undefined
+              ? []
+              : Array.from({ length: 13 }, (_, index) => index + 2).filter((cells) => {
+                  const perCell = packVoltage / cells
+                  return perCell >= 3.3 && perCell <= 4.35
+                })
+          const packCells = cellCandidates.length === 1 ? cellCandidates[0] : undefined
+          const perCellWithin = (paramId: string, low: number, high: number): string | undefined => {
+            const value = readParameterValue(snapshot, paramId)
+            if (packCells === undefined || value === undefined || value === 0) {
+              return undefined
+            }
+            const perCell = value / packCells
+            return perCell >= low && perCell <= high ? undefined : `${paramId} ${value} is ${perCell.toFixed(2)} V per cell`
+          }
+          const thresholdProblems = [
+            perCellWithin('BATT_ARM_VOLT', 3.0, 4.1),
+            perCellWithin('BATT_LOW_VOLT', 3.0, 3.9),
+            perCellWithin('BATT_CRT_VOLT', 2.8, 3.8),
+            perCellWithin('MOT_BAT_VOLT_MAX', 4.0, 4.4),
+            perCellWithin('MOT_BAT_VOLT_MIN', 2.8, 3.7)
+          ].filter((problem): problem is string => problem !== undefined)
           criteria = [
             {
-              label: 'Battery monitor is configured',
-              met: batteryMonitor !== undefined && batteryMonitor > 0
+              label:
+                batteryMonitor === 0 && powerDeferred
+                  ? 'No battery monitor on this build (BATT_MONITOR = 0), acknowledged'
+                  : 'Battery monitor is configured',
+              met: batteryMonitorConfigured || (batteryMonitor === 0 && powerDeferred)
             },
             {
-              label: 'Live battery telemetry is present',
-              met: snapshot.liveVerification.batteryTelemetry.verified
+              label: powerDeferred ? 'Battery readings deferred until a pack is on' : 'Battery telemetry live',
+              met: snapshot.liveVerification.batteryTelemetry.verified || powerDeferred
             },
+            ...(packCells !== undefined
+              ? [
+                  {
+                    label: `Battery thresholds match a ${packCells}S pack`,
+                    met: thresholdProblems.length === 0
+                  }
+                ]
+              : []),
             {
-              label: 'Operator confirmed the power and battery readings were reviewed',
+              label: 'Power review confirmed',
               met: powerConfirmation !== undefined
-            },
-            {
-              // snapshot.preArmStatus.healthy falls back to "no latched issue text"
-              // when the live verdict is unusable -- and the live verdict is marked
-              // unusable precisely when ARMING_CHECK/ARMING_SKIPCHK has turned the
-              // checks off (GCS.cpp only sets `enabled` if get_enabled_checks()).
-              // So an aircraft with every check disabled reported "pre-arm clear"
-              // and completed the step. ArduPilot also sets the health bit
-              // unconditionally while armed, and it arms for the duration of a
-              // DO_MOTOR_TEST, so a reading taken around a motor test was a
-              // hardcoded pass too. Require a verdict the firmware is actually
-              // computing, and ignore it while armed.
-              label: 'Flight controller reports pre-arm checks passing',
-              met:
-                (snapshot.preArmStatus.liveCheck?.present === true &&
-                  snapshot.preArmStatus.liveCheck.enabled === true &&
-                  snapshot.vehicle?.armed !== true &&
-                  snapshot.preArmStatus.healthy) ||
-                // Pre-arm is routinely unhealthy on a bench indoors -- no GPS fix,
-                // no position estimate -- and this is the LAST step, so without an
-                // escape the wizard could never report complete however correct the
-                // aircraft was. The waiver below acknowledges rather than suppresses:
-                // it changes nothing on the vehicle, and pre-arm still blocks arming.
-                powerConfirmation?.outcome === 'already-done'
             }
+            // The pre-arm verdict moved to the Ready to Fly step, where the pack
+            // is on and the reasons mean something.
           ]
           summary = snapshot.liveVerification.batteryTelemetry.verified
             ? `${formatVoltage(snapshot.liveVerification.batteryTelemetry.voltageV)} and ${formatRemaining(
                 snapshot.liveVerification.batteryTelemetry.remainingPercent
               )}.`
-            : 'Battery telemetry has not been verified yet.'
+            : 'No battery telemetry yet.'
           detail =
-            batteryHealthTone(snapshot) === 'success'
-              ? 'Power telemetry is live and currently healthy. Reboot is available here when setup changes require it.'
-              : 'Use the power panel to verify the battery monitor, remaining estimate, and any required reboot/refresh steps.'
+            thresholdProblems.length > 0
+              ? `The pack reads as ${packCells}S, but ${thresholdProblems.join('; ')}. Set the voltage thresholds for this pack in Config ▸ Battery and Failsafe.`
+              : batteryHealthTone(snapshot) === 'success'
+                ? 'Battery telemetry is live and healthy. Confirm the review.'
+                : 'Plug a pack in, then check the battery monitor reads right.'
           evidence = [
             `Battery monitor: ${describeBatteryMonitor(batteryMonitor)}`,
             `Health: ${batteryHealthLabel(snapshot)}`,
-            // `healthy` now follows the live SYS_STATUS pre-arm bit, which can
-            // report a failure before the vehicle has sent any reason text
-            // (it batches those every 30s) — so an unhealthy verdict with an
-            // empty issue list is a real state, and "0 issue(s)" would read as
-            // a pass.
-            snapshot.preArmStatus.healthy
-              ? 'Pre-arm: clear'
-              : snapshot.preArmStatus.issues.length === 0
-                ? 'Pre-arm: blocked (reason not yet reported)'
-                : `Pre-arm: ${snapshot.preArmStatus.issues.length} issue(s)`,
-            `Review: ${powerConfirmation ? `confirmed at ${formatConfirmationTime(powerConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+            packCells !== undefined ? `Pack: ${packCells}S at ${formatVoltage(packVoltage)}` : 'Pack: not connected',
+            `Review: ${powerConfirmation ? `confirmed at ${formatConfirmationTime(powerConfirmation.confirmedAtMs)}` : 'pending'}`
           ]
           actions.unshift({
             kind: 'guided',
@@ -1356,13 +1781,14 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             actionId: 'reboot-autopilot',
             disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'reboot-autopilot')
           })
-          if (!powerConfirmation && !snapshot.preArmStatus.healthy) {
+          if (!powerConfirmation && (!snapshot.liveVerification.batteryTelemetry.verified || batteryMonitor === 0)) {
             actions.push({
               kind: 'confirm-step',
-              label: 'Pre-arm Blocked On The Bench — Acknowledge',
+              label: batteryMonitor === 0 ? 'No Battery Monitor — Continue' : 'No Pack Connected — Review Later',
               tone: 'secondary',
               sectionId: 'power',
-              confirmationOutcome: 'already-done'
+              confirmationOutcome: 'not-applicable',
+              disabled: busyAction !== undefined || batteryMonitor === undefined
             })
           }
           // BATT_VOLT_MULT / BATT_AMP_PERVLT are per-board, per-sensor values --
@@ -1379,12 +1805,474 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           })
           actions.unshift({
             kind: powerConfirmation ? 'clear-confirmation' : 'confirm-step',
-            label: powerConfirmation ? 'Clear Power Review' : 'Confirm Power Review',
+            label: powerConfirmation
+              ? powerDeferred
+                ? 'Clear Power Deferral'
+                : 'Clear Power Review'
+              : 'Confirm Power Review',
             tone: 'primary',
             sectionId: 'power',
-            disabled: batteryMonitor === undefined || batteryMonitor <= 0 || !snapshot.liveVerification.batteryTelemetry.verified
+            disabled: powerConfirmation
+              ? false
+              : !batteryMonitorConfigured || !snapshot.liveVerification.batteryTelemetry.verified
           })
+          confirmationOutcome = powerConfirmation?.outcome
+          nextStep = 'Next: review the failsafes.'
           break
+        }
+        case 'readiness': {
+          // The last look before props go on. These are the checks the wiki's
+          // first-flight pages assume and nothing in the bench steps asked for.
+          const readinessConfirmation = getSetupConfirmationRecord('readiness')
+          const preArmAcknowledged = readinessConfirmation?.outcome === 'already-done'
+          const armingSkip = readRoundedParameter(snapshot, 'ARMING_SKIPCHK')
+          const armingCheck = readRoundedParameter(snapshot, 'ARMING_CHECK')
+          // 4.7 inverted the parameter: ARMING_SKIPCHK lists checks to SKIP (0 =
+          // skip none); before that ARMING_CHECK bit 0 means "all checks".
+          const armingChecksAllOn =
+            armingSkip !== undefined ? armingSkip === 0 : armingCheck !== undefined && (armingCheck & 1) === 1
+          const logBitmask = readRoundedParameter(snapshot, 'LOG_BITMASK')
+          const logBackend = readRoundedParameter(snapshot, 'LOG_BACKEND_TYPE')
+          const loggingOn = logBitmask !== undefined && logBitmask !== 0 && (logBackend === undefined || logBackend !== 0)
+          const armingRudder = readRoundedParameter(snapshot, 'ARMING_RUDDER')
+          const armSwitchChannel = Array.from({ length: 16 }, (_, index) => index + 1).find((channel) => {
+            const option = readRoundedParameter(snapshot, `RC${channel}_OPTION`)
+            return option === ARM_SWITCH_OPTION_VALUE || option === ARM_SWITCH_AIRMODE_OPTION_VALUE
+          })
+          const armMethod = (armingRudder !== undefined && armingRudder !== 0) || armSwitchChannel !== undefined
+          const liveCheck = snapshot.preArmStatus.liveCheck
+          const preArmVerdictUsable = liveCheck?.present === true && liveCheck.enabled === true
+          const preArmPassingWithPack =
+            preArmVerdictUsable &&
+            snapshot.vehicle?.armed !== true &&
+            snapshot.preArmStatus.healthy &&
+            snapshot.liveVerification.batteryTelemetry.verified
+          const snapshotSaved = savedSnapshotCount > 0
+          criteria = [
+            {
+              // No waiver: the wiki's one explicit "never do this".
+              label: 'All arming checks on',
+              met: armingChecksAllOn
+            },
+            {
+              label: 'Logging on',
+              met: loggingOn
+            },
+            {
+              label: 'A way to arm: rudder or switch',
+              met: armMethod
+            },
+            {
+              label: preArmAcknowledged
+                ? 'Pre-arm acknowledged, to clear at the field'
+                : 'Pre-arm checks pass with the pack connected',
+              met: preArmPassingWithPack || preArmAcknowledged
+            },
+            {
+              label: 'Snapshot saved',
+              met: snapshotSaved
+            },
+            {
+              label: 'Ready to fly, confirmed',
+              met: readinessConfirmation !== undefined
+            }
+          ]
+          const unmetCount = criteria.filter((criterion) => !criterion.met).length
+          summary = unmetCount === 0 ? 'Ready for the first flight.' : `${unmetCount} thing${unmetCount === 1 ? '' : 's'} to settle before props go on.`
+          detail = !armingChecksAllOn
+            ? 'Not every arming check is on. Turn every check back on in Config ▸ Arming before the first flight.'
+            : !loggingOn
+              ? 'Logging is off. Turn it on in Logs; every later step reads a flight log.'
+              : !armMethod
+                ? 'No way to arm. Set ARMING_RUDDER, or put Arm/Disarm on a switch in Receiver.'
+                : !snapshotSaved
+                  ? 'Save a snapshot in Snapshots before flying, so this setup can be restored.'
+                  : !preArmPassingWithPack && !preArmAcknowledged
+                    ? snapshot.liveVerification.batteryTelemetry.verified
+                      ? 'Pre-arm is blocked. Read the reasons on Status & Info. If they are only GPS and position, acknowledge and check again at the field.'
+                      : 'Plug a pack in to see the pre-arm result, or acknowledge and check it at the field.'
+                    : 'Props on, pack on, clear area. First flight in Stabilize: arm, disarm, arm, lift a hand\u2019s width, set down, then a short hover.'
+          evidence = [
+            `Arming checks: ${armingChecksAllOn ? 'all on' : armingSkip !== undefined ? `ARMING_SKIPCHK ${armingSkip}` : `ARMING_CHECK ${armingCheck ?? '?'}`}`,
+            `Logging: ${loggingOn ? 'on' : 'off'}`,
+            `Arm: ${armSwitchChannel !== undefined ? `switch on CH${armSwitchChannel}` : armMethod ? 'rudder' : 'none'}`,
+            snapshot.preArmStatus.healthy ? 'Pre-arm: clear' : `Pre-arm: ${snapshot.preArmStatus.issues.length ? `${snapshot.preArmStatus.issues.length} issue${snapshot.preArmStatus.issues.length === 1 ? '' : 's'}` : 'blocked'}`
+          ]
+          actions[actions.indexOf(panelAction)] = {
+            kind: 'scroll',
+            label: 'Open Arming Checks',
+            panelId: 'setup-panel-arming'
+          }
+          actions.unshift({
+            kind: readinessConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: readinessConfirmation ? 'Clear Ready-to-Fly Review' : 'Confirm Ready to Fly',
+            tone: 'primary',
+            sectionId: 'readiness',
+            confirmationOutcome: 'complete',
+            disabled: readinessConfirmation ? false : !(armingChecksAllOn && loggingOn && armMethod && snapshotSaved)
+          })
+          if (!snapshotSaved) {
+            actions.push({ kind: 'scroll', label: 'Open Snapshots', panelId: 'setup-panel-snapshots' })
+          }
+          if (!loggingOn) {
+            actions.push({ kind: 'scroll', label: 'Open Logs', panelId: 'setup-panel-logs' })
+          }
+          if (!readinessConfirmation && !preArmPassingWithPack && preArmVerdictUsable) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Pre-arm Blocked on the Bench — Acknowledge',
+              tone: 'secondary',
+              sectionId: 'readiness',
+              confirmationOutcome: 'already-done',
+              disabled: !(armingChecksAllOn && loggingOn && armMethod && snapshotSaved)
+            })
+          }
+          confirmationOutcome = readinessConfirmation?.outcome
+          nextStep = 'Next: props on, pack on, the first flight in Stabilize. Bring the log back.'
+          break
+        }
+        case 'maiden': {
+          // Read from the log, not from a tick box. The first-flight page asks
+          // the pilot to judge these by eye; the log answers them.
+          const maidenConfirmation = getSetupConfirmationRecord('maiden')
+          const maidenWaived = maidenConfirmation?.outcome === 'already-done'
+          const flight = maidenFlight
+          const flew = flight?.hasFlight === true
+          const stabilize = flew && (flight.firstArmedMode === undefined || flight.firstArmedMode === STABILIZE_MODE)
+          const hovered = flew && flight.airborneSeconds >= MAIDEN_MIN_AIRBORNE_S
+          const noOscillation = flew && flight.limitCycle === undefined
+          const vibrationOk = flew && (flight.vibe === undefined || flight.vibe.verdict === 'good')
+          const nothingReported = flew && flight.warningTexts.length === 0
+          criteria = [
+            {
+              label: maidenWaived ? 'First flight reviewed elsewhere' : 'First flight log read',
+              met: flew || maidenWaived
+            },
+            {
+              label: 'Armed in Stabilize',
+              met: stabilize || maidenWaived
+            },
+            {
+              label: 'Disarm rehearsed (arm, disarm, arm)',
+              met: (flew && flight.rehearsedArmDisarm) || maidenWaived
+            },
+            {
+              label: `Hovered ${MAIDEN_MIN_AIRBORNE_S} s or more`,
+              met: hovered || maidenWaived
+            },
+            {
+              label: 'No oscillation in the gyro',
+              met: noOscillation || maidenWaived
+            },
+            {
+              label: 'Vibration and clipping acceptable',
+              met: vibrationOk || maidenWaived
+            },
+            {
+              label: 'No thrust loss, yaw imbalance or crash reported',
+              met: nothingReported || maidenWaived
+            },
+            {
+              label: 'First flight confirmed',
+              met: maidenConfirmation !== undefined
+            }
+          ]
+          summary = !flew
+            ? maidenWaived
+              ? 'First flight reviewed elsewhere.'
+              : 'Waiting for the first flight\u2019s log.'
+            : flight.verdict === 'clean'
+              ? `A clean first flight: ${flight.airborneSeconds.toFixed(0)} s in the air in ${flight.firstArmedModeName ?? 'Stabilize'}.`
+              : `${flight.findings.length} thing${flight.findings.length === 1 ? '' : 's'} to look at from the first flight.`
+          detail = !flew
+            ? maidenWaived
+              ? 'Read a log in any time to check the flight here.'
+              : 'Props on, pack on, clear area, Stabilize. Arm, disarm, arm. Creep the throttle; if anything shakes, land. Lift a hand\u2019s width, set down, then a short hover. Land, disarm and read the log below.'
+            : flight.findings.length > 0
+              ? flight.findings.join(' ')
+              : 'The log reads clean. Confirm, then on to the hover-throttle flight.'
+          evidence = flew
+            ? [
+                `Armed in ${flight.firstArmedModeName ?? 'unknown mode'}, ${flight.armCycles} arm cycle${flight.armCycles === 1 ? '' : 's'}`,
+                `Airborne ${flight.airborneSeconds.toFixed(0)} s`,
+                flight.vibe ? `Vibration ${flight.vibe.verdict}, clips ${flight.vibe.clip.join('/')}` : 'Vibration: not logged',
+                `Review: ${maidenConfirmation ? `confirmed at ${formatConfirmationTime(maidenConfirmation.confirmedAtMs)}` : 'pending'}`
+              ]
+            : [
+                'Log: none read yet',
+                `Review: ${maidenConfirmation ? `confirmed at ${formatConfirmationTime(maidenConfirmation.confirmedAtMs)}` : 'pending'}`
+              ]
+          actions[actions.indexOf(panelAction)] = { kind: 'scroll', label: 'Open Logs', panelId: 'setup-panel-logs' }
+          actions.unshift({
+            kind: maidenConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: maidenConfirmation
+              ? maidenWaived
+                ? 'Clear First-Flight Waiver'
+                : 'Clear First-Flight Review'
+              : 'Confirm First Flight',
+            tone: 'primary',
+            sectionId: 'maiden',
+            confirmationOutcome: 'complete',
+            disabled: maidenConfirmation ? false : !(flew && stabilize && hovered && noOscillation && vibrationOk && nothingReported && flight.rehearsedArmDisarm)
+          })
+          if (!maidenConfirmation) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Flown Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'maiden',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined
+            })
+          }
+          confirmationOutcome = maidenConfirmation?.outcome
+          nextStep = 'Next: the hover-throttle flight, a steady hover in AltHold.'
+          break
+        }
+        case 'hover': {
+          // Flight two. MOT_THST_HOVER is the vertical feedforward; the firmware
+          // learns it only in an altitude-holding hover (Copter::update_throttle_hover
+          // returns early in Stabilize/Acro). Accepting freezes it
+          // (MOT_HOVER_LEARN = 0); the vertical acceleration controller then
+          // follows it (initial-tuning-flight.rst, "Test AltHold").
+          const hoverConfirmation = getSetupConfirmationRecord('hover')
+          const hoverWaived = hoverConfirmation?.outcome === 'already-done'
+          const hoverState = deriveHoverLearnState(snapshot)
+          const hoverThrottle = hoverState.hoverThrottle
+          const hoverLearned = hoverThrottle !== undefined && Math.abs(hoverThrottle - MOT_THST_HOVER_DEFAULT) > 1e-6
+          const hoverAccepted = hoverLearned && !hoverState.hoverLearnArmed
+          const gains = hoverThrottle === undefined ? undefined : deriveThrottleControllerGains(hoverThrottle, (id) => readParameterValue(snapshot, id))
+          criteria = [
+            {
+              label: hoverWaived ? 'Hover throttle set elsewhere' : 'Hover throttle learned (MOT_THST_HOVER not 0.35)',
+              met: hoverLearned || hoverWaived
+            },
+            {
+              label: 'Hover throttle accepted (MOT_HOVER_LEARN = 0)',
+              met: hoverAccepted || hoverWaived
+            },
+            {
+              label: 'Throttle controller set from the hover throttle',
+              met: (gains?.matches ?? false) || hoverWaived
+            },
+            {
+              label: 'Hover flight confirmed',
+              met: hoverConfirmation !== undefined
+            }
+          ]
+          summary = hoverWaived
+            ? 'Hover throttle set elsewhere.'
+            : !hoverLearned
+              ? `MOT_THST_HOVER is still the ${MOT_THST_HOVER_DEFAULT} default: nothing has been learned yet.`
+              : `Hover throttle ${hoverThrottle.toFixed(3)}${hoverAccepted ? ', accepted' : ', learning still on'}${gains ? gains.matches ? '; throttle controller follows it.' : '; throttle controller still at its defaults.' : '.'}`
+          detail = hoverWaived
+            ? 'Fly the hover any time to learn it here.'
+            : !hoverLearned
+              ? 'Props on, pack on. Take off in Stabilize, climb to about 5 m, switch to AltHold and hold a steady hover for 30 s. Land and disarm; the value saves on disarm. Stabilize or Acro learns nothing.'
+              : !hoverAccepted
+                ? 'A hover throttle was learned. If the hover was steady, accept it below to lock it in.'
+                : gains && !gains.matches
+                  ? 'Set the throttle controller from the hover throttle below, then write.'
+                  : 'Hover throttle learned, accepted, and the throttle controller follows it. Confirm.'
+          evidence = [
+            `MOT_THST_HOVER: ${hoverThrottle === undefined ? 'not reported' : hoverThrottle.toFixed(3)}`,
+            `Learning: ${hoverState.hoverLearnArmed ? 'on (MOT_HOVER_LEARN = 2)' : 'off'}`,
+            gains ? `${gains.pParamId} ${gains.currentP ?? '—'} / ${gains.iParamId} ${gains.currentI ?? '—'} (targets ${gains.targetP} / ${gains.targetI})` : 'Throttle controller: not reported',
+            `Review: ${hoverConfirmation ? `confirmed at ${formatConfirmationTime(hoverConfirmation.confirmedAtMs)}` : 'pending'}`
+          ]
+          actions[actions.indexOf(panelAction)] = { kind: 'scroll', label: 'Open Calibration ▸ Flight', panelId: 'setup-panel-calibration' }
+          actions.unshift({
+            kind: hoverConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: hoverConfirmation ? (hoverWaived ? 'Clear Hover Waiver' : 'Clear Hover Review') : 'Confirm Hover Throttle',
+            tone: 'primary',
+            sectionId: 'hover',
+            confirmationOutcome: 'complete',
+            disabled: hoverConfirmation ? false : !(hoverLearned && hoverAccepted && (gains?.matches ?? false))
+          })
+          if (!hoverConfirmation) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Hover Throttle Set Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'hover',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined
+            })
+          }
+          confirmationOutcome = hoverConfirmation?.outcome
+          nextStep = 'Next: the harmonic notch, placed from a hover log.'
+          break
+        }
+        case 'filters': {
+          // The notch goes on before autotune: a tune made against motor noise
+          // is a tune of the noise. Planned from the hover (ESC telemetry when
+          // the build has it, throttle otherwise), judged against the vehicle.
+          const filtersConfirmation = getSetupConfirmationRecord('filters')
+          const filtersWaived = filtersConfirmation?.outcome === 'already-done'
+          const notch = buildNotchSetupPlan({
+            plan: notchPlan,
+            liveEscTelemetry: snapshot.liveVerification.escTelemetry.escs.some((esc) => esc.rpm > 0),
+            gyroFilterHz: readParameterValue(snapshot, 'INS_GYRO_FILTER'),
+            hoverThrottle: readParameterValue(snapshot, 'MOT_THST_HOVER'),
+            current: {
+              enable: readRoundedParameter(snapshot, 'INS_HNTCH_ENABLE'),
+              mode: readRoundedParameter(snapshot, 'INS_HNTCH_MODE'),
+              ref: readParameterValue(snapshot, 'INS_HNTCH_REF'),
+              freq: readParameterValue(snapshot, 'INS_HNTCH_FREQ'),
+              bw: readParameterValue(snapshot, 'INS_HNTCH_BW'),
+              harmonics: readRoundedParameter(snapshot, 'INS_HNTCH_HMNCS'),
+              options: readRoundedParameter(snapshot, 'INS_HNTCH_OPTS')
+            }
+          })
+          const notchMode = readRoundedParameter(snapshot, 'INS_HNTCH_MODE')
+          criteria = [
+            {
+              label: filtersWaived ? 'Filters set elsewhere' : 'Harmonic notch on and tracking (INS_HNTCH_MODE)',
+              met: notch.checks.enabled || filtersWaived
+            },
+            {
+              label: notchMode === 1 ? 'Notch reference is the hover throttle (INS_HNTCH_REF)' : 'Notch reference is 1 (INS_HNTCH_REF)',
+              met: (notch.checks.enabled && notch.checks.referenceRight) || filtersWaived
+            },
+            {
+              label: notchMode === 3 ? 'Notch floor between the gyro filter and the hover peak (INS_HNTCH_FREQ)' : 'Notch centred on the motor peak (INS_HNTCH_FREQ)',
+              met: (notch.checks.enabled && notch.checks.frequencySane) || filtersWaived
+            },
+            {
+              label: 'Notch bandwidth half the frequency, or a quarter per motor (INS_HNTCH_BW)',
+              met: (notch.checks.enabled && notch.checks.bandwidthSane) || filtersWaived
+            },
+            {
+              label: 'Notch placed, confirmed',
+              met: filtersConfirmation !== undefined
+            }
+          ]
+          summary = filtersWaived ? 'Filters set elsewhere.' : notch.summary
+          detail = filtersWaived
+            ? 'Read a hover log any time to check the notch here.'
+            : notch.source === 'unknown'
+              ? 'Read the hover-throttle flight\u2019s log below. Without ESC telemetry, turn on Logs ▸ Logging for tuning before that flight.'
+              : notch.blockers.length > 0
+                ? notch.blockers.join(' ')
+                : notch.checks.enabled && notch.checks.referenceRight && notch.checks.frequencySane && notch.checks.bandwidthSane
+                  ? 'The notch is placed. Fly the same hover again to check the motor peak is gone, then confirm.'
+                  : 'Set the notch from the hover below and write. It takes effect after a reboot.'
+          evidence = [
+            `Notch: ${notch.checks.enabled ? `mode ${notchMode}` : 'off'}, REF ${readParameterValue(snapshot, 'INS_HNTCH_REF') ?? '—'}, FREQ ${readParameterValue(snapshot, 'INS_HNTCH_FREQ') ?? '—'}, BW ${readParameterValue(snapshot, 'INS_HNTCH_BW') ?? '—'}`,
+            `Source: ${notch.source === 'esc' ? 'ESC telemetry' : notch.source === 'throttle' ? 'throttle' : 'no log read yet'}`,
+            `Gyro filter: ${readParameterValue(snapshot, 'INS_GYRO_FILTER') ?? '—'} Hz`,
+            `Review: ${filtersConfirmation ? `confirmed at ${formatConfirmationTime(filtersConfirmation.confirmedAtMs)}` : 'pending'}`
+          ]
+          actions[actions.indexOf(panelAction)] = { kind: 'scroll', label: 'Open Tuning ▸ Notches', panelId: 'setup-panel-tuning' }
+          actions.unshift({
+            kind: filtersConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: filtersConfirmation ? (filtersWaived ? 'Clear Filters Waiver' : 'Clear Filters Review') : 'Confirm Notch Placed',
+            tone: 'primary',
+            sectionId: 'filters',
+            confirmationOutcome: 'complete',
+            disabled: filtersConfirmation
+              ? false
+              : !(notch.checks.enabled && notch.checks.referenceRight && notch.checks.frequencySane && notch.checks.bandwidthSane)
+          })
+          if (!filtersConfirmation) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Filters Set Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'filters',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined
+            })
+          }
+          confirmationOutcome = filtersConfirmation?.outcome
+          nextStep = 'Next: autotune, one axis at a time, in AltHold on a calm day.'
+          break
+        }
+        case 'autotune': {
+          // Judged by the gains that moved since the flight was staged (the
+          // Autotune card records them). Prerequisites are the ones the
+          // autotune page opens with: a learned hover throttle, the notch on,
+          // AltHold on the switch, an aggressiveness in range.
+          const autotuneConfirmation = getSetupConfirmationRecord('autotune')
+          const autotuneWaived = autotuneConfirmation?.outcome === 'already-done'
+          const filtersWaivedBefore = getSetupConfirmationRecord('filters')?.outcome === 'already-done'
+          const hoverLearnedForTune = (() => {
+            const value = readParameterValue(snapshot, 'MOT_THST_HOVER')
+            return value !== undefined && Math.abs(value - MOT_THST_HOVER_DEFAULT) > 1e-6
+          })()
+          const notchOn = (readRoundedParameter(snapshot, 'INS_HNTCH_ENABLE') ?? 0) !== 0 || filtersWaivedBefore
+          const altHoldOnSwitch = [1, 2, 3, 4, 5, 6].some((slot) => readRoundedParameter(snapshot, `FLTMODE${slot}`) === 2)
+          const aggressiveness = readParameterValue(snapshot, 'AUTOTUNE_AGGR')
+          const aggressivenessOk = aggressiveness !== undefined && aggressiveness >= 0.05 - 1e-9 && aggressiveness <= 0.1 + 1e-9
+          const tunedAxes = autotuneFlight ? compareAutotuneGains(autotuneFlight.gains, snapshot, autotuneFlight.axisMask).changedAxes : []
+          const axisTuned = (label: string): boolean => tunedAxes.includes(label)
+          const mainAxes = AUTOTUNE_AXES.filter((axis) => axis.label === 'Roll' || axis.label === 'Pitch' || axis.label === 'Yaw')
+          const allTuned = mainAxes.every((axis) => axisTuned(axis.label))
+          criteria = [
+            { label: 'Hover throttle learned', met: hoverLearnedForTune || autotuneWaived },
+            { label: 'Harmonic notch on', met: notchOn || autotuneWaived },
+            { label: 'AltHold on the switch', met: altHoldOnSwitch || autotuneWaived },
+            { label: 'AUTOTUNE_AGGR between 0.05 and 0.10', met: aggressivenessOk || autotuneWaived },
+            ...mainAxes.map((axis) => ({
+              label: autotuneWaived ? `${axis.label} tuned elsewhere` : `${axis.label} tuned (gains moved)`,
+              met: axisTuned(axis.label) || autotuneWaived
+            })),
+            { label: 'Autotune confirmed', met: autotuneConfirmation !== undefined }
+          ]
+          const prerequisitesMet = hoverLearnedForTune && notchOn && altHoldOnSwitch && aggressivenessOk
+          summary = autotuneWaived
+            ? 'Tuned elsewhere.'
+            : !prerequisitesMet
+              ? 'Not ready to autotune yet.'
+              : !autotuneFlight
+                ? 'Ready to autotune.'
+                : tunedAxes.length === 0
+                  ? 'Flight staged; no gains have moved yet.'
+                  : `Tuned: ${tunedAxes.join(', ')}${allTuned ? '.' : `; still to do: ${mainAxes.filter((axis) => !axisTuned(axis.label)).map((axis) => axis.label).join(', ')}.`}`
+          detail = autotuneWaived
+            ? 'Stage an autotune flight any time to tune here.'
+            : !hoverLearnedForTune
+              ? 'Learn the hover throttle first (Hover Throttle step): autotune flies in AltHold and needs it.'
+              : !notchOn
+                ? 'Place the harmonic notch first (Filters step): a tune made against motor noise is a tune of the noise.'
+                : !altHoldOnSwitch
+                  ? 'Put AltHold on the mode switch (Flight Modes step); autotune is entered from AltHold.'
+                  : !aggressivenessOk
+                    ? 'Set AUTOTUNE_AGGR between 0.05 and 0.10 (0.1 aggressive, 0.075 medium, 0.05 weak).'
+                    : !autotuneFlight
+                      ? 'Pick one axis below and stage the flight: it records the gains it starts from. Calm day, props on, pack on. Take off in AltHold, switch to AutoTune, let it twitch until it reports done, then land and disarm in AutoTune to keep the gains.'
+                      : allTuned
+                        ? 'Every axis moved. Fly it; if it is twitchy, lower the aggressiveness and tune again. Then confirm.'
+                        : 'Fly the next axis the same way. An axis whose gains did not move was not saved: land and disarm while still in AutoTune.'
+          evidence = [
+            `AUTOTUNE_AGGR ${aggressiveness ?? '—'}`,
+            autotuneFlight ? `Flight staged for ${AUTOTUNE_AXES.filter((axis) => (autotuneFlight.axisMask & axis.bit) !== 0).map((axis) => axis.label).join(', ') || 'no axis'}` : 'No flight staged',
+            `Tuned: ${tunedAxes.length > 0 ? tunedAxes.join(', ') : 'none yet'}`,
+            `Review: ${autotuneConfirmation ? `confirmed at ${formatConfirmationTime(autotuneConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+          ]
+          actions[actions.indexOf(panelAction)] = { kind: 'scroll', label: 'Open Tuning', panelId: 'setup-panel-tuning' }
+          actions.unshift({
+            kind: autotuneConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: autotuneConfirmation ? (autotuneWaived ? 'Clear Autotune Waiver' : 'Clear Autotune Review') : 'Confirm Autotune',
+            tone: 'primary',
+            sectionId: 'autotune',
+            confirmationOutcome: 'complete',
+            disabled: autotuneConfirmation ? false : !(prerequisitesMet && allTuned)
+          })
+          if (!autotuneConfirmation) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Tuned Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'autotune',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined
+            })
+          }
+          confirmationOutcome = autotuneConfirmation?.outcome
+          nextStep = 'Next: fly it, then save a snapshot of the tuned aircraft on Snapshots.'
+          break
+        }
         default: {
           // Every section id the switch does not name -- 'sensors', 'verify',
           // 'drive', 'frame', 'controls' -- used to fall through with criteria = [],
@@ -1407,28 +2295,28 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             ...(declaredParams.length > 0
               ? [
                   {
-                    label: 'Every parameter this step covers is present',
+                    label: 'All of this step\u2019s parameters reported',
                     met: missingParams.length === 0
                   }
                 ]
               : []),
             {
-              label: `Operator reviewed ${section.title.toLowerCase()}`,
+              label: `${section.title} review confirmed`,
               met: genericConfirmation !== undefined
             }
           ]
           summary = section.description
           detail =
             missingParams.length > 0
-              ? `${missingParams.length} of this step's parameters have not been reported by the flight controller: ${missingParams
+              ? `${missingParams.length} parameters have not arrived: ${missingParams
                   .slice(0, 4)
-                  .join(', ')}${missingParams.length > 4 ? '…' : ''}. Re-sync parameters, or check the firmware exposes them.`
-              : 'Review this step against the vehicle, then confirm to continue.'
+                  .join(', ')}${missingParams.length > 4 ? '…' : ''}. Re-sync parameters, or check the firmware has them.`
+              : 'Check this step on the vehicle, then confirm.'
           evidence = [
             declaredParams.length > 0
               ? `${declaredParams.length - missingParams.length}/${declaredParams.length} parameters present`
-              : 'No parameters declared for this step',
-            `Review: ${genericConfirmation ? `confirmed at ${formatConfirmationTime(genericConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+              : 'No parameters to check',
+            `Review: ${genericConfirmation ? `confirmed at ${formatConfirmationTime(genericConfirmation.confirmedAtMs)}` : 'pending'}`
           ]
           actions.unshift({
             kind: genericConfirmation ? 'clear-confirmation' : 'confirm-step',
@@ -1436,8 +2324,67 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             tone: 'primary',
             sectionId: section.id
           })
+          // The bundle declares what this step is FOR (calibrate-*, reboot) and
+          // the step used to ignore it: a Plane's Sensors step was a lone
+          // "Confirm Sensors Review" with no route to any calibration. Offer
+          // the declared guided actions, and a jump to the page that does the
+          // work (Calibration for the sensor cals; Tuning for drive/controls;
+          // Parameters for a frame config the app has no editor for).
+          const declaredActions = section.actions ?? []
+          for (const actionId of declaredActions) {
+            actions.push({
+              kind: 'guided',
+              label: guidedActionButtonLabel(actionId, snapshot, busyAction),
+              tone: 'secondary',
+              actionId,
+              disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, actionId)
+            })
+          }
+          const genericPanel =
+            declaredActions.some((actionId) => actionId.startsWith('calibrate-'))
+              ? { panelId: 'setup-panel-calibration', label: 'Open Calibration' }
+              : section.id === 'drive' || section.id === 'controls'
+                ? { panelId: 'setup-panel-tuning', label: 'Open Tuning' }
+                : section.id === 'frame'
+                  ? { panelId: 'setup-panel-parameters', label: 'Open Parameters' }
+                  : undefined
+          if (genericPanel) {
+            actions[actions.indexOf(panelAction)] = { kind: 'scroll', label: genericPanel.label, panelId: genericPanel.panelId }
+          }
           break
         }
+      }
+
+      // The operator's override. No step may be a dead end: when a step offers
+      // no enabled way to sign it off (a hard criterion the bench cannot meet,
+      // a parameter the firmware never reported, a waiver that is itself
+      // gated), "Override" completes it on the operator's word. It is loud --
+      // every criterion reads "overridden", the summary says so, and Clear is
+      // always there -- and it is offered only when nothing else is.
+      const overrideRecord = getSetupConfirmationRecord(section.id)
+      if (overrideRecord?.outcome === 'overridden') {
+        criteria = criteria.map((criterion) => ({ ...criterion, label: `${criterion.label} (overridden)`, met: true }))
+        summary = `Overridden by you at ${formatConfirmationTime(overrideRecord.confirmedAtMs)}.`
+        detail = 'You overrode this step. Clear the override to judge it again.'
+        confirmationOutcome = 'overridden'
+        actions.splice(0, actions.length, {
+          kind: 'clear-confirmation',
+          label: 'Clear Override',
+          tone: 'primary',
+          sectionId: section.id
+        }, ...actions.filter((action) => action.kind !== 'confirm-step' && action.kind !== 'clear-confirmation'))
+      } else if (
+        deriveSetupStatusFromCriteria(criteria) !== 'complete' &&
+        !actions.some((action) => action.kind === 'confirm-step' && !action.disabled)
+      ) {
+        actions.push({
+          kind: 'confirm-step',
+          label: 'Override — Continue Anyway',
+          tone: 'secondary',
+          sectionId: section.id,
+          confirmationOutcome: 'overridden',
+          disabled: busyAction !== undefined
+        })
       }
 
       const status = deriveSetupStatusFromCriteria(criteria)
@@ -1457,25 +2404,89 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
         panelLabel: panel.panelLabel,
         confirmationOutcome,
         blockingReason,
+        nextStep,
         actions
       }
     })
 
+    // A pending reboot / re-sync follow-up gates the CURRENT step. When every
+    // step is satisfied it gates the last one, so the flow does not report
+    // complete over a board that still needs rebooting.
+    const followUpPending = parameterFollowUp?.refreshRequired === true
+    const firstIncompleteIndex = baseSections.findIndex((section) => section.status !== 'complete')
+    const gateIndex =
+      firstIncompleteIndex >= 0 ? firstIncompleteIndex : followUpPending ? baseSections.length - 1 : -1
+    const bodyNextStep = (index: number): string | undefined => {
+      const next = baseSections[index + 1]
+      if (next) {
+        return `Next: ${next.title}.`
+      }
+      // The end of the bench phase is a handoff, not a trophy.
+      return isCopterVehicle
+        ? 'Setup on the bench is done. Next: props on, pack on, a first flight in Stabilize. Then Calibration ▸ Flight for hover throttle and tuning.'
+        : 'Setup on the bench is done. Next: a first careful test under power, in a safe area.'
+    }
+
     let currentIncompleteSectionTitle: string | undefined
 
-    return baseSections.map((section) => {
-      if (section.status === 'complete') {
+    return baseSections.map((section, index) => {
+      const nextStep = section.nextStep ?? bodyNextStep(index)
+      // A satisfied section reads complete wherever it sits: a compass already
+      // calibrated on the vehicle three steps ahead of the current one is a
+      // fact worth showing, and there is nothing to do in it. Only unsatisfied
+      // sections past the current one are locked.
+      if (section.status === 'complete' && index !== gateIndex) {
         return {
           ...section,
-          sequenceState: 'complete'
+          sequenceState: 'complete',
+          nextStep
         }
       }
 
-      if (!currentIncompleteSectionTitle) {
+      if (index === gateIndex) {
         currentIncompleteSectionTitle = section.title
+        if (!followUpPending || !parameterFollowUp) {
+          return {
+            ...section,
+            sequenceState: 'current',
+            nextStep
+          }
+        }
+        // The reboot (or re-sync) is a checkpoint owned by the step that
+        // caused it: one more criterion, the action to satisfy it first, and
+        // the follow-up's own text as the reason.
+        const gateActionId = parameterFollowUp.requiresReboot ? 'reboot-autopilot' : 'request-parameters'
+        const criteria = [
+          ...section.criteria,
+          {
+            label: parameterFollowUp.requiresReboot
+              ? 'Flight controller rebooted after the last change'
+              : 'Parameters re-synced after the last change',
+            met: false
+          }
+        ]
         return {
           ...section,
-          sequenceState: 'current'
+          sequenceState: 'current',
+          status: deriveSetupStatusFromCriteria(criteria),
+          criteria,
+          criteriaMetCount: criteria.filter((criterion) => criterion.met).length,
+          blockingReason: parameterFollowUp.text,
+          nextStep: parameterFollowUp.requiresReboot
+            ? 'Next: reboot the flight controller, then continue here.'
+            : 'Next: re-sync parameters, then continue here.',
+          actions: [
+            {
+              kind: 'guided',
+              label: guidedActionButtonLabel(gateActionId, snapshot, busyAction),
+              tone: 'primary',
+              actionId: gateActionId,
+              disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, gateActionId)
+            },
+            ...section.actions.filter(
+              (action) => !(action.kind === 'guided' && action.actionId === gateActionId)
+            )
+          ]
         }
       }
 
@@ -1484,10 +2495,11 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
       // reported e.g. "Reboot required" and never said which step was actually
       // holding the flow — and it clobbered any section-specific blocking copy
       // built above. Lead with the sequence reason and append the follow-up.
-      const sequenceReason = `Complete ${currentIncompleteSectionTitle} before moving on to ${section.title}.`
+      const sequenceReason = `Finish ${currentIncompleteSectionTitle} before ${section.title}.`
       return {
         ...section,
         sequenceState: 'locked',
+        nextStep,
         blockingReason: setupFlowFollowUp ? `${sequenceReason} ${setupFlowFollowUp.title}` : sequenceReason
       }
     })

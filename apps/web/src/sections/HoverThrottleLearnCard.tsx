@@ -45,11 +45,8 @@ export interface HoverThrottleLearnCardProps {
 export function hoverFlightInstructions(valtSupported: boolean): string {
   const modes = valtSupported ? 'AltHold, Loiter, PosHold or VALT' : 'AltHold, Loiter or PosHold'
   return (
-    `Fly this one in a mode that holds altitude — ${modes}. A hover in ` +
-    'Stabilize or Acro learns nothing, whatever it looks like. Take off, climb to about 5 m, then ' +
-    'centre the throttle stick and let it sit level with as little input as you can. Twenty seconds ' +
-    'of steady hover is enough; a steady minute is better. Land and disarm — the value is saved on ' +
-    'disarm.'
+    `Fly in a mode that holds altitude: ${modes}. A hover in Stabilize or Acro learns nothing. ` +
+    'Climb to about 5 m, centre the throttle and hold still for 20 s or more. Land and disarm; it saves on disarm.'
   )
 }
 
@@ -81,6 +78,16 @@ export function HoverThrottleLearnCard({
   const accepted = pastFlight1 && !state.hoverLearnArmed
   const unlocked = pastFlight1 && state.hoverLearnArmed && state.hoverThrottle !== undefined
   const lockStaged = editedValues.MOT_HOVER_LEARN === String(MOT_HOVER_LEARN_DISABLED)
+  // One value per flight. Re-learning the hover throttle while ACC_ZBIAS_LEARN
+  // still has SAVE set would learn both in the same hover, and the Z-bias
+  // learner's prerequisite is a hover throttle that is already right (a bias
+  // learned on a moving feedforward measures the feedforward's error). So the
+  // re-learn also turns Z-bias learning off: USE alone (2) keeps a bias that
+  // was learned, and off (0) when the bias flight has not been flown -- USE
+  // over a zero bias would have the Z-bias card report a calibration that
+  // never happened.
+  const zbiasLearning = ((state.zbiasLearn ?? 0) & ACC_ZBIAS_LEARN_SAVE) !== 0
+  const rearmZbiasValue = zbiasLearnValue(state.zbiasLearn, state.biasLearned ? ACC_ZBIAS_LEARN_USE : 0)
 
   return (
     <article className="calibration-card" data-testid="calibration-card-hover-throttle">
@@ -90,12 +97,6 @@ export function HoverThrottleLearnCard({
           {accepted ? 'accepted' : stage === 'unknown' ? 'not read' : unlocked ? 'not accepted' : 'flight 1'}
         </StatusBadge>
       </div>
-      <p>
-        What throttle this aircraft needs to hold altitude. The firmware learns it in the air and
-        saves it on disarm; it is the controller&apos;s vertical feedforward, so nothing that holds
-        altitude behaves properly until it is right.
-      </p>
-
       <div className="config-pills">
         <span data-tone={stage === 'flight-1' || stage === 'unknown' ? 'neutral' : 'success'}>
           MOT_THST_HOVER: {state.hoverThrottle !== undefined ? state.hoverThrottle.toFixed(3) : '—'}
@@ -107,9 +108,8 @@ export function HoverThrottleLearnCard({
 
       {stage === 'unknown' ? (
         <p data-testid="hover-learn-step">
-          <strong>MOT_THST_HOVER has not been read yet.</strong> Nothing can be said about this
-          flight until it arrives — wait for the parameter sync to finish, or reconnect if it has
-          stalled.
+          <strong>MOT_THST_HOVER has not been read yet.</strong> Wait for the parameter sync, or
+          reconnect.
         </p>
       ) : null}
 
@@ -127,8 +127,8 @@ export function HoverThrottleLearnCard({
               when clicked (field report). */}
           {state.hoverLearnArmed ? (
             <small data-testid="hover-learn-start-hint">
-              Hover learning is on (MOT_HOVER_LEARN = 2). Once you land and disarm, the learned
-              value shows here with a button to accept it.
+              Hover learning is on (MOT_HOVER_LEARN = 2). After you land and disarm, the value
+              shows here to accept.
             </small>
           ) : (
             <>
@@ -142,7 +142,7 @@ export function HoverThrottleLearnCard({
                 Turn on hover learning
               </button>
               <small data-testid="hover-learn-start-hint">
-                Hover learning is OFF on this vehicle, so a flight now would record nothing. This stages
+                Hover learning is off, so a flight now would record nothing. This stages
                 MOT_HOVER_LEARN = 2.
               </small>
             </>
@@ -188,11 +188,7 @@ export function HoverThrottleLearnCard({
                 setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_DISABLED))
               }}
             >
-              {acceptStaged
-                ? 'Accepted — apply to write it'
-                : state.supported
-                  ? 'Yes — accept it, go to the Z-bias flight'
-                  : 'Yes — accept it'}
+              {acceptStaged ? 'Accepted — apply to write it' : 'Yes — accept it'}
             </button>
             <button
               type="button"
@@ -208,8 +204,8 @@ export function HoverThrottleLearnCard({
             </button>
           </div>
           <small data-testid="hover-learn-flight-1-no-hint">
-            Flying again simply overwrites it — the vehicle re-learns the hover throttle every flight
-            while MOT_HOVER_LEARN is 2.
+            Flying again overwrites it: the hover throttle is re-learned every flight while
+            MOT_HOVER_LEARN is 2.
           </small>
         </>
       ) : null}
@@ -223,8 +219,7 @@ export function HoverThrottleLearnCard({
               under way. */}
           <p data-testid="hover-learn-unlocked">
             <strong>It learned {state.hoverThrottle?.toFixed(3)}.</strong> Hover learning is still on
-            (MOT_HOVER_LEARN = 2), so the next altitude-holding flight re-learns it, the Z-bias flight
-            included. Accept it to keep this value.
+            (MOT_HOVER_LEARN = 2), so the next flight re-learns it. Accept it to keep this value.
           </p>
           <button
             type="button"
@@ -251,19 +246,26 @@ export function HoverThrottleLearnCard({
               style={buttonStyle(rearmStaged ? undefined : 'primary')}
               data-testid="hover-learn-rearm"
               disabled={!canStage || rearmStaged}
-              onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))}
+              onClick={() => {
+                setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))
+                if (zbiasLearning) {
+                  setDraft('ACC_ZBIAS_LEARN', rearmZbiasValue)
+                }
+              }}
             >
               {rearmStaged ? 'Re-learn staged — apply to write it' : 'Re-learn on the next hover'}
             </button>
           )}
+          {!state.hoverLearnArmed && zbiasLearning ? (
+            <small data-testid="hover-learn-rearm-hint">
+              Also stops Z-bias learning (ACC_ZBIAS_LEARN = {rearmZbiasValue}), so the flight learns one value.
+              {state.biasLearned ? ' The learned bias stays applied.' : ' Accept the new hover throttle; the Z-bias flight is then on again.'}
+            </small>
+          ) : null}
         </>
       ) : null}
 
-      <small>
-        {canStage
-          ? 'Staged like any other change — nothing is written until you apply it.'
-          : flightCalibrationBlockedReason(snapshot, busyAction)}
-      </small>
+      {canStage ? null : <small>{flightCalibrationBlockedReason(snapshot, busyAction)}</small>}
     </article>
   )
 }

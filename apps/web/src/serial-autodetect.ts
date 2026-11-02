@@ -51,6 +51,23 @@ export async function probeSerialPortForMavlink(
   return found
 }
 
+/**
+ * The order to probe granted ports in: the operator's chosen port first.
+ *
+ * Field report: with two flight controllers plugged in, Connect ignored the
+ * port the operator had just picked and landed on the other board, because
+ * the probe walked getPorts() in the browser's order and stopped at the first
+ * heartbeat. The pick wins whenever it speaks MAVLink; the rest are probed
+ * only when it does not (the silent SLCAN sibling of a CAN board).
+ */
+export function orderPortsForDetection(
+  granted: readonly WebSerialPortLike[],
+  chosen: WebSerialPortLike | undefined
+): WebSerialPortLike[] {
+  if (!chosen) return [...granted]
+  return [chosen, ...granted.filter((port) => port !== chosen)]
+}
+
 export interface MavlinkPortDetection {
   /** The first port found speaking MAVLink, if any. */
   mavlinkPort?: WebSerialPortLike

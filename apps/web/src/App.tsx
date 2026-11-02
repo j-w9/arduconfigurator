@@ -1,11 +1,9 @@
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
   EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS,
-  MAX_MOTOR_TEST_DURATION_SECONDS,
-  MAX_MOTOR_TEST_THROTTLE_PERCENT,
   advanceModeSwitchExerciseState,
   advanceRcRangeExerciseState,
   createParameterBackup,
@@ -32,7 +30,10 @@ import {
   type MotorTestRequest,
   applyArducopter47CatalogOverrides,
   applySfdValtCatalogOverrides,
+  applySfdFailsafeAltholdCatalogOverrides,
+  detectSfdFailsafeAltholdDrift,
   detectSfdValtMode,
+  isNonNegativeGainParameterId,
   type ParameterBackupFile,
   type ParameterBackupImportOptions,
   type ParameterBatchWriteProgress,
@@ -47,13 +48,7 @@ import {
   LEGACY_PARAM_ALIASES,
   readVtxPowerTable,
   defaultVtxPowerLabel,
-  vtxPowerTableWrites,
-  vtxPowerPresetLevels,
-  VTX_POWER_PRESETS,
-  VTX_POWER_SLOT_PIT,
-  VTX_POWER_SLOT_UNUSED,
-  VTX_POWER_TABLE_ENABLE_PARAM,
-  VTX_POWER_TABLE_SLOT_PARAMS,
+  GCS_DRONECAN_NODE_ID,
 } from '@arduconfig/ardupilot-core'
 import {
   arducopterMetadata,
@@ -65,8 +60,7 @@ import {
   mergeUpstreamParameters,
   AHRS_ORIENTATION_OPTIONS,
   type AppViewId,
-  type UpstreamParameterMap,
-  formatArducopterRssiType
+  type UpstreamParameterMap
 } from '@arduconfig/param-metadata'
 import { loadUpstreamParameters } from './generated/param-upstream'
 import {
@@ -87,13 +81,13 @@ import { createRuntime } from './runtime-factory'
 import { attemptSerialPortReconnect } from './serial-reconnect'
 import { useOsdEditor } from './hooks/use-osd-editor'
 import { useRcMixer } from './hooks/use-rc-mixer'
-import { useVtxTable } from './hooks/use-vtx-table'
 import { useOsdShorthand } from './hooks/use-osd-shorthand'
 import { useCalibrationNotices } from './hooks/use-calibration-notices'
 import { useLibraryNotices } from './hooks/use-library-notices'
 import { useSafetyAcks } from './hooks/use-safety-acks'
 import { useTheme } from './hooks/use-theme'
 import { useSetupWizard } from './hooks/use-setup-wizard'
+import { useUnloadGuard } from './hooks/use-unload-guard'
 import { useTuningWorkbench } from './hooks/use-tuning-workbench'
 import { usePortsView } from './hooks/use-ports-view'
 import { useRcExercises } from './hooks/use-rc-exercises'
@@ -113,6 +107,7 @@ import { trackAppEvent, trackViewPageview } from './analytics'
 import { GIT_HASH, GIT_BRANCH } from './build-info'
 import {
   TUNING_ALL_PID_PARAM_IDS,
+  TUNING_ALTHOLD_CONTROLLER_PARAM_IDS,
   TUNING_FILTER_PARAM_IDS,
   TUNING_NOTCH_PARAM_IDS,
   TUNING_PLANE_PARAM_IDS,
@@ -128,12 +123,11 @@ import {
   formatParameterSync,
   formatRcLink,
   formatStatHours,
-  formatBatteryTelemetry,
-  formatRxRssi
+  formatBatteryTelemetry
 } from './status-formatters'
 import {
-  formatParameterDraftValue,
   formatParameterDisplayValue,
+  formatParameterValue,
   normalizeBitmaskValue
 } from './parameter-format'
 import {
@@ -159,19 +153,22 @@ import {
   isStaleSerialHandleError,
   describeRememberedSerialPort
 } from './connection-helpers'
-import { detectMavlinkPort } from './serial-autodetect'
+import { detectMavlinkPort, orderPortsForDetection } from './serial-autodetect'
 import { canApplyParameterChanges, parameterApplyBlockedReason } from './apply-gate'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, buildMotorTestRequest } from './motor-test-helpers'
-import { canUseGuidedSetupTestingShortcut, isExpertOnlyView, readGuidedSetupShortcutSectionId } from './guided-setup-shortcut'
+import { canUseGuidedSetupTestingShortcut, readGuidedSetupShortcutSectionId } from './guided-setup-shortcut'
+import { buildFeatureSearchIndex, type FeatureSearchResult, type FeatureSearchSection } from './view-models/feature-search'
+import { FeatureSearch } from './sections/FeatureSearch'
+import { CompassOrderCard } from './sections/CompassOrderCard'
+import { buildCompassOrder, isCompassOrderParamId, removeCompassPriority, swapCompassPriorities } from './view-models/compass-order'
+import { selectViewDrafts } from './selectors/view-drafts'
 import { actionLabels, type GuidedActionId } from './guided-action-labels'
 import {
   canRunGuidedAction
 } from './guided-action-helpers'
 import {
   toneForConnection,
-  toneForSetup,
   toneForModeSwitchExercise,
-  toneForParameterDraftStatus,
   toneForScopedDraftReview
 } from './tone-helpers'
 import {
@@ -196,7 +193,6 @@ import {
 } from './setup-exercise-helpers'
 import { useModeSwitchDerivations } from './hooks/use-mode-switch-derivations'
 import { useMotorReorder } from './hooks/use-motor-reorder'
-import { useMotorVerificationDerivations } from './hooks/use-motor-verification-derivations'
 import { useOrientationDerivations } from './hooks/use-orientation-derivations'
 import { useRcCalibrationDerivations } from './hooks/use-rc-calibration-derivations'
 import { useRcMappingDerivations } from './hooks/use-rc-mapping-derivations'
@@ -221,15 +217,9 @@ import {
   buildPresetAutoBackupNote,
   deriveProvisioningOverlayParametersFromDrafts,
 } from './library-helpers'
+import { tuningInputValue, applyTuningEditedValue, tuningControlBounds } from './tuning-control'
 import {
-  tuningInputValue,
-  applyTuningEditedValue,
-  tuningNumericValue,
-  tuningControlBounds,
-  formatTuningDisplayValue,
-  TuningControl
-} from './tuning-control'
-import {
+  formatExerciseStatus,
   missionTitleForView
 } from './setup-format-helpers'
 import {
@@ -239,6 +229,7 @@ import {
   OUTPUTS_ORIENTATION_BUTTON_ID,
   OUTPUTS_BENCH_TARGET_ID,
   OUTPUTS_MOTOR_START_BUTTON_ID,
+  OUTPUTS_SPIN_WIZARD_ID,
   OUTPUTS_MOTOR_TEST_BUTTON_ID,
   OUTPUTS_MOTOR_CONFIRM_BUTTON_ID,
   SETUP_WIZARD_PRIMARY_ACTION_ID
@@ -250,11 +241,7 @@ import {
   loadStoredSetupProgress,
   saveStoredSetupProgress
 } from './setup-progress-storage'
-import {
-  formatModeAssignment,
-  MODES_SLOT_DEFINITIONS,
-  modeSlotParamId,
-} from './modes-failsafe-helpers'
+import { modeSlotParamId } from './modes-failsafe-helpers'
 import type {
   OutputTaskId,
   AppViewDescriptor,
@@ -266,9 +253,34 @@ import type {
   SetupFlowSectionDescriptor,
   SetupFlowFollowUpDescriptor
 } from './app-types'
-import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
+import { AP_PERIPH_CURATED_METADATA, loadApPeriphParamMetadata } from './view-models/ap-periph-param-metadata'
+import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './view-models/px4-cannode-param-metadata'
+import { useCanActuatorTest } from './hooks/use-can-actuator-test'
+import { useCanFleet } from './hooks/use-can-fleet'
+import { CanFleetView } from './views/CanFleet'
+import { CanEscToolView, CanServoToolView } from './views/CanActuators'
+import { buildDronecanEscRows } from './view-models/dronecan-inspector'
+import { actuatorBlockedReason, actuatorConflictText, findActuatorConflict } from './view-models/can-actuators'
+import type { TcalWrite } from './view-models/tcal-plan'
+import { altHoldGainCheck } from './view-models/althold-gain-check'
+import { AltHoldGainCheckView } from './views/AltHoldGainCheck'
+import { FeelGrid, PilotFeelView, type PilotFeelValue } from './views/PilotFeel'
+import { PidGainsView } from './views/PidGains'
+import { NotchesView } from './views/NotchesPanel'
+import { documentedNotchBandwidth, documentedNotchRef } from './view-models/filter-planner'
+import {
+  EXPO_CHOICES,
+  PILOT_FEEL_DISPLAY,
+  RESPONSE_TC_CHOICES,
+  ZERO_MEANS,
+  fromDisplayText,
+  toDisplay,
+  type NamedValue
+} from './view-models/pilot-feel'
+import { dronecanNodeStack } from './view-models/dronecan-node-stack'
+import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
-import { stageableDraftValues } from './view-models/parameter-diff-actions'
+import { overridableInvalidParamIds, stageableDraftValues } from './view-models/parameter-diff-actions'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { deriveCanEnablement } from './view-models/can-enablement'
 import { deriveBoardOrientationVisual } from './view-models/board-orientation-visual'
@@ -283,17 +295,36 @@ import { planGuidedIdentifyAdvance } from './view-models/guided-identify-advance
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
-import { relayFirmwareSource } from './firmware/firmware-index-source'
+import { relayFirmwareSource, relayHexFirmwareSource } from './firmware/firmware-index-source'
 import { loadPeriphIndex, relayPeriphFirmwareSource } from './firmware/periph-firmware-source'
 import type { FirmwareIndexRow } from './view-models/firmware-finder'
 import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
 import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
+import { MavlinkPlotWorkspace } from './views/MavlinkPlotWorkspace'
+import { LIVE_GRAPH_WINDOW_S, MAX_LIVE_GRAPHS, useMavlinkPlotWorkspace } from './hooks/use-mavlink-plot-workspace'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
 import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './views/CanDeviceInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
+import { useCanBusMonitor } from './hooks/use-can-bus-monitor'
+import { CanBusMonitorView } from './views/CanBusMonitor'
+import { CanMessagesPage, canFieldSeriesLabel } from './views/CanMessagesPage'
+import { CanPlotView } from './views/CanPlot'
+import { CanSendView } from './views/CanSend'
+import { useCanSender } from './hooks/use-can-sender'
+import { useCanAdapter } from './hooks/use-can-adapter'
+import { useCanAllocationTable } from './hooks/use-can-allocation-table'
+import type { CanTopicEntry } from './view-models/can-topics'
+import { canPlotSeriesKey } from './view-models/can-plot'
+import type { DronecanFieldNode } from './view-models/dronecan-field-tree'
+import { CanAllocatorView } from './views/CanAllocator'
+import { CanNodeMessagesView } from './views/CanNodeMessages'
+import { bootloaderFlashOutcome, buildCanNodeMessages, canLogEntriesFromStatusTexts, mergeCanNodeLogs } from './view-models/can-node-messages'
+import { SLCAN_BITRATES } from '@arduconfig/can-core'
+import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
+import type { CanSubTab } from './views/CanBus'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
 import { usePopoutWindows } from './hooks/use-popout-windows'
 import { RecentNoticesFeed, recentNoticesBadge } from './views/RecentNoticesFeed'
@@ -302,7 +333,9 @@ import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmw
 import { inflateZlib } from './firmware/web-serial-bootloader'
 import { ParamInfoBubble } from './views/ParamInfoBubble'
 import { ScopedField, ScopedSelectField } from './views/ScopedField'
-import { ModesView } from './views/Modes'
+import { InfoDot } from './views/InfoDot'
+import { OutputMaskField } from './views/OutputMaskField'
+import { outputsFromServoFunctions } from './view-models/output-mask'
 import { FailsafeSection } from './sections/FailsafeSection'
 import { LogsSection } from './sections/LogsSection'
 import { useLogUpload } from './hooks/use-log-upload'
@@ -320,11 +353,8 @@ import { TuningCopterSection } from './sections/TuningCopterSection'
 import { BetaflightConnect } from './views/BetaflightConnect'
 import { useBetaflightMsp } from './hooks/use-betaflight-msp'
 import { InitialTuneView } from './views/InitialTune'
-import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { FiltersFromGyro } from './views/FiltersFromGyro'
-import { buildFilterBank, buildFilterIndexOptions, filterSlotParamIds } from './view-models/filter-bank'
-import { FilterBankPanel } from './views/FilterBankPanel'
-import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
+import { buildFilterBank, buildFilterIndexOptions } from './view-models/filter-bank'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
 import { PlaneSoaringAdsbSection } from './sections/PlaneSoaringAdsbSection'
@@ -332,7 +362,7 @@ import { TuningPlaneSection } from './sections/TuningPlaneSection'
 import { TuningRoverSection } from './sections/TuningRoverSection'
 import { TuningSubSection } from './sections/TuningSubSection'
 import { VtxSection } from './sections/VtxSection'
-import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Power'
+import { PowerView, type PowerFieldSpec } from './views/Power'
 import { CanBusView } from './views/CanBus'
 import { CanEnablePrompt } from './views/CanEnablePrompt'
 import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
@@ -366,12 +396,26 @@ import { MotorReorderDialog } from './sections/MotorReorderDialog'
 import { SetupWizardAside } from './sections/SetupWizardAside'
 import { SetupWizardHeader } from './sections/SetupWizardHeader'
 import { SetupWizardDetail } from './sections/SetupWizardDetail'
+import { MaidenFlightCard } from './sections/MaidenFlightCard'
+import { ThrottleControllerCard } from './sections/ThrottleControllerCard'
+import { NotchFromLogCard } from './sections/NotchFromLogCard'
+import { AutotuneFinishCard } from './sections/AutotuneFinishCard'
+import { propsOutChoice, propsOutFrameType } from './view-models/frame-props-out'
+import { MotorPoleReference } from './views/MotorPoleReference'
+import { HoverCalibrationCards, SfdTuningCards, detectSfdFeatures } from './sections/FlightCalibrationCards'
+import { AutotuneFlightCard } from './sections/AutotuneFlightCard'
+import { loadAutotuneFlight } from './autotune-flight-storage'
+import { buildNotchSetupPlan } from './view-models/notch-setup'
+import type { NotchPlanFromLog } from '@arduconfig/log-analysis'
+import { HoverThrottleLearnCard } from './sections/HoverThrottleLearnCard'
+import type { MaidenFlightResult } from '@arduconfig/log-analysis'
 import { SetupBenchActions } from './sections/SetupBenchActions'
 import { AdvancedSensorCard } from './views/AdvancedSensorCard'
 import { buildAdvancedSensorCards } from './view-models/advanced-sensor-cards'
 import { buildPreArmStatusViewModel } from './view-models/prearm-status'
 import { useStatusClock } from './hooks/use-status-clock'
 import {
+  StatusDashboardLayoutButtons,
   StatusDashboardProvider,
   StatusDashboardRegion,
   type StatusDashboardCardEntry
@@ -392,10 +436,8 @@ import { SitlSimView, type SitlPhase } from './views/SitlSimView'
 import { draftsFrom, sequenceForFirmware } from './view-models/amc-guided'
 import { deriveAmcProgressKey } from './amc-progress-storage'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
-import { ConfigView, type ConfigCategoryId } from './views/Config'
+import { CONFIG_CATEGORIES, ConfigView, type ConfigCategoryId } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
-import { withFlightModeOptions } from './view-models/flight-mode-options'
-import { isFiberModeAvailable } from './view-models/fiber-mode-detection'
 import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
 import { LogTuningView } from './views/LogTuning'
@@ -404,6 +446,7 @@ import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
 import { useMavftpBrowser } from './hooks/use-mavftp-browser'
 import { useOnboardLogs } from './hooks/use-onboard-logs'
 import { useProductMode } from './hooks/use-product-mode'
+import { isExpertOnlyView } from './guided-setup-shortcut'
 import { useBootloaderIdentity } from './hooks/use-bootloader-identity'
 import { useRecentNoticesExpanded } from './hooks/use-recent-notices-expanded'
 import { useGpsCoordFormat } from './hooks/use-gps-coord-format'
@@ -582,6 +625,17 @@ const GIMBAL_CATEGORY_IDS: ReadonlySet<string> = new Set(['gimbal'])
  * sub-tab rather than in a lump of its own.
  */
 const PERIPHERALS_CATEGORY_IDS: ReadonlySet<string> = new Set(['peripherals'])
+
+// The sections Config and Peripherals add inline below (footer-only cards over
+// a parameter group), for Find a setting. The curated ones come from
+// useConfigSections.
+const FEATURE_SEARCH_INLINE_SECTIONS: readonly FeatureSearchSection[] = [
+  { id: 'power', title: 'Battery', description: 'Battery monitor, capacity, arming thresholds, live voltage and current.', category: 'power', viewId: 'config' },
+  { id: 'gimbal', title: 'Gimbal', description: 'Camera gimbal/mount driver, control mode, angle limits.', category: 'gimbal', viewId: 'peripherals' },
+  { id: 'alerts', title: 'LEDs & buzzer', description: 'Notification LED drivers, brightness, strip length, buzzer.', category: 'alerts', viewId: 'peripherals' },
+  { id: 'relays', title: 'Relays', description: 'Switched outputs.', category: 'relays', viewId: 'peripherals' },
+  { id: 'flow-lidar', title: 'Flow & Lidar', description: 'Optical flow and rangefinder / lidar.', category: 'flow-lidar', viewId: 'peripherals' }
+]
 /**
  * Flow & Lidar owns both, because they are a pair in practice: optical flow
  * needs a height reference and that is almost always the downward rangefinder.
@@ -634,6 +688,9 @@ export function App() {
   const betaflightMsp = useBetaflightMsp()
   const [gpsCoordFormat, setGpsCoordFormat] = useGpsCoordFormat()
   const [activeViewId, setActiveViewId] = useState<AppViewId>('setup')
+  // Expert-only tabs a basic-mode action opened this session ("Show changes"
+  // on the draft bar opens Parameters). Cleared when the mode changes.
+  const [revealedViewIds, setRevealedViewIds] = useState<AppViewId[]>([])
   // Expert-mode text filter for the Recent Notices panel.
   const [noticeFilter, setNoticeFilter] = useState('')
   // Expand-in-place for the INLINE Recent Notices list. Collapsed for a fresh
@@ -886,23 +943,32 @@ export function App() {
     () => detectSfdValtMode(snapshot.parameters.map((parameter) => parameter.id)),
     [snapshot.parameters]
   )
+  const failsafeAltholdDriftAvailable = useMemo(
+    () => detectSfdFailsafeAltholdDrift(snapshot.parameters.map((parameter) => parameter.id)),
+    [snapshot.parameters]
+  )
   const metadataCatalog = useMemo(
     () =>
-      // Fork gate runs AFTER the version gate: it only ever appends VALT to the
-      // flight-mode enums, and returns the catalog by identity on stock builds.
-      applySfdValtCatalogOverrides(
-        applyArducopter47CatalogOverrides(
-          normalizeFirmwareMetadata(activeMetadataBundle),
-          snapshot.hardware.board?.firmwareVersionParts,
-          snapshot.vehicle?.vehicle === 'ArduCopter'
+      // Fork gates run AFTER the version gate: they only ever append fork
+      // options and definitions, and return the catalog by identity on stock
+      // builds.
+      applySfdFailsafeAltholdCatalogOverrides(
+        applySfdValtCatalogOverrides(
+          applyArducopter47CatalogOverrides(
+            normalizeFirmwareMetadata(activeMetadataBundle),
+            snapshot.hardware.board?.firmwareVersionParts,
+            snapshot.vehicle?.vehicle === 'ArduCopter'
+          ),
+          valtModeAvailable
         ),
-        valtModeAvailable
+        failsafeAltholdDriftAvailable
       ),
     [
       activeMetadataBundle,
       snapshot.hardware.board?.firmwareVersionParts,
       snapshot.vehicle?.vehicle,
-      valtModeAvailable
+      valtModeAvailable,
+      failsafeAltholdDriftAvailable
     ]
   )
   const setupSectionIds = useMemo(
@@ -1015,7 +1081,13 @@ export function App() {
     replaceDrafts,
     updateDrafts
   } = useParameterDrafts()
-  const onboardLogs = useOnboardLogs(runtime)
+  const onboardLogsLinkConnected = snapshot.connection.kind === 'connected'
+  const onboardLogsLinkSynced = onboardLogsLinkConnected && snapshot.parameterStats.status === 'complete'
+  const onboardLogsLink = useMemo(
+    () => ({ connected: onboardLogsLinkConnected, synced: onboardLogsLinkSynced }),
+    [onboardLogsLinkConnected, onboardLogsLinkSynced]
+  )
+  const onboardLogs = useOnboardLogs(runtime, onboardLogsLink)
   // Upload-to-your-own-server for onboard logs. Entirely self-contained: its
   // own client, its own stored session, and no relationship to any other
   // network surface in this app.
@@ -1112,14 +1184,7 @@ export function App() {
   // Motor-test request-builder state (selected output + throttle % +
   // duration s) lives in its own hook — see use-motor-test-config.ts.
   const motorTestConfig = useMotorTestConfig()
-  const {
-    motorTestOutput,
-    setMotorTestOutput,
-    motorTestThrottlePercent,
-    setMotorTestThrottlePercent,
-    motorTestDurationSeconds,
-    setMotorTestDurationSeconds
-  } = motorTestConfig
+  const { motorTestOutput, setMotorTestOutput, motorTestThrottlePercent, motorTestDurationSeconds } = motorTestConfig
   // Motor verification + reorder + Betaflight-style guided identify state
   // lives in its own hook — see use-motor-management.ts. The guided
   // identify flow spins each motor output in order, operator clicks the
@@ -1244,6 +1309,16 @@ export function App() {
     setupConfirmations,
     setSetupConfirmations
   } = useSetupWizard(guidedSetupShortcutSectionId)
+  // The maiden hover's log analysis; the Maiden Hover step's criteria read it.
+  const [maidenFlight, setMaidenFlight] = useState<{ result: MaidenFlightResult | undefined; logName: string | undefined }>({
+    result: undefined,
+    logName: undefined
+  })
+  // The hover log's notch plan; the Filters step's criteria and card read it.
+  const [notchLog, setNotchLog] = useState<{ plan: NotchPlanFromLog | undefined; logName: string | undefined }>({
+    plan: undefined,
+    logName: undefined
+  })
   const parameterBackupInputRef = useRef<HTMLInputElement>(null)
   // Categories stripped when importing a backup from another airframe.
   // All ON by default (field feedback): calibration offsets, stream rates,
@@ -1435,6 +1510,16 @@ export function App() {
   // inside a Config category; ConfigView opens it. Stays set afterwards, which
   // is harmless — it only re-applies when the value CHANGES.
   const [requestedConfigCategory, setRequestedConfigCategory] = useState<ConfigCategoryId | undefined>(undefined)
+  const [requestedPeripheralsCategory, setRequestedPeripheralsCategory] = useState<ConfigCategoryId | undefined>(undefined)
+  const [requestedCategoryNonce, setRequestedCategoryNonce] = useState(0)
+  // Calibration is a Setup category, not a tab. Anything that still opens the
+  // old 'calibration' view (a link, a guided step, a search hit) lands there.
+  useEffect(() => {
+    if (activeViewId !== 'calibration') return
+    setRequestedConfigCategory('calibration')
+    setRequestedCategoryNonce((nonce) => nonce + 1)
+    setActiveViewId('config')
+  }, [activeViewId])
   const {
     configParametersById,
     configSections,
@@ -1449,6 +1534,17 @@ export function App() {
   const isPeripheralOrConfigParamId = useCallback(
     (paramId: string): boolean => isPeripheralParamId(paramId) || isConfigParamId(paramId),
     [isConfigParamId, isPeripheralParamId]
+  )
+  // Everything the Peripherals tab's one Apply bar writes: the section fields,
+  // plus the two cards that are slots rather than sections (LEDs & buzzer,
+  // Compass order). They used to carry their own apply bars; one page, one
+  // bar.
+  const isPeripheralPageParamId = useCallback(
+    (paramId: string): boolean =>
+      isPeripheralParamId(paramId) ||
+      OUTPUT_NOTIFICATION_PARAM_IDS.includes(paramId as (typeof OUTPUT_NOTIFICATION_PARAM_IDS)[number]) ||
+      isCompassOrderParamId(paramId),
+    [isPeripheralParamId]
   )
   // Auto-enable bidirectional DShot when the operator picks a DShot MOT_PWM_TYPE.
   // Fires only on an actual change of the MOT_PWM_TYPE draft (ref-guarded so
@@ -1620,7 +1716,10 @@ export function App() {
   )
   const visibleDisabledOutputs = outputMapping.disabledOutputs.slice(0, 6)
   const motorTestRequest = buildMotorTestRequest(motorTestOutput, motorTestThrottlePercent, motorTestDurationSeconds)
-  const motorTestExpertOptions = { expertMode: productMode === 'expert' }
+  // Roles pick tabs, not features (operator call 2026-10-21): the 30 s motor
+  // test ceiling that was Expert's is everyone's. The acknowledgements and the
+  // rest of the eligibility checks still gate the actual spin.
+  const motorTestExpertOptions = { expertMode: true }
   const motorTestEligibility = evaluateMotorTestEligibility(snapshot, motorTestRequest, motorTestExpertOptions)
   const coreMotorTestGuardReasons = computeMotorTestGuardReasons(snapshot, motorTestRequest, {
     propsRemoved: propsRemovedAcknowledged,
@@ -1928,6 +2027,11 @@ export function App() {
   // apply scope) — this only chooses which is on screen.
   const [osdVtxTab, setOsdVtxTab] = useState<'osd' | 'vtx'>('osd')
   const restoredSetupProgressKeyRef = useRef<string | undefined>(undefined)
+  // The key whose first save pass has run. The restore and save effects run in
+  // the SAME commit the key appears in, and the restored state only lands on
+  // the next render — so on that first pass the in-memory state is still
+  // pre-restore and must not be allowed to erase the copy about to hydrate.
+  const savedSetupProgressKeyRef = useRef<string | undefined>(undefined)
 
   /**
    * Start guided setup over.
@@ -1955,7 +2059,7 @@ export function App() {
     setSelectedSetupSectionId(undefined)
     setSessionNotice({
       tone: 'neutral',
-      text: 'Guided setup reset — every step is unconfirmed again. Parameters already written to the vehicle are unchanged.'
+      text: 'Guided setup reset. Every step is unconfirmed; nothing on the vehicle changed.'
     })
   }
 
@@ -1985,12 +2089,18 @@ export function App() {
   )
 
   useEffect(() => {
-    if (setupProgressKey === undefined || restoredSetupProgressKeyRef.current === setupProgressKey) {
+    const vehicle = snapshot.vehicle?.vehicle
+    if (
+      setupProgressKey === undefined ||
+      vehicle === undefined ||
+      restoredSetupProgressKeyRef.current === setupProgressKey
+    ) {
       return
     }
 
     restoredSetupProgressKeyRef.current = setupProgressKey
-    const stored = loadStoredSetupProgress(setupProgressKey)
+    savedSetupProgressKeyRef.current = undefined
+    const stored = loadStoredSetupProgress(setupProgressKey, vehicle)
     if (!stored) {
       return
     }
@@ -2028,9 +2138,16 @@ export function App() {
   useEffect(() => {
     // Save only after the restore for this key ran, so an empty fresh
     // session can't clobber stored progress before hydration.
-    if (setupProgressKey === undefined || restoredSetupProgressKeyRef.current !== setupProgressKey) {
+    const vehicle = snapshot.vehicle?.vehicle
+    if (
+      setupProgressKey === undefined ||
+      vehicle === undefined ||
+      restoredSetupProgressKeyRef.current !== setupProgressKey
+    ) {
       return
     }
+    const firstPassForKey = savedSetupProgressKeyRef.current !== setupProgressKey
+    savedSetupProgressKeyRef.current = setupProgressKey
 
     const exercises = collectTerminalSetupExercises({
       orientationExercise,
@@ -2041,12 +2158,21 @@ export function App() {
       motorVerification
     })
     if (Object.keys(setupConfirmations).length === 0 && Object.keys(exercises).length === 0) {
+      // Nothing left to keep. This used to return without writing, which meant
+      // revoking the ONLY sign-off never reached storage: the durable copy
+      // still held it, and a reload brought it straight back. Once the restore
+      // for this key has had its render, an empty state is the operator's
+      // doing and the stored copy has to follow it.
+      if (!firstPassForKey) {
+        clearStoredSetupProgress(setupProgressKey)
+      }
       return
     }
 
     saveStoredSetupProgress(setupProgressKey, {
       version: 1,
       savedAtMs: Date.now(),
+      vehicle,
       confirmations: setupConfirmations,
       exercises
     })
@@ -2060,6 +2186,19 @@ export function App() {
     setupConfirmations,
     setupProgressKey
   ])
+
+  // A browser Back (there is no routing) or an accidental close mid-exercise
+  // drops the live session; the exercise and anything it was about to confirm
+  // is gone with it. Ask first, only then.
+  useUnloadGuard(
+    snapshot.connection.kind === 'connected' &&
+      (orientationExercise.status === 'running' ||
+        modeSwitchExercise.status === 'running' ||
+        rcRangeExercise.status === 'running' ||
+        rcMappingSession.status === 'running' ||
+        rcCalibrationSession.status === 'capturing' ||
+        motorVerification.status === 'running')
+  )
 
   // Drives the "last data / no data for N s" freshness readouts on the
   // Status & Info sensor cards. Only runs while that tab is open and a
@@ -2246,7 +2385,28 @@ export function App() {
       requiresReboot: true,
       refreshRequired: true,
       changedCount: 0,
-      text: 'Compass calibration stored new offsets. Reboot the flight controller, then pull parameters again before flight.'
+      text: 'Compass calibration saved new offsets.'
+    })
+  }, [snapshot.guidedActions, setParameterFollowUp])
+
+  // The 6-pose accelerometer calibration latches the same reboot requirement
+  // (AP_InertialSensor::_acal_save_calibrations sets _accel_cal_requires_reboot,
+  // which the pre-arm check reads as "Accels calibrated requires reboot"). The
+  // Calibration tab's reboot prompt covered it; the wizard did not, so the
+  // operator reached Power with pre-arm failing for a reason no step had named.
+  const accelerometerCalibrationStatusRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const status = snapshot.guidedActions['calibrate-accelerometer']?.status
+    const previous = accelerometerCalibrationStatusRef.current
+    accelerometerCalibrationStatusRef.current = status
+    if (status !== 'succeeded' || previous === 'succeeded' || previous === undefined) {
+      return
+    }
+    setParameterFollowUp({
+      requiresReboot: true,
+      refreshRequired: true,
+      changedCount: 0,
+      text: 'Accelerometer calibration saved new offsets.'
     })
   }, [snapshot.guidedActions, setParameterFollowUp])
 
@@ -2420,11 +2580,10 @@ export function App() {
   const [snapshotRestoreDroppedParamIds, setSnapshotRestoreDroppedParamIds] = useState<ReadonlySet<string>>(
     () => new Set()
   )
-  // Expert-gated, and gated HERE rather than only on the checkbox. Leaving
-  // Expert mode with the box ticked would otherwise hide the control while the
-  // state stayed true, so calibrations would keep being carried with nothing on
-  // screen saying so — the one outcome this gate exists to prevent.
-  const snapshotImportCalibrationEffective = productMode === 'expert' && snapshotImportCalibration
+  // Was Expert-gated here as well as on the checkbox, so leaving Expert with
+  // the box ticked could not keep carrying calibrations silently. Roles pick
+  // tabs, not features (operator call 2026-10-21): the checkbox is the gate.
+  const snapshotImportCalibrationEffective = snapshotImportCalibration
   const snapshotRestoreImportOptions = useMemo<ParameterBackupImportOptions>(
     () => ({ excludeCategories: snapshotImportCalibrationEffective ? [] : ['calibration'] }),
     [snapshotImportCalibrationEffective]
@@ -2775,17 +2934,296 @@ export function App() {
     downloadRecording: downloadMavlinkInspectorRecording,
     exportPlotCsv: exportMavlinkInspectorPlotCsv
   } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
+  // The Inspector's plots: MAVExplorer graphs over the live link, and how its charts group.
+  const mavlinkPlotWorkspace = useMavlinkPlotWorkspace(runtime, activeViewId === 'mavlink-inspector')
+  // The CAN tab's bus: a USB-CAN adapter (SLCAN) while one is open, else the
+  // autopilot's forwarding. Both drive the same CAN surface under the same
+  // method names; DroneNet (Networking) stays on the autopilot.
+  const canAdapter = useCanAdapter()
+  const canOnAdapter = canAdapter.state !== undefined
+  const canBus = canAdapter.state ?? snapshot.canBus
+  const canBackend = canOnAdapter ? canAdapter.bus : runtime
   // Live frames/sec for the DroneCAN inspector, sampled off the cumulative counter.
   const dronecanFramesPerSec = useDronecanBusStats(
-    snapshot.canBus.framesReceived,
-    snapshot.canBus.status === 'active'
+    canBus.framesReceived,
+    canBus.status === 'active'
   )
+  // The CAN tab's bus monitor: every raw frame on the forwarded bus (and the
+  // ones we send), captured outside the snapshot. Bitrate (CAN_Pn_BITRATE,
+  // bit/s) feeds the load estimate; ArduPilot's default is 1 Mbit/s.
+  // The CAN tab's sub-tab: Devices, Messages, Frames, Plot.
+  const [canSubTab, setCanSubTab] = useState<CanSubTab>('devices')
+  const canBusMonitor = useCanBusMonitor({
+    source: canBackend,
+    enabled: canBus.status === 'active',
+    bitrate: canOnAdapter
+      ? canAdapter.bitrate
+      : canBus.bus !== undefined
+        ? readRoundedParameter(snapshot, `CAN_P${canBus.bus}_BITRATE`) ?? 1_000_000
+        : undefined
+  })
+  // Send (it acts on the bus). Repeats stop themselves on arming,
+  // on the bus going quiet, on leaving the page, or on the safety box unticked.
+  // Outside Expert the CAN tab is Devices only (see the sub-tab strip); the
+  // bus tools past it never run there.
+  const canExpertTools = productMode === 'expert'
+  const effectiveCanSubTab: CanSubTab = canExpertTools ? canSubTab : 'devices'
+  const canSendVisible = activeViewId === 'can' && effectiveCanSubTab === 'send'
+  const canSender = useCanSender({
+    sink: canBackend,
+    active: canBus.status === 'active',
+    armed: snapshot.vehicle?.armed ?? false,
+    visible: canSendVisible,
+    motionAcknowledged: propsRemovedAcknowledged && testAreaAcknowledged
+  })
+  // CAN ▸ ESC / Servo bench tools: their own sender, so a run never shows in
+  // (or is stopped by) the Send page.
+  const canActuatorTest = useCanActuatorTest({
+    sink: canBackend,
+    catalogue: dronecanCatalogue(),
+    sourceNodeId: GCS_DRONECAN_NODE_ID,
+    active: canBus.status === 'active',
+    armed: snapshot.vehicle?.armed ?? false,
+    visible: activeViewId === 'can' && (effectiveCanSubTab === 'esc' || effectiveCanSubTab === 'servo'),
+    acknowledged: propsRemovedAcknowledged && testAreaAcknowledged
+  })
+  const canFleet = useCanFleet({ backend: canBackend, nodes: canBus.nodes, firmwareUpdate: canBus.firmwareUpdate })
+  const canNodeLabel = (nodeId: number): string | undefined =>
+    canBus.nodes.find((node) => node.nodeId === nodeId)?.name ??
+    // This app's own node: responses come back addressed to it.
+    (nodeId === GCS_DRONECAN_NODE_ID ? 'this app' : undefined)
+  // Nodes seen only in RECEIVED traffic: this app's own requests (TX) come
+  // from its GCS node id, which is not a node on the bus.
+  const canExtraNodeIds = [
+    ...new Set(
+      canBusMonitor
+        .topics()
+        .filter((topic) => topic.last.direction === 'rx' && topic.sourceNodeId !== 0)
+        .map((topic) => topic.sourceNodeId)
+    )
+  ]
+  // Node ID allocation: the table this browser remembers, and whether a node
+  // without an ID has been asking (its anonymous Allocation requests).
+  const canAllocationTable = useCanAllocationTable({ backend: canBackend, allocator: canBus.allocator })
+  const canNodeAsking = canBusMonitor
+    .topics()
+    .some((topic) => topic.kind === 'anonymous' && topic.last.type?.shortName === 'Allocation' && Date.now() - topic.last.timestampMs < 3000)
+  // Node messages (DroneCAN LogMessage) -- the CAN tab's Recent Notices.
+  const [canLogFilter, setCanLogFilter] = useState('')
+  // Debug shown by default: AP_Periph's can_printf -- most of what a node says,
+  // the bootloader-flash result included -- logs at DEBUG.
+  const [canLogDebug, setCanLogDebug] = useState(true)
+  // Plus the lines the autopilot relays as "CAN[n] ..." status texts (CAN_LOGLEVEL on):
+  // a second route when the bus frames are lost in forwarding.
+  const [canLogsClearedAtMs, setCanLogsClearedAtMs] = useState(0)
+  const canNodeLogs = mergeCanNodeLogs(
+    canBusMonitor.nodeLogs(),
+    canOnAdapter ? [] : canLogEntriesFromStatusTexts(snapshot.statusTexts),
+    canLogsClearedAtMs
+  )
+  // Flash a node's bootloader: AP_Periph acts on FLASH_BOOTLOADER = 1 at once
+  // (no restart), copies its embedded bootloader, and logs the outcome.
+  const [bootloaderFlash, setBootloaderFlash] = useState<
+    {
+      nodeId: number
+      startedAtMs: number
+      status: 'flashing' | 'ok' | 'failed' | 'timeout'
+      message: string
+      /** A re-fetch of the node's params has been asked for (to see FLASH_BOOTLOADER go back to 0). */
+      refetched?: boolean
+      /** The node ran it: FLASH_BOOTLOADER read back as 0 (it resets it only when it acts). */
+      acted?: boolean
+      /** The node's own result line has arrived (it overrides a timeout or a write error). */
+      answered?: boolean
+    }
+    | undefined
+  >(undefined)
+  useEffect(() => {
+    // Still listening after a timeout or a write error: the node's line, when
+    // it does come, is the real answer.
+    if (!bootloaderFlash || bootloaderFlash.answered) return
+    for (let index = canNodeLogs.length - 1; index >= 0; index -= 1) {
+      const entry = canNodeLogs[index]
+      if (entry.atMs < bootloaderFlash.startedAtMs) break
+      if (entry.nodeId !== bootloaderFlash.nodeId) continue
+      const outcome = bootloaderFlashOutcome(entry.text)
+      if (outcome) {
+        setBootloaderFlash({ ...bootloaderFlash, status: outcome.ok ? 'ok' : 'failed', message: outcome.message, answered: true })
+        // Re-pull the node's params: FLASH_BOOTLOADER is back to 0.
+        canBackend?.fetchAllCanBusParameters(bootloaderFlash.nodeId)
+        return
+      }
+    }
+  }, [canNodeLogs.length, canNodeLogs, bootloaderFlash])
+  // After a node firmware update the node reboots into the new firmware, whose
+  // parameter set can be a different one entirely (a rangefinder build's 14 vs
+  // a full AP_Periph's ~500). Once it is back -- seen again with an uptime that
+  // started after the update finished -- pull its parameters again.
+  const refetchAfterUpdateRef = useRef<{ nodeId: number; completedAtMs: number } | undefined>(undefined)
+  useEffect(() => {
+    const update = canBus.firmwareUpdate
+    if (update?.status === 'completed' && refetchAfterUpdateRef.current?.nodeId !== update.nodeId) {
+      refetchAfterUpdateRef.current = { nodeId: update.nodeId, completedAtMs: Date.now() }
+    }
+  }, [canBus.firmwareUpdate])
+  useEffect(() => {
+    const pending = refetchAfterUpdateRef.current
+    if (!pending) return
+    const node = canBus.nodes.find((entry) => entry.nodeId === pending.nodeId)
+    if (!node || node.uptimeSec === undefined) return
+    const sinceUpdateSec = (Date.now() - pending.completedAtMs) / 1000
+    // Rebooted: its uptime is younger than the time since the update finished.
+    if (node.lastSeenAtMs > pending.completedAtMs && node.uptimeSec <= sinceUpdateSec + 2) {
+      refetchAfterUpdateRef.current = undefined
+      canBackend?.fetchAllCanBusParameters(pending.nodeId)
+    } else if (sinceUpdateSec > 120) {
+      refetchAfterUpdateRef.current = undefined
+    }
+  }, [canBus.nodes, canBackend])
+  // The node's own result message can be lost on the way (a busy forwarded
+  // link drops frames), so also read FLASH_BOOTLOADER back: AP_Periph puts it
+  // to 0 only when it runs the update.
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing' || bootloaderFlash.refetched) return
+    const timer = window.setTimeout(() => {
+      canBackend?.fetchAllCanBusParameters(bootloaderFlash.nodeId)
+      setBootloaderFlash((current) => (current?.status === 'flashing' ? { ...current, refetched: true } : current))
+    }, 6_000)
+    return () => window.clearTimeout(timer)
+    // canBackend is stable for the flash's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootloaderFlash?.status, bootloaderFlash?.refetched, bootloaderFlash?.nodeId])
+  const bootloaderTrigger = bootloaderFlash
+    ? canBus.nodes.find((node) => node.nodeId === bootloaderFlash.nodeId)?.parameters.find((entry) => entry.name === 'FLASH_BOOTLOADER')?.value
+    : undefined
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing' || !bootloaderFlash.refetched || bootloaderFlash.acted) return
+    if (bootloaderTrigger?.tag === 'int64' && bootloaderTrigger.int64 === '0') {
+      setBootloaderFlash({ ...bootloaderFlash, acted: true, message: 'The node ran the update (FLASH_BOOTLOADER is back to 0); waiting for its result… keep it powered.' })
+    }
+  }, [bootloaderFlash, bootloaderTrigger])
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing') return
+    const timer = window.setTimeout(
+      () =>
+        setBootloaderFlash((current) =>
+          current?.status === 'flashing'
+            ? {
+                ...current,
+                status: 'timeout',
+                message: current.acted
+                  ? 'The node ran the bootloader update, but its result never arrived (lost on the way). Run it again: an up-to-date bootloader answers "Bootloader unchanged".'
+                  : 'The node did not act on it (FLASH_BOOTLOADER still reads 1, or its params did not come back). Check the link, then try again.'
+              }
+            : current
+        ),
+      60_000
+    )
+    return () => window.clearTimeout(timer)
+  }, [bootloaderFlash?.status, bootloaderFlash?.startedAtMs])
+  const flashCanBootloader = (nodeId: number) => {
+    // No slack before the click: lines are stamped on arrival, and a slack
+    // let a previous run's answer pass for this one's.
+    setBootloaderFlash({ nodeId, startedAtMs: Date.now(), status: 'flashing', message: 'Flashing the bootloader… do not power the node off.' })
+    void canBackend
+      ?.writeCanBusParameter(nodeId, 'FLASH_BOOTLOADER', { tag: 'int64', int64: '1' })
+      .catch((error: unknown) =>
+        setBootloaderFlash((current) =>
+          current?.nodeId === nodeId && !current.answered
+            ? { ...current, status: 'failed', message: error instanceof Error ? error.message : String(error) }
+            : current
+        )
+      )
+  }
+  // Plot a decoded field (a number, a vector, or one element of one), from
+  // Messages or from Plot's own picker.
+  const plotCanField = (topic: CanTopicEntry, field: DronecanFieldNode) => {
+    canBusMonitor.addPlotSeries(canFieldSeriesLabel(topic, field), { kind: 'field', topicKey: topic.key, path: field.path })
+  }
+  const unplotCanField = (topic: CanTopicEntry, field: DronecanFieldNode) => {
+    canBusMonitor.removePlotSeries(canPlotSeriesKey({ kind: 'field', topicKey: topic.key, path: field.path }))
+  }
+  const isCanFieldPlotted = (topic: CanTopicEntry, field: DronecanFieldNode) =>
+    canBusMonitor.plotSeries.some(
+      (entry) =>
+        entry.source.kind === 'field' && entry.source.topicKey === topic.key && entry.source.path.join('.') === field.path.join('.')
+    )
+  const canMessageNodes = [...new Set([...canBus.nodes.map((node) => node.nodeId), ...canExtraNodeIds])]
+    .sort((left, right) => left - right)
+    .map((nodeId) => ({ nodeId, label: canNodeLabel(nodeId) ?? '' }))
+  // Who else is commanding outputs on the bus (the autopilot, typically): a
+  // bench tool must not start while it is.
+  const canActuatorConflict = (): string | undefined => {
+    const streams = canBusMonitor
+      .topics()
+      .filter((topic) => topic.last.direction === 'rx')
+      .map((topic) => ({ dataTypeId: topic.dataTypeId, sourceNodeId: topic.sourceNodeId, lastSeenMs: topic.lastSeenMs }))
+    const conflict = findActuatorConflict(streams, GCS_DRONECAN_NODE_ID, Date.now())
+    if (!conflict) return undefined
+    const name = canNodeLabel(conflict.nodeId)
+    return actuatorConflictText(conflict, name ? `${name} (node ${conflict.nodeId})` : `Node ${conflict.nodeId}`)
+  }
+  const canActuatorShared = (tool: 'esc' | 'servo') => ({
+    blockedReason: actuatorBlockedReason({
+      busActive: canBus.status === 'active',
+      armed: snapshot.vehicle?.armed ?? false,
+      acknowledged: propsRemovedAcknowledged && testAreaAcknowledged,
+      conflict: canActuatorConflict()
+    }),
+    running: canActuatorTest.running === tool,
+    otherRunning: canActuatorTest.running !== undefined && canActuatorTest.running !== tool,
+    stopNote: canActuatorTest.stopNote,
+    acknowledged: propsRemovedAcknowledged && testAreaAcknowledged,
+    onAcknowledged: (value: boolean) => {
+      setPropsRemovedAcknowledged(value)
+      setTestAreaAcknowledged(value)
+    },
+    sendArming: canActuatorTest.sendArming,
+    onSendArming: canActuatorTest.setSendArming,
+    onStart: () => canActuatorTest.start(tool),
+    onStop: canActuatorTest.stop
+  })
+  // uavcan.equipment.actuator.Status: the position each actuator reports, by id.
+  const canActuatorPositions = (): Map<number, number> => {
+    const positions = new Map<number, number>()
+    for (const topic of canBusMonitor.topics()) {
+      if (topic.dataTypeId !== 1011 || topic.last.direction !== 'rx') continue
+      try {
+        const value = dronecanCatalogue().decode('uavcan.equipment.actuator.Status', 'msg', topic.last.payload) as Record<string, unknown>
+        if (typeof value.actuator_id === 'number' && typeof value.position === 'number') positions.set(value.actuator_id, value.position)
+      } catch {
+        // A malformed Status is shown on Messages; here it is simply not a reading.
+      }
+    }
+    return positions
+  }
   // Online firmware lookup for DroneCAN nodes (desktop-only). The browser can't
   // reach firmware.ardupilot.org (no CORS), so this is wired ONLY when the
   // Electron firmware bridge is present — same precedent as the FC flasher. In
   // the web build it degrades to `available: false` (local .bin still works).
   // The node's bootloader flashes RAW bytes, so we decode the server's .apj
   // (zlib image) down to the raw image before handing it to the Phase-2 update.
+  // A DroneCAN node's parameter metadata: AP_Periph's (generated from
+  // ArduPilot, loaded the first time a CAN surface opens), the curated entries
+  // until then, and ArduCopter's for anything AP_Periph does not document.
+  const [apPeriphMetadata, setApPeriphMetadata] = useState<Record<string, DronecanParamCatalogDef> | undefined>(undefined)
+  useEffect(() => {
+    if (apPeriphMetadata || (activeViewId !== 'can' && activeViewId !== 'networking')) return
+    void loadApPeriphParamMetadata().then(setApPeriphMetadata).catch(() => {})
+  }, [activeViewId, apPeriphMetadata])
+  // PX4 "cannode" peripherals (ARK, CUAV, Freefly, Holybro CAN boards) expose
+  // PX4 params; their metadata is its own chunk, loaded with the AP_Periph one.
+  const [px4CannodeMetadata, setPx4CannodeMetadata] = useState<Px4CannodeParamMetadata | undefined>(undefined)
+  useEffect(() => {
+    if (px4CannodeMetadata || (activeViewId !== 'can' && activeViewId !== 'networking')) return
+    void loadPx4CannodeParamMetadata().then(setPx4CannodeMetadata).catch(() => {})
+  }, [activeViewId, px4CannodeMetadata])
+  const dronecanParamMetadata: DronecanParamCatalogLookup = (name, node) => {
+    if (node && dronecanNodeStack(node, px4CannodeMetadata?.nodeNames) === 'px4') {
+      return px4CannodeMetadata?.params[name]
+    }
+    return apPeriphMetadata?.[name] ?? AP_PERIPH_CURATED_METADATA[name] ?? metadataCatalog.parameters[name]
+  }
   // The website's AP_Periph index (the deploy's /fw/periph-index.json), loaded
   // when the CAN tab first opens; a site without it keeps "desktop only".
   const [periphIndexRows, setPeriphIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
@@ -2830,13 +3268,13 @@ export function App() {
     if (!bridge?.listDronecanNode || !bridge.download) {
       const unavailable = async (): Promise<never> => {
         throw new Error(
-          'Online firmware lookup needs the ArduConfigurator desktop app — the browser can’t reach firmware.ardupilot.org. Pick a local .bin instead.'
+          'Online firmware lookup is not available here. Pick a local .bin instead.'
         )
       }
       return {
         available: false,
         unavailableReason:
-          'Online firmware lookup needs the ArduConfigurator desktop app (the browser can’t reach firmware.ardupilot.org). Pick a local .bin below.',
+          'Online firmware lookup is not available here. Pick a local .bin below.',
         findCandidates: unavailable,
         download: unavailable
       }
@@ -2899,8 +3337,6 @@ export function App() {
     configStagedDrafts,
     configInvalidDrafts,
     peripheralDraftEntries,
-    peripheralStagedDrafts,
-    peripheralInvalidDrafts,
     osdStagedDrafts,
     osdInvalidDrafts,
     vtxStagedDrafts,
@@ -2911,7 +3347,6 @@ export function App() {
     powerDraftEntries,
     powerStagedDrafts,
     powerInvalidDrafts,
-    tuningDraftEntries,
     tuningStagedDrafts,
     tuningInvalidDrafts,
     planeTuningDraftEntries,
@@ -2920,7 +3355,6 @@ export function App() {
     planeSoaringAdsbDraftEntries,
     planeSoaringAdsbStagedDrafts,
     planeSoaringAdsbInvalidDrafts,
-    copterAutotuneDraftEntries,
     copterAutotuneStagedDrafts,
     copterAutotuneInvalidDrafts,
     planeAutotuneDraftEntries,
@@ -2950,7 +3384,27 @@ export function App() {
     relayDraftEntries,
     relayStagedDrafts,
     relayInvalidDrafts
-  } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId, isPeripheralParamId })
+  } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId, isPeripheralParamId: isPeripheralPageParamId })
+
+  // One Apply bar per page (operator call 2026-10-23). Config also writes the
+  // Power card and its additional settings; Peripherals also writes the GPS
+  // additional, Gimbal and Flow & Lidar cards. Each was a bar of its own.
+  const unionDrafts = (...lists: ParameterDraftEntry[][]) => {
+    const seen = new Set<string>()
+    const entries: ParameterDraftEntry[] = []
+    for (const list of lists) {
+      for (const entry of list) {
+        if (seen.has(entry.id)) continue
+        seen.add(entry.id)
+        entries.push(entry)
+      }
+    }
+    return {
+      entries,
+      staged: entries.filter((entry) => entry.status === 'staged'),
+      invalid: entries.filter((entry) => entry.status === 'invalid')
+    }
+  }
 
   // Drop drafts that match the live value once a FRESH parameter sync lands.
   //
@@ -2983,6 +3437,37 @@ export function App() {
 
   const canApplyAllDraftParameters =
     canApplyDraftParameters && stagedParameterDrafts.length > 0 && invalidParameterDrafts.length === 0
+  // "Stage & Write" on a snapshot restore: the ids it staged, written once the
+  // draft set has caught up with them (mergeDrafts is a state update, so the
+  // write cannot follow it in the same call).
+  const [snapshotWriteAfterStage, setSnapshotWriteAfterStage] = useState<ReadonlySet<string> | null>(null)
+  useEffect(() => {
+    if (!snapshotWriteAfterStage) {
+      return
+    }
+    const pending = [...snapshotWriteAfterStage]
+    const settled = pending.every(
+      (id) => stagedParameterDrafts.some((draft) => draft.id === id) || invalidParameterDrafts.some((draft) => draft.id === id)
+    )
+    if (!settled) {
+      return
+    }
+    setSnapshotWriteAfterStage(null)
+    if (!canApplyAllDraftParameters) {
+      setSnapshotNotice({
+        tone: 'warning',
+        text:
+          invalidParameterDrafts.length > 0
+            ? `Staged ${pending.length} change(s), but ${invalidParameterDrafts.length} draft(s) are invalid and block the write. Fix or drop them, then Write all from the draft bar.`
+            : `Staged ${pending.length} change(s). Write all from the draft bar when the controller is ready.`
+      })
+      return
+    }
+    void handleApplyAllParameterDrafts()
+    // handleApplyAllParameterDrafts is a function declaration (stable); the
+    // effect keys on the draft set catching up with the staged ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotWriteAfterStage, stagedParameterDrafts, invalidParameterDrafts, canApplyAllDraftParameters])
   const rcMappingDerivations = useRcMappingDerivations({
     snapshot,
     rcMappingSession,
@@ -3019,7 +3504,6 @@ export function App() {
   const {
     serialPortViewModels,
     visibleSerialPortViewModels,
-    hiddenSerialPortCount,
     receiverLinkPorts,
     vtxLinkPorts,
     osdLinkPorts
@@ -3066,14 +3550,7 @@ export function App() {
     flightFeelParameters,
     tuningAccelerationParameters,
     acroTuningParameters,
-    altHoldPilotParameters,
-    loiterPilotParameters,
-    tuningAdvancedPidParameters,
-    tuningFilterParameters,
-    tuningPidAxisGroups,
-    tuningFilterAxisGroups,
-    tuningNotchAxisGroups,
-    tuningAdvancedPidAxisGroups
+    tuningFilterParameters
   } = useTuningCatalog(snapshot)
   const outputReviewParameters = useMemo(
     () =>
@@ -3375,10 +3852,20 @@ export function App() {
         try {
           const grantedPorts = await getAvailableWebSerialPorts()
           if (grantedPorts.length > 1) {
-            const { mavlinkPort } = await detectMavlinkPort(grantedPorts, 115200)
+            // The operator's pick is probed first and wins when it speaks
+            // MAVLink; with two boards plugged in, walking the browser's
+            // list from the top landed on the other board.
+            const chosen = selectedSerialPortRef.current
+            const { mavlinkPort } = await detectMavlinkPort(orderPortsForDetection(grantedPorts, chosen), 115200)
             if (mavlinkPort) {
               selectedSerialPortRef.current = mavlinkPort
               rememberSelectedSerialPort(mavlinkPort)
+              if (chosen && mavlinkPort !== chosen) {
+                setSessionNotice({
+                  tone: 'neutral',
+                  text: 'The port you picked is not streaming MAVLink; connecting on the port that is.'
+                })
+              }
             }
           }
         } catch {
@@ -3469,7 +3956,7 @@ export function App() {
         requiresReboot: true,
         refreshRequired: true,
         changedCount: result.applied.length,
-        text: `Enabled the CAN bus for DroneCAN (${result.applied.length} write(s)). Reboot the flight controller, then pull parameters — DroneCAN nodes appear after the reboot.`
+        text: `CAN bus enabled (${result.applied.length} writes). DroneCAN nodes appear after a reboot.`
       })
     } catch (error) {
       setSessionNotice({
@@ -3478,6 +3965,28 @@ export function App() {
       })
     } finally {
       setBusyAction((current) => (current === 'can:enable' ? undefined : current))
+    }
+  }
+
+  // Thermal calibration: ordered, verified writes straight from the card —
+  // the target before the enable (see view-models/tcal-plan.ts). A draft could
+  // not do it: the target is hidden until the enable is on, and the learn
+  // captures it the moment the enable goes to 2.
+  async function handleTcalWrite(writes: TcalWrite[], description: string): Promise<void> {
+    if (!runtime || writes.length === 0) {
+      return
+    }
+    setBusyAction('tcal:write')
+    try {
+      const result = await runtime.setParameters(writes, UI_PARAMETER_WRITE_OPTIONS)
+      setSessionNotice({ tone: result.unconfirmed.length > 0 ? 'warning' : 'success', text: `${description}.` })
+    } catch (error) {
+      setSessionNotice({
+        tone: 'danger',
+        text: `Thermal calibration write failed: ${error instanceof Error ? error.message : 'unknown error'}`
+      })
+    } finally {
+      setBusyAction((current) => (current === 'tcal:write' ? undefined : current))
     }
   }
 
@@ -3595,7 +4104,7 @@ export function App() {
                 ...current,
                 requiresReboot: false,
                 refreshRequired: true,
-                text: 'Reboot requested. Reconnect if needed, then pull parameters again before continuing guided setup.'
+                text: 'Rebooting. Reconnect if needed, then sync parameters.'
               }
             : current
         )
@@ -3621,7 +4130,14 @@ export function App() {
       }
       if (actionId === 'request-parameters') {
         await runtime.waitForParameterSync()
-        setParameterFollowUp((current) => (current?.refreshRequired ? undefined : current))
+        // A re-sync satisfies a refresh-only follow-up. One that needs a REBOOT
+        // stays until the vehicle has actually rebooted (the sibling sites
+        // keep the same guard): clearing it here let the Link step's own
+        // "Re-sync Parameters" button wave the wizard past a board still
+        // running the old port map.
+        setParameterFollowUp((current) =>
+          current?.refreshRequired && !current.requiresReboot ? undefined : current
+        )
       }
     } catch (error) {
       // runGuidedAction re-throws after the service has already recorded
@@ -3642,10 +4158,22 @@ export function App() {
   }
 
   function handleCancelGuidedAction(actionId: GuidedActionId): void {
-    runtime.cancelGuidedAction(actionId)
-    setParameterNotice({
-      tone: 'warning',
-      text: `${actionLabels[actionId]} cancelled. Parameter writes are unblocked; re-run the calibration before flying.`
+    // The compass cancel waits for the autopilot to confirm DO_CANCEL_MAG_CAL
+    // (up to 3 s), so the notice follows the outcome instead of announcing
+    // unblocked writes while the calibrator may still be running.
+    void runtime.cancelGuidedAction(actionId).then(() => {
+      const status = runtime.getSnapshot().guidedActions[actionId]?.status
+      if (status === 'failed') {
+        setParameterNotice({
+          tone: 'danger',
+          text: `${actionLabels[actionId]}: the autopilot did not confirm the cancel. ${runtime.getSnapshot().guidedActions[actionId]?.summary ?? ''}`.trim()
+        })
+        return
+      }
+      setParameterNotice({
+        tone: 'warning',
+        text: `${actionLabels[actionId]} cancelled. Run it again before flying.`
+      })
     })
   }
 
@@ -3653,6 +4181,7 @@ export function App() {
     switch (targetElementId) {
       case OUTPUTS_ORIENTATION_TARGET_ID:
       case OUTPUTS_ORIENTATION_BUTTON_ID:
+      case OUTPUTS_SPIN_WIZARD_ID:
         return 'motor-setup'
       case OUTPUTS_BENCH_TARGET_ID:
       case OUTPUTS_MOTOR_START_BUTTON_ID:
@@ -3673,6 +4202,11 @@ export function App() {
     const configCategory = configCategoryForPanel(panelId)
     if (configCategory) {
       setRequestedConfigCategory(configCategory)
+      // ConfigView re-applies the request only when something CHANGES. The
+      // second deep link into the same category (Flight Modes, then Flight
+      // Modes again after the operator browsed to another tab) found the
+      // category unchanged and left the operator on whichever tab was open.
+      setRequestedCategoryNonce((nonce) => nonce + 1)
     }
     if (targetViewId === 'motors' || targetViewId === 'servos') {
       const outputTaskId = outputTaskForTarget(targetElementId)
@@ -3691,7 +4225,11 @@ export function App() {
         return
       }
 
-      const headerOffset = 112
+      // The app header, plus the guided-setup return bar when it is showing:
+      // the bar is sticky under the header, so a target scrolled to the
+      // header's edge alone would sit behind it.
+      const returnBar = document.querySelector<HTMLElement>('.setup-return-bar')
+      const headerOffset = 112 + (returnBar ? returnBar.getBoundingClientRect().height + 10 : 0)
       const targetTop = Math.max(0, window.scrollY + target.getBoundingClientRect().top - headerOffset)
       window.scrollTo({
         top: targetTop,
@@ -3705,6 +4243,13 @@ export function App() {
     }
     if (panelId === 'setup-panel-guided') {
       setSetupMode('wizard')
+    }
+    // Status & Info normally ends the flow (the tab sync below sets overview),
+    // but step 1's "Open Vehicle Link" lands THERE. Mark it a detour so the
+    // sync leaves the flow active and the return bar shows, like every other
+    // excursion.
+    if (targetViewId === 'setup' && setupMode === 'wizard') {
+      setupLinkDetourRef.current = true
     }
     // The 'setup-panel-link' branch used to set setupMode back to 'overview'
     // here. setupMode is what gates the "Back to guided setup" bar
@@ -3852,6 +4397,22 @@ export function App() {
       return next
     })
   }
+  // Sets membership outright (idempotent): the Receiver tab's Custom… RC
+  // option turns the override on with the typed number and off with a listed pick.
+  function handleSetParameterEnumOverride(paramId: string, overridden: boolean): void {
+    setParameterEnumOverrides((current) => {
+      if (current.has(paramId) === overridden) {
+        return current
+      }
+      const next = new Set(current)
+      if (overridden) {
+        next.add(paramId)
+      } else {
+        next.delete(paramId)
+      }
+      return next
+    })
+  }
 
   // Fetch the FC's packed defaults (MAVFTP param.pck?withdefaults, 4.5+) and
   // derive the non-default set that drives "Show only changed" + the non-default
@@ -3909,7 +4470,8 @@ export function App() {
       // meant the Default column read "—" on every row until the operator
       // happened to open one — a column that looks broken rather than one that
       // is loading. It is a single 15 KB MAVFTP read, once per build.
-      (activeViewId !== 'parameters' && selectedParameterId === undefined) ||
+      // The Tuning ▸ Pilot cards mark values changed from the default too.
+      (activeViewId !== 'parameters' && activeViewId !== 'tuning' && selectedParameterId === undefined) ||
       parameterDefaults !== null ||
       autoFetchedDefaultsRef.current ||
       fetchDefaultsBusy ||
@@ -4091,8 +4653,8 @@ export function App() {
         changedCount: result.applied.length,
         text:
           rebootRequiredCount > 0
-            ? `${scopeLabel} changed reboot-sensitive settings. Request a reboot, then pull parameters again before continuing setup.`
-            : `${scopeLabel} changed live controller values. Auto-refreshing the parameter snapshot…`
+            ? `${scopeLabel} changed settings that need a reboot.`
+            : `${scopeLabel} written. Refreshing parameters…`
       })
       // Auto-refresh the parameter snapshot when no reboot is required —
       // the user previously had to click a separate Refresh button to
@@ -4145,8 +4707,8 @@ export function App() {
         refreshRequired: true,
         changedCount: 1,
         text: requiresReboot
-          ? 'This applied change is marked as reboot-required. Request a reboot, then pull parameters again before continuing guided setup.'
-          : 'Sync parameters again if you want a freshly confirmed post-write snapshot.'
+          ? 'This change needs a reboot.'
+          : 'Sync parameters to re-read what was written.'
       })
     } catch (error) {
       setParameterNotice({
@@ -4235,9 +4797,9 @@ export function App() {
         changedCount: result.applied.length,
         text:
           applyingRebootRequiredCount > 0
-            ? `${applyingRebootRequiredCount} applied change(s) are marked as reboot-required. Request a reboot, then refresh parameters before continuing setup.`
+            ? `${applyingRebootRequiredCount} of these changes need a reboot.`
             : resync.resync
-              ? 'The board’s parameter list changed — refreshing the snapshot…'
+              ? 'The parameter list changed. Refreshing…'
               : 'Parameter values written and verified.'
       })
       if (resync.resync) {
@@ -4376,8 +4938,24 @@ export function App() {
   // The write happens from the global draft bar's "Write all", the one verified,
   // readback-checked, rollback-on-failure path the whole app shares.
   function handleApplySelectedSnapshotRestore(): void {
+    stageSelectedSnapshotRestore()
+  }
+
+  /** Stage All, then write the staged set the moment the drafts have
+   *  settled (the effect on snapshotWriteAfterStage): one click for the
+   *  operator restoring their own snapshot on a fresh build. */
+  function handleStageAndWriteSelectedSnapshotRestore(): void {
+    const staged = stageSelectedSnapshotRestore()
+    if (staged && staged.length > 0) {
+      setSnapshotWriteAfterStage(new Set(staged))
+    }
+  }
+
+  /** Stage the selected snapshot's restore diff as drafts. Returns the staged
+   *  param ids, or undefined when nothing was staged. */
+  function stageSelectedSnapshotRestore(): string[] | undefined {
     if (!selectedSnapshot) {
-      return
+      return undefined
     }
 
     if (!snapshotRestoreAcknowledged) {
@@ -4385,13 +4963,15 @@ export function App() {
         tone: 'warning',
         text: 'Acknowledge the overwrite warning before staging a snapshot restore.'
       })
-      return
+      return undefined
     }
 
     // Force-invalid path: also stage the blocked (out-of-doc-range / outside-enum)
-    // raw values as drafts. They land as INVALID drafts the operator completes
-    // from the Parameters tab ("Override and write anyway") — same escape hatch
-    // the raw editor uses — instead of a snapshot-local force-write.
+    // raw values as drafts, AND override the documented range/enum for every
+    // row an override can rescue — the same "Override and write anyway" the
+    // raw editor offers, applied here. This is the operator's own snapshot and
+    // the box says it overrides; sending them to the Parameters tab to finish
+    // it (a tab a non-Expert cannot even see) was the field report.
     const forcedInvalidDraftValues: Record<string, string> = snapshotForceInvalid
       ? Object.fromEntries(
           selectedSnapshotInvalidEntries
@@ -4409,20 +4989,34 @@ export function App() {
         tone: 'neutral',
         text: `Snapshot "${selectedSnapshot.label}" already matches the live controller values.`
       })
-      return
+      return undefined
     }
 
     mergeDrafts(stagedValues)
+    const overriddenIds = snapshotForceInvalid
+      ? overridableInvalidParamIds(selectedSnapshotInvalidEntries, parameterEnumOverrides)
+      : []
+    if (overriddenIds.length > 0) {
+      setParameterEnumOverrides((current) => {
+        const next = new Set(current)
+        overriddenIds.forEach((paramId) => next.add(paramId))
+        return next
+      })
+    }
     setSnapshotRestoreAcknowledged(false)
     setSnapshotForceInvalid(false)
     setSnapshotNotice({
       tone: 'warning',
-      text: `Staged ${stagedCount} snapshot change(s) as drafts. Review and Write all from the draft bar to apply them.`
+      text:
+        overriddenIds.length > 0
+          ? `Staged ${stagedCount} snapshot change(s) as drafts, overriding the documented range for ${overriddenIds.length} of them. Review and Write all from the draft bar to apply them.`
+          : `Staged ${stagedCount} snapshot change(s) as drafts. Review and Write all from the draft bar to apply them.`
     })
     trackAppEvent('Snapshot Restore Staged', {
       changedCount: stagedCount,
       forcedCount: Object.keys(forcedInvalidDraftValues).length
     })
+    return Object.keys(stagedValues)
   }
 
   function handleStageSelectedPresetDiff(): void {
@@ -4580,8 +5174,8 @@ export function App() {
         changedCount: result.applied.length,
         text:
           rebootRequiredCount > 0
-            ? `${selectedPresetsLabel} changed reboot-sensitive settings. Request a reboot, then pull parameters again before flying.`
-            : `${selectedPresetsLabel} changed live tuning values. Sync parameters again if you want a clean post-write snapshot.`
+            ? `${selectedPresetsLabel} changed settings that need a reboot.`
+            : `${selectedPresetsLabel} written. Sync parameters to re-read the vehicle.`
       })
     } catch (error) {
       setPresetNotice({
@@ -4788,7 +5382,9 @@ export function App() {
     }
     setRcMappingAutoCaptureState({ accumulatedMs: 0 })
     setRcMappingSession(createRcMappingSessionState(snapshot))
-    clearSetupSectionConfirmation('radio')
+    // The sign-off is cleared when a capture actually lands (below), not when
+    // the exercise starts: "Run Guided Mapping Again" then walking away used
+    // to drop a valid review with no message.
   }
 
   function handleResetRcMappingExercise(): void {
@@ -5587,11 +6183,11 @@ export function App() {
   })
 
   // The active Tuning task is driven solely by the operator's selection,
-  // defaulting to 'rates'. It deliberately does NOT auto-switch to 'review' when
+  // defaulting to 'rates'. It deliberately does NOT auto-switch when
   // changes are staged: like every other parameter tab, edits stage in place and
-  // the operator moves to the Review task themselves when they are ready to write
-  // (staging a change used to yank the view straight to 'review' mid-edit).
-  const activeTuningTaskId = tuningTaskOverride ?? 'rates'
+  // the operator writes from the draft bar when they are ready
+  // (staging a change used to yank the view to a review task mid-edit).
+  const activeTuningTaskId = tuningTaskOverride ?? 'hover'
   // Staged starting-point values, for the task-card badge. Counted by id
   // membership rather than by re-running the calculation, so the badge does not
   // depend on what is currently typed into the form.
@@ -5605,10 +6201,6 @@ export function App() {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 4
   }, [snapshot.vehicle?.firmware])
 
-  const initialTuneStagedCount = useMemo(
-    () => Array.from(parameterDraftById.keys()).filter((id) => isInitialTuneParamId(id)).length,
-    [parameterDraftById]
-  )
   const tuningTaskCards = useMemo<TuningTaskCard[]>(
     () =>
       buildTuningTaskCards({
@@ -5632,14 +6224,9 @@ export function App() {
         profileInvalidCount: selectedTuningProfileInvalidEntries.length,
         profileChangedCount: selectedTuningProfileChangedEntries.length,
         savedProfileCount: savedTuningProfiles.length,
-        reviewInvalidCount: tuningInvalidDrafts.length,
-        reviewStagedCount: tuningStagedDrafts.length,
-        initialTuneStagedCount: initialTuneStagedCount,
-        isExpertMode: productMode === 'expert'
+        sfdAvailable: detectSfdFeatures(snapshot.parameters.map((parameter) => parameter.id))
       }),
     [
-      productMode,
-      initialTuneStagedCount,
       tuningFilterInvalidDrafts.length,
       tuningFilterStagedDrafts.length,
       tuningInvalidDrafts.length,
@@ -5652,7 +6239,8 @@ export function App() {
       copterAutotuneStagedDrafts.length,
       savedTuningProfiles.length,
       selectedTuningProfileChangedEntries.length,
-      selectedTuningProfileInvalidEntries.length
+      selectedTuningProfileInvalidEntries.length,
+      snapshot.parameters
     ]
   )
   // Leaving Expert mode while a gated task is open would otherwise leave the
@@ -5662,45 +6250,8 @@ export function App() {
   const activeTuningTask = tuningTaskCards.find((task) => task.id === activeTuningTaskId) ?? tuningTaskCards[0]
   const effectiveTuningTaskId = activeTuningTask?.id ?? activeTuningTaskId
 
-  const renderTuningControl = (parameter: ParameterState): ReactElement => {
-    const draft = parameterDraftById.get(parameter.id)
-    const { min, max, step } = tuningControlBounds(parameter)
-    const inputValue = tuningInputValue(parameter, editedValues)
-    const numericValue = tuningNumericValue(parameter, editedValues)
-    const currentValue = formatTuningDisplayValue(parameter, parameter.value)
-    const stagedValue = formatTuningDisplayValue(parameter, draft?.nextValue ?? parameter.value)
 
-    return (
-      <TuningControl
-        key={parameter.id}
-        parameter={parameter}
-        draftStatus={draft?.status}
-        draftReason={draft?.reason}
-        min={min}
-        max={max}
-        step={step}
-        inputValue={inputValue}
-        numericValue={numericValue}
-        currentValue={currentValue}
-        stagedValue={stagedValue}
-        label={parameter.definition?.label ?? parameter.id}
-        description={parameter.definition?.description}
-        onStage={handleStageTuningParameterValue}
-      />
-    )
-  }
 
-  /**
-   * Filter Editor control: the Tuning slider where a slider makes sense, the
-   * generic metadata editor where it does not.
-   *
-   * TuningControl is always a slider + number, which is right for a filter
-   * frequency and wrong for INS_HNTCH_MODE (an enum) or INS_HNTCH_OPTS (a
-   * bitmask) -- dragging a slider through mode values, or through a bitmask,
-   * produces states nobody meant to ask for. Those two fall through to the
-   * shared metadata renderer, which gives a named list and per-bit toggles.
-   * Both paths carry the same "i" bubble and wiki link.
-   */
   // The FILTn filter bank the rate loops point into. Derived from live values,
   // so a slot configured on the vehicle shows up here without anything being
   // hard-coded about how many exist.
@@ -5731,16 +6282,6 @@ export function App() {
       }))
   }, [filterBank, snapshot.parameters, metadataCatalog])
 
-  /** Every FILTn slot the vehicle reports, as parameter rows to render. */
-  const filterBankGroups = useMemo(() => {
-    const byId = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
-    return filterBank.slots.map((slot) => ({
-      slot,
-      parameters: filterSlotParamIds(slot.index)
-        .map((id) => byId.get(id))
-        .filter((parameter): parameter is ParameterState => parameter !== undefined)
-    }))
-  }, [filterBank, snapshot.parameters])
 
   // Live values for the filter helpers below the Filters grid. One map, built
   // once per parameter change, rather than one per helper per render.
@@ -5749,18 +6290,389 @@ export function App() {
     [snapshot.parameters]
   )
 
-  const renderFilterControl = (parameter: ParameterState): ReactNode => {
-    const definition = parameter.definition
-    const isChoice = definition?.bitmask === true || (definition?.options?.length ?? 0) > 0
-    // INS_HNTCH_REF and INS_HNTCH_FM_RAT are AP_Float ratios in 0..1, not
-    // frequencies: the values that matter are a measured hover thrust or
-    // exactly 1, and neither is something you find by dragging. They get the
-    // typed number field; the Hz filters keep the slider.
-    const isRatio = parameter.id === 'INS_HNTCH_REF' || parameter.id === 'INS_HNTCH_FM_RAT'
-    return isChoice || isRatio ? renderMetadataParameterField(parameter) : renderTuningControl(parameter)
-  }
 
-  const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
+
+  // Tuning ▸ Pilot: the stick-feel cards (views/PilotFeel). Each value is the
+  // tuning draft path's own text (ANGLE_MAX already in degrees), shown in the
+  // units of pilot-feel's PILOT_FEEL_DISPLAY (centi-unit params in m and deg),
+  // with the firmware default when the FC reported one (param.pck).
+  const pilotFeelParameter = (paramIds: readonly string[]): ParameterState | undefined =>
+    paramIds
+      .map((paramId) => snapshot.parameters.find((candidate) => candidate.id === paramId))
+      .find((candidate): candidate is ParameterState => candidate !== undefined)
+  const pilotFeelFor = (
+    parameter: ParameterState | undefined,
+    label: string,
+    options: { unit?: string; choices?: readonly NamedValue[]; tag?: string; alsoStage?: ParameterState } = {}
+  ): PilotFeelValue | undefined => {
+    if (!parameter) return undefined
+    const display = PILOT_FEEL_DISPLAY[parameter.id]
+    const raw = tuningInputValue(parameter, editedValues)
+    const text = display && display.scale !== 1 && raw.trim() !== '' ? String(toDisplay(parameter.id, Number(raw))) : raw
+    const { min, max } = tuningControlBounds(parameter)
+    const scale = display?.scale ?? 1
+    const zero = ZERO_MEANS[parameter.id]
+    const choices = options.choices ?? (zero ? [{ value: 0, label: zero }] : undefined)
+    const rawDefault = parameterDefaults?.get(parameter.id)
+    return {
+      paramId: parameter.id,
+      label,
+      tag: options.tag,
+      description: parameter.definition?.description,
+      unit: options.unit ?? display?.unit,
+      text,
+      defaultValue: rawDefault === undefined ? undefined : toDisplay(parameter.id, rawDefault),
+      choices,
+      draftStatus: parameterDraftById.get(parameter.id)?.status,
+      // Gains never go negative; the box's lower bound says so even where the
+      // metadata documents no minimum (draft validation refuses it too).
+      min: isNonNegativeGainParameterId(parameter.id)
+        ? Math.max(0, min === undefined ? 0 : min / scale)
+        : parameter.id === 'ANGLE_MAX' || min === undefined
+          ? min
+          : min / scale,
+      max: parameter.id === 'ANGLE_MAX' || max === undefined ? max : max / scale,
+      onChange: (next) => {
+        handleStageTuningParameterValue(parameter, fromDisplayText(parameter.id, next))
+        if (options.alsoStage) handleStageTuningParameterValue(options.alsoStage, fromDisplayText(options.alsoStage.id, next))
+      }
+    }
+  }
+  const pilotFeelValue = (
+    paramIds: readonly string[],
+    label: string,
+    options: { unit?: string; choices?: readonly NamedValue[] } = {}
+  ): PilotFeelValue | undefined => pilotFeelFor(pilotFeelParameter(paramIds), label, options)
+  // Roll and pitch accel limits share a box while they match (AutoTune sets
+  // them separately, so they often differ); then they split into two.
+  const rollAccelParameter = pilotFeelParameter(['ATC_ACC_R_MAX', 'ATC_ACCEL_R_MAX'])
+  const pitchAccelParameter = pilotFeelParameter(['ATC_ACC_P_MAX', 'ATC_ACCEL_P_MAX'])
+  const rollAccelText = rollAccelParameter ? tuningInputValue(rollAccelParameter, editedValues) : undefined
+  const pitchAccelText = pitchAccelParameter ? tuningInputValue(pitchAccelParameter, editedValues) : undefined
+  const rpAccel: PilotFeelValue[] =
+    rollAccelParameter && pitchAccelParameter && rollAccelText === pitchAccelText
+      ? [pilotFeelFor(rollAccelParameter, 'Roll / pitch accel limit', { alsoStage: pitchAccelParameter })!]
+      : [
+          pilotFeelFor(rollAccelParameter, 'Roll accel limit', { tag: 'Roll' }),
+          pilotFeelFor(pitchAccelParameter, 'Pitch accel limit', { tag: 'Pitch' })
+        ].filter((value): value is PilotFeelValue => value !== undefined)
+  // Tuning ▸ Pilot ▸ Alt Hold: the altitude controller AltHold flies with, and
+  // its accel gains checked against ArduPilot's hover-throttle rule. Values are
+  // draft-aware so staging a new hover throttle re-checks the gains at once.
+  const altHoldControllerParameters = TUNING_ALTHOLD_CONTROLLER_PARAM_IDS.map((paramId) =>
+    snapshot.parameters.find((parameter) => parameter.id === paramId)
+  ).filter((parameter): parameter is ParameterState => parameter !== undefined)
+  const altHoldValue = (paramId: string): number | undefined => {
+    const drafted = editedValues[paramId]
+    if (drafted !== undefined && drafted.trim() !== '' && Number.isFinite(Number(drafted))) return Number(drafted)
+    return snapshot.parameters.find((parameter) => parameter.id === paramId)?.value
+  }
+  const altHoldScheme: '4.7' | '4.6' = altHoldControllerParameters.some((parameter) => parameter.id === 'PSC_D_ACC_P') ? '4.7' : '4.6'
+  const altHoldPId = altHoldScheme === '4.7' ? 'PSC_D_ACC_P' : 'PSC_ACCZ_P'
+  const altHoldIId = altHoldScheme === '4.7' ? 'PSC_D_ACC_I' : 'PSC_ACCZ_I'
+  const altHoldHover = altHoldValue('MOT_THST_HOVER')
+  const altHoldCheck = altHoldGainCheck({
+    hover: altHoldHover,
+    hoverLearn: altHoldValue('MOT_HOVER_LEARN'),
+    accP: altHoldValue(altHoldPId),
+    accI: altHoldValue(altHoldIId),
+    scheme: altHoldScheme
+  })
+  const altHoldControllerSlot =
+    altHoldControllerParameters.length > 0 ? (
+      <div className="althold-controller" data-testid="althold-controller">
+        <div className="switch-exercise-card__header althold-controller__title">
+          <div>
+            <strong>Altitude controller</strong>
+          </div>
+        </div>
+        <p className="althold-gain-check__text">
+          Holds altitude in AltHold, Loiter and Auto. Set the hover throttle first; the accel gains depend on it.
+        </p>
+        <FeelGrid
+          testId="althold-controller-hover"
+          columns={['']}
+          rows={[
+            { label: 'Hover throttle', cells: [pilotFeelValue(['MOT_THST_HOVER'], 'Hover throttle')] },
+            {
+              label: 'Hover learning',
+              cells: [
+                pilotFeelValue(['MOT_HOVER_LEARN'], 'Hover learning', {
+                  choices: [
+                    { value: 0, label: 'Disabled' },
+                    { value: 1, label: 'Learn' },
+                    { value: 2, label: 'Learn and save' }
+                  ]
+                })
+              ]
+            }
+          ]}
+        />
+        <FeelGrid
+          testId="althold-controller-gains"
+          columns={['P', 'I']}
+          rows={[
+            { label: 'Position', cells: [pilotFeelValue(['PSC_D_POS_P', 'PSC_POSZ_P'], 'Position P'), undefined] },
+            {
+              label: 'Velocity',
+              cells: [pilotFeelValue(['PSC_D_VEL_P', 'PSC_VELZ_P'], 'Velocity P'), pilotFeelValue(['PSC_D_VEL_I', 'PSC_VELZ_I'], 'Velocity I')]
+            },
+            { label: 'Accel', cells: [pilotFeelValue([altHoldPId], 'Accel P'), pilotFeelValue([altHoldIId], 'Accel I')] },
+            { label: 'Accel I max', cells: [undefined, pilotFeelValue(['PSC_D_ACC_IMAX', 'PSC_ACCZ_IMAX'], 'Accel I max')] }
+          ]}
+        />
+        {/* The AltHold test flight (ArduPilot's initial tuning guide, and the
+            usual community procedure): learn the hover, then set the accel
+            gains from it; an up-down oscillation after that is the outer
+            loops. */}
+        <details className="calibration-card__howto" data-testid="althold-test-flight">
+          <summary>AltHold test flight</summary>
+          <ol>
+            <li>Set <code>MOT_HOVER_LEARN</code> to 2 (learn and save).</li>
+            <li>Take off in Stabilize to about 5 m, switch to AltHold, and hover for 30 s with the throttle stick centred.</li>
+            <li>Land and disarm. <code>MOT_THST_HOVER</code> now holds the learned hover.</li>
+            <li>Stage the accel gains from it with the button below.</li>
+            <li>
+              If AltHold still oscillates up and down, halve <code>{altHoldScheme === '4.7' ? 'PSC_D_POS_P' : 'PSC_POSZ_P'}</code> and{' '}
+              <code>{altHoldScheme === '4.7' ? 'PSC_D_VEL_P' : 'PSC_VELZ_P'}</code>.
+            </li>
+          </ol>
+          <p className="althold-gain-check__text">
+            Hover learning only runs while the climb rate asked for is exactly zero: stick centred, no bouncing.
+          </p>
+        </details>
+        {altHoldCheck && altHoldHover !== undefined ? (
+          <AltHoldGainCheckView
+            check={altHoldCheck}
+            pParamId={altHoldPId}
+            iParamId={altHoldIId}
+            hover={altHoldHover}
+            current={{ p: altHoldValue(altHoldPId) ?? 0, i: altHoldValue(altHoldIId) ?? 0 }}
+            canStage={snapshot.connection.kind === 'connected'}
+            onStage={() => {
+              setDraft(altHoldPId, String(altHoldCheck.recommendedP))
+              setDraft(altHoldIId, String(altHoldCheck.recommendedI))
+            }}
+          />
+        ) : null}
+      </div>
+    ) : null
+
+  // Tuning ▸ PID Gains (views/PidGains): Roll | Pitch | Yaw grid, same value
+  // shape and draft path as the Pilot cards.
+  const pidAxis = (ids: [string, string, string], name: string): [PilotFeelValue | undefined, PilotFeelValue | undefined, PilotFeelValue | undefined] => [
+    pilotFeelValue([ids[0]], `Roll ${name}`),
+    pilotFeelValue([ids[1]], `Pitch ${name}`),
+    pilotFeelValue([ids[2]], `Yaw ${name}`)
+  ]
+  const pidTerm = (suffix: string, name: string) =>
+    pidAxis([`ATC_RAT_RLL_${suffix}`, `ATC_RAT_PIT_${suffix}`, `ATC_RAT_YAW_${suffix}`], name)
+  const pidGainsSlot = (
+    <PidGainsView
+      linked={tuningRollPitchLinked}
+      onLinkedChange={tuningWorkbench.setTuningRollPitchLinked}
+      rows={{
+        angleP: pidAxis(['ATC_ANG_RLL_P', 'ATC_ANG_PIT_P', 'ATC_ANG_YAW_P'], 'angle P'),
+        p: pidTerm('P', 'rate P'),
+        i: pidTerm('I', 'rate I'),
+        d: pidTerm('D', 'rate D'),
+        ff: pidTerm('FF', 'feedforward')
+      }}
+      more={{
+        imax: pidTerm('IMAX', 'I max'),
+        dff: pidTerm('D_FF', 'D feedforward'),
+        pdmax: pidTerm('PDMX', 'P + D max'),
+        smax: pidTerm('SMAX', 'slew max')
+      }}
+      scale={{
+        values: [
+          { id: 'pi', label: 'P & I', value: tuningMasterPiGain, min: 0.7, max: 1.3, onChange: setTuningMasterPiGain },
+          { id: 'd', label: 'D', value: tuningMasterDGain, min: 0.7, max: 1.3, onChange: setTuningMasterDGain },
+          { id: 'ff', label: 'Feedforward', value: tuningMasterFeedforwardGain, min: 0.7, max: 1.3, onChange: setTuningMasterFeedforwardGain },
+          { id: 'pitch-ratio', label: 'Pitch vs roll', value: tuningMasterPitchRatio, min: 0.85, max: 1.15, onChange: setTuningMasterPitchRatio },
+          { id: 'filter', label: 'Filter frequencies', value: tuningMasterFilterStrength, min: 0.8, max: 1.2, onChange: setTuningMasterFilterStrength }
+        ],
+        preview: tuningMasterPreviewEntries.map((entry) => `${entry.label} ${formatParameterValue(entry.nextValue, entry.definition?.unit)}`),
+        canStage: !tuningMasterDefaultsActive && tuningMasterPreviewEntries.length > 0,
+        isNeutral: tuningMasterDefaultsActive,
+        onReset: handleResetTuningMasterSliders,
+        onStage: handleStageTuningMasterAdjustments
+      }}
+    />
+  )
+  // A value whose metadata names its values: an enum becomes the named list
+  // only, a bitmask one toggle per bit.
+  const metaFeelValue = (
+    parameter: ParameterState | undefined,
+    label: string,
+    options: { unit?: string; suggestion?: { label: string; text: string } } = {}
+  ): PilotFeelValue | undefined => {
+    const value = pilotFeelFor(parameter, label, { unit: options.unit })
+    if (!value || !parameter) return value
+    const definition = parameter.definition ?? metadataCatalog.parameters[parameter.id]
+    const named = definition?.options ?? []
+    if (definition?.bitmask && named.length > 0) {
+      return { ...value, bits: named.map((option) => ({ bit: option.value, label: option.label })) }
+    }
+    if (named.length > 0) {
+      return { ...value, selectOnly: true, choices: named.map((option) => ({ value: option.value, label: option.label })) }
+    }
+    return { ...value, suggestion: options.suggestion }
+  }
+  const byParamId = (paramId: string): ParameterState | undefined => snapshot.parameters.find((parameter) => parameter.id === paramId)
+  const notchEffective = (paramId: string): number | undefined => {
+    const drafted = editedValues[paramId]
+    if (drafted !== undefined && drafted.trim() !== '' && Number.isFinite(Number(drafted))) return Number(drafted)
+    return byParamId(paramId)?.value
+  }
+  const notchColumn = (prefix: 'INS_HNTCH' | 'INS_HNTC2') => {
+    const freq = notchEffective(`${prefix}_FREQ`)
+    const mode = notchEffective(`${prefix}_MODE`)
+    // ArduPilot's documented hints (view-models/filter-planner): bandwidth is
+    // half the frequency for throttle-mode tracking; the reference is 1 for
+    // RPM / ESC telemetry and the hover thrust for throttle mode.
+    const measured = mode !== undefined && [2, 3, 4, 5].includes(Math.round(mode))
+    const bw = freq !== undefined && !measured ? documentedNotchBandwidth(freq) : undefined
+    const ref = mode !== undefined ? documentedNotchRef(Math.round(mode), byParamId('MOT_THST_HOVER')?.value) : undefined
+    return {
+      enable: metaFeelValue(byParamId(`${prefix}_ENABLE`), 'Notch enabled'),
+      mode: metaFeelValue(byParamId(`${prefix}_MODE`), 'Notch tracking'),
+      ref: metaFeelValue(byParamId(`${prefix}_REF`), 'Notch reference', {
+        suggestion: ref !== undefined ? { label: `Use ${ref}`, text: String(ref) } : undefined
+      }),
+      freq: metaFeelValue(byParamId(`${prefix}_FREQ`), 'Notch frequency', { unit: 'Hz' }),
+      bw: metaFeelValue(byParamId(`${prefix}_BW`), 'Notch bandwidth', {
+        unit: 'Hz',
+        suggestion: bw !== undefined ? { label: `Use ${bw} (half the frequency)`, text: String(bw) } : undefined
+      }),
+      att: metaFeelValue(byParamId(`${prefix}_ATT`), 'Notch attenuation', { unit: 'dB' }),
+      fmRat: metaFeelValue(byParamId(`${prefix}_FM_RAT`), 'Notch min frequency ratio'),
+      harmonics: metaFeelValue(byParamId(`${prefix}_HMNCS`), 'Notch harmonics'),
+      options: metaFeelValue(byParamId(`${prefix}_OPTS`), 'Notch options'),
+      warning:
+        notchEffective(`${prefix}_ENABLE`) === 1 && notchEffective(`${prefix}_REF`) === 0 ? (
+          <span className="feel-readout feel-readout--warning" data-testid={`notch-ref-zero-${prefix}`}>
+            Reference 0 turns tracking off.
+          </span>
+        ) : null
+    }
+  }
+  const notch1 = notchColumn('INS_HNTCH')
+  const notch2 = notchColumn('INS_HNTC2')
+  const pair = <K extends keyof typeof notch1>(key: K) => [notch1[key], notch2[key]] as [PilotFeelValue | undefined, PilotFeelValue | undefined]
+  const routingFor = (kind: 'NTF' | 'NEF') =>
+    (['RLL', 'PIT', 'YAW'] as const).map((axis) =>
+      metaFeelValue(
+        filterIndexParameters?.find((parameter) => parameter.id === `ATC_RAT_${axis}_${kind}`),
+        `${axis === 'RLL' ? 'Roll' : axis === 'PIT' ? 'Pitch' : 'Yaw'} ${kind === 'NTF' ? 'target' : 'error'} filter`
+      )
+    )
+  const bankSlot = (index: number, suffix: string): ParameterState | undefined => byParamId(`FILT${index}_${suffix}`)
+  const notchesSlot = (
+    <NotchesView
+      notch={{
+        enable: pair('enable'),
+        mode: pair('mode'),
+        ref: pair('ref'),
+        freq: pair('freq'),
+        bw: pair('bw'),
+        att: pair('att'),
+        fmRat: pair('fmRat'),
+        harmonics: pair('harmonics'),
+        options: pair('options')
+      }}
+      notchFooter={[notch1.warning, notch2.warning]}
+      bank={
+        filterBank.supported
+          ? {
+              slots: filterBank.slots.map((slot) => ({ index: slot.index, summary: slot.summary })),
+              inUse: filterBank.configured.length,
+              type: filterBank.slots.map((slot) => {
+                const parameter = bankSlot(slot.index, 'TYPE')
+                const value = pilotFeelFor(parameter, `FILT${slot.index} type`)
+                // AP_Filter_params.cpp @Values: 0 Disable, 1 Notch Filter.
+                return value ? { ...value, selectOnly: true, choices: [{ value: 0, label: 'Off' }, { value: 1, label: 'Notch' }] } : undefined
+              }),
+              freq: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_FREQ'), `FILT${slot.index} frequency`, { unit: 'Hz' })),
+              q: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_Q'), `FILT${slot.index} Q`)),
+              att: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_ATT'), `FILT${slot.index} attenuation`, { unit: 'dB' })),
+              routing: { target: routingFor('NTF'), error: routingFor('NEF') }
+            }
+          : undefined
+      }
+    />
+  )
+  // Tuning ▸ Filters, the manual part: sensor filters, then the rate-loop
+  // filters as a Roll | Pitch | Yaw grid (all Hz).
+  const filterAxis = (suffix: 'FLTT' | 'FLTE' | 'FLTD', name: string) =>
+    (['RLL', 'PIT', 'YAW'] as const).map((axis) =>
+      pilotFeelValue([`ATC_RAT_${axis}_${suffix}`], `${axis === 'RLL' ? 'Roll' : axis === 'PIT' ? 'Pitch' : 'Yaw'} ${name}`, { unit: 'Hz' })
+    )
+  const filterManualSlot = (
+    <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
+      <div className="tuning-filter-manual__header">
+        <strong>Manual</strong>
+      </div>
+      <FeelGrid
+        testId="tuning-filter-group-sensor"
+        columns={['']}
+        rows={[
+          { label: 'Gyro filter', cells: [pilotFeelValue(['INS_GYRO_FILTER'], 'Gyro filter', { unit: 'Hz' })] },
+          { label: 'Accel filter', cells: [pilotFeelValue(['INS_ACCEL_FILTER'], 'Accel filter', { unit: 'Hz' })] }
+        ]}
+      />
+      <FeelGrid
+        testId="tuning-filter-axes"
+        columns={['Roll', 'Pitch', 'Yaw']}
+        rows={[
+          { label: 'Target filter', cells: filterAxis('FLTT', 'target filter') },
+          { label: 'Error filter', cells: filterAxis('FLTE', 'error filter') },
+          { label: 'D filter', cells: filterAxis('FLTD', 'D filter') }
+        ]}
+      />
+    </div>
+  )
+  const responseChoices = RESPONSE_TC_CHOICES
+  const rateResponseChoices: readonly NamedValue[] = [{ value: 0, label: 'Off' }, ...RESPONSE_TC_CHOICES]
+  const pilotFeelSlot = (
+    <PilotFeelView
+      angle={{
+        lean: pilotFeelValue(['ATC_ANGLE_MAX', 'ANGLE_MAX'], 'Max lean', { unit: 'deg' }),
+        inputTc: pilotFeelValue(['ATC_INPUT_TC'], 'Roll / pitch response', { unit: 's', choices: responseChoices }),
+        yawRate: pilotFeelValue(['PILOT_Y_RATE'], 'Yaw rate', { unit: 'deg/s' }),
+        yawExpo: pilotFeelValue(['PILOT_Y_EXPO'], 'Yaw expo', { choices: EXPO_CHOICES }),
+        yawRateTc: pilotFeelValue(['PILOT_Y_RATE_TC'], 'Yaw response', { unit: 's', choices: rateResponseChoices })
+      }}
+      acro={{
+        rpRate: pilotFeelValue(['ACRO_RP_RATE'], 'Acro roll / pitch rate', { unit: 'deg/s' }),
+        rpExpo: pilotFeelValue(['ACRO_RP_EXPO'], 'Acro roll / pitch expo', { choices: EXPO_CHOICES }),
+        rpRateTc: pilotFeelValue(['ACRO_RP_RATE_TC'], 'Acro roll / pitch response', { unit: 's', choices: rateResponseChoices }),
+        yRate: pilotFeelValue(['ACRO_Y_RATE'], 'Acro yaw rate', { unit: 'deg/s' }),
+        yExpo: pilotFeelValue(['ACRO_Y_EXPO'], 'Acro yaw expo', { choices: EXPO_CHOICES }),
+        yRateTc: pilotFeelValue(['ACRO_Y_RATE_TC'], 'Acro yaw response', { unit: 's', choices: rateResponseChoices }),
+        rpAccel,
+        yAccel: pilotFeelValue(['ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'], 'Yaw accel limit'),
+        trainer: metaFeelValue(byParamId('ACRO_TRAINER'), 'Acro trainer')
+      }}
+      altHold={{
+        climb: pilotFeelValue(['PILOT_SPD_UP', 'PILOT_SPEED_UP'], 'Max climb speed'),
+        descent: pilotFeelValue(['PILOT_SPD_DN', 'PILOT_SPEED_DN'], 'Max descent speed'),
+        accel: pilotFeelValue(['PILOT_ACC_Z', 'PILOT_ACCEL_Z'], 'Vertical accel'),
+        deadzone: pilotFeelValue(['THR_DZ'], 'Throttle deadzone', { unit: 'PWM' }),
+        throttleFilter: pilotFeelValue(['PILOT_THR_FILT'], 'Throttle filter', { unit: 'Hz' }),
+        takeoffAlt: pilotFeelValue(['PILOT_TKO_ALT_M', 'PILOT_TKOFF_ALT'], 'Takeoff altitude')
+      }}
+      loiter={{
+        speed: pilotFeelValue(['LOIT_SPEED_MS', 'LOIT_SPEED'], 'Loiter max speed'),
+        accel: pilotFeelValue(['LOIT_ACC_MAX_M', 'LOIT_ACC_MAX'], 'Loiter accel'),
+        maxLean: pilotFeelValue(['LOIT_ANG_MAX'], 'Loiter max lean', { unit: 'deg' }),
+        brakeAccel: pilotFeelValue(['LOIT_BRK_ACC_M', 'LOIT_BRK_ACCEL'], 'Loiter braking accel'),
+        brakeJerk: pilotFeelValue(['LOIT_BRK_JRK_M', 'LOIT_BRK_JERK'], 'Loiter braking jerk'),
+        brakeDelay: pilotFeelValue(['LOIT_BRK_DELAY'], 'Loiter brake delay', { unit: 's' })
+      }}
+      altHoldControllerSlot={altHoldControllerSlot}
+    />
+  )
 
   const currentMotorVerificationOutput =
     motorVerification.currentOutputChannel !== undefined
@@ -6047,10 +6959,14 @@ export function App() {
 
     return {
       title: parameterFollowUp.requiresReboot
-        ? 'Pending sidebar reboot before later setup steps unlock'
-        : 'Pending sidebar refresh before later setup steps unlock',
+        ? 'Reboot to unlock the next steps'
+        : 'Sync parameters to unlock the next steps',
       tone: parameterFollowUp.requiresReboot ? 'warning' : 'neutral',
-      text: `${parameterFollowUp.text} Use the header session strip to continue this setup session.`,
+      text: `${parameterFollowUp.text} ${
+        parameterFollowUp.requiresReboot
+          ? 'Press Reboot, then wait for the parameters to sync.'
+          : 'Press Sync Parameters on Status & Info.'
+      }`,
       actions: []
     }
   }, [parameterFollowUp])
@@ -6059,6 +6975,11 @@ export function App() {
     () =>
       buildSetupFlowSections({
         snapshot,
+        receiverDraftsPending: receiverHasPendingReview,
+        savedSnapshotCount: savedSnapshots.length,
+        maidenFlight: maidenFlight.result,
+        notchPlan: notchLog.plan,
+        autotuneFlight: loadAutotuneFlight(snapshot),
         rcDirectionResults,
         airframe,
         outputMapping,
@@ -6098,6 +7019,10 @@ export function App() {
         rcRangeExerciseSummary
       }),
     [
+    receiverHasPendingReview,
+    savedSnapshots.length,
+    maidenFlight.result,
+    notchLog.plan,
     airframe.frameClassValue,
     airframe.frameClassLabel,
     airframe.expectedMotorCount,
@@ -6159,7 +7084,6 @@ export function App() {
     guidedSetupComplete,
     guidedSetupHasExceptions,
     guidedSetupOutcomeSummary,
-    guidedSetupTaskAction,
     continueButtonTargeted,
     guidedSetupPrimaryAction,
     guidedSetupContextAction,
@@ -6173,6 +7097,11 @@ export function App() {
     motorVerificationStatus: motorVerification.status
   })
   const isExpertMode = productMode === 'expert'
+  // The mode on the document root, for the few pieces CSS gates on it (the
+  // raw "Value" entry under a bitmask chip group is Expert-only).
+  useEffect(() => {
+    document.documentElement.dataset.productMode = isExpertMode ? 'expert' : 'basic'
+  }, [isExpertMode])
   // Expert-only bootloader hash preview for the Flash tab's Update Bootloader
   // action. Reads nothing until the flasher arms the update and calls load().
   // Installed-vs-incoming bootloader comparison. Not Expert-gated: whether an
@@ -6307,16 +7236,6 @@ export function App() {
     handleRcMixerRemoveAssignment,
     handleRcMixerUpdateAssignment
   } = useRcMixer(snapshot)
-  // VTX band/frequency table (MAVFTP @VTX/vtxtable.dat). Detects lazily when the
-  // VTX view opens; when present the view shows the real editable table,
-  // otherwise the "Table not available" preview.
-  const vtxTable = useVtxTable({
-    runtime,
-    // Also load on the RC Mixer view so a VTX_POWER term's level selector can
-    // list the real @VTX power levels by mW.
-    active: (activeViewId === 'osd' && osdVtxTab === 'vtx') || activeViewId === 'rc-mixer',
-    connected: snapshot.connection.kind === 'connected'
-  })
   // NET_ENABLE is present on every networking-capable ArduPilot build (Ethernet
   // or PPP), so its presence is the reliable "this FC does networking" sentinel.
   const hasNetworkingParams = useMemo(
@@ -6595,48 +7514,6 @@ export function App() {
       }),
     [snapshot, editedValues]
   )
-  // Power slots stage as ordinary parameter drafts — same review + Apply as
-  // every other parameter, and no FTP upload involved.
-  const handleVtxPowerSlotChange = useCallback(
-    (index: number, value: number | 'pit' | undefined) => {
-      const paramId = VTX_POWER_TABLE_SLOT_PARAMS[index]
-      if (paramId === undefined) {
-        return
-      }
-      setDraft(
-        paramId,
-        String(
-          value === undefined
-            ? VTX_POWER_SLOT_UNUSED
-            : value === 'pit'
-              ? VTX_POWER_SLOT_PIT
-              : Math.max(0, Math.round(value))
-        )
-      )
-    },
-    [setDraft]
-  )
-  const handleVtxPowerEnabledChange = useCallback(
-    (enabled: boolean) => {
-      setDraft(VTX_POWER_TABLE_ENABLE_PARAM, enabled ? '1' : '0')
-    },
-    [setDraft]
-  )
-  const handleVtxPowerPreset = useCallback(
-    (presetId: string) => {
-      const preset = VTX_POWER_PRESETS.find((candidate) => candidate.id === presetId)
-      // An empty id clears the ladder — used by the Betaflight import before it
-      // stages the levels the snippet carried, so a shorter imported ladder
-      // cannot leave a stale slot behind.
-      const levels = preset ? vtxPowerPresetLevels(preset).map((level) => level.value) : []
-      // Turn the table on with it: staging six slots and leaving VTX_PWRTBL_EN
-      // at 0 writes a table the vehicle then ignores.
-      for (const write of vtxPowerTableWrites(levels, { enable: levels.length > 0 })) {
-        setDraft(write.paramId, String(write.value))
-      }
-    },
-    [setDraft]
-  )
   const rcMixerVtxPowerLevels = useMemo(
     () => (vtxPowerTable.supported ? deriveVtxPowerLevels(vtxPowerTable.slots, defaultVtxPowerLabel) : undefined),
     [vtxPowerTable]
@@ -6844,23 +7721,29 @@ export function App() {
   // from the expert-only DroneCAN Inspector tab.
   const canDeviceExpertActions = useMemo(
     () => ({
-      firmwareUpdate: snapshot.canBus.firmwareUpdate,
-      onRestartNode: (nodeId: number) => { void runtime?.restartCanBusNode(nodeId) },
+      firmwareUpdate: canBus.firmwareUpdate,
+      onRestartNode: (nodeId: number) => { void canBackend?.restartCanBusNode(nodeId) },
       onStartFirmwareUpdate: (nodeId: number, fileName: string, image: Uint8Array) => {
-        void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
+        void canBackend?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
       },
-      onCancelFirmwareUpdate: () => { runtime?.cancelCanBusNodeFirmwareUpdate() },
-      firmwareOnline: dronecanFirmwareOnline
+      onCancelFirmwareUpdate: () => { canBackend?.cancelCanBusNodeFirmwareUpdate() },
+      firmwareOnline: dronecanFirmwareOnline,
+      onChangeNodeId: (nodeId: number, newNodeId: number) => { void canBackend?.changeCanBusNodeId(nodeId, newNodeId) },
+      takenNodeIds: canBus.nodes.map((node) => node.nodeId),
+      onFlashBootloader: flashCanBootloader,
+      bootloaderFlash
     }),
-    [snapshot.canBus.firmwareUpdate, runtime, dronecanFirmwareOnline]
+    // flashCanBootloader closes over canBackend only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canBus.firmwareUpdate, canBus.nodes, canBackend, dronecanFirmwareOnline, bootloaderFlash]
   )
-  const visibleAppViews = useMemo(
+  const baseVisibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
         appViews,
         isExpertMode,
-        canBusStatus: snapshot.canBus.status,
-        canBusBus: snapshot.canBus.bus,
+        canBusStatus: canBus.status,
+        canBusBus: canBus.bus,
         connectionKind: snapshot.connection.kind,
         hasNetworkingParams,
         hasRcLogicParams,
@@ -6870,8 +7753,8 @@ export function App() {
     [
       appViews,
       isExpertMode,
-      snapshot.canBus.status,
-      snapshot.canBus.bus,
+      canBus.status,
+      canBus.bus,
       snapshot.connection.kind,
       hasNetworkingParams,
       hasRcLogicParams,
@@ -6879,7 +7762,107 @@ export function App() {
       hasSerialPassthrough
     ]
   )
+  // Find a setting (sections/FeatureSearch.tsx): every tab the app has,
+  // whatever the mode, plus the Config / Peripherals cards and the parameter
+  // catalog. The search itself applies the mode.
+  const allAppViews = useMemo(
+    () =>
+      buildVisibleAppViews({
+        appViews,
+        isExpertMode: true,
+        canBusStatus: canBus.status,
+        canBusBus: canBus.bus,
+        connectionKind: snapshot.connection.kind,
+        hasNetworkingParams,
+        hasRcLogicParams,
+        hasScriptingParams,
+        hasSerialPassthrough
+      }),
+    [appViews, canBus.status, canBus.bus, snapshot.connection.kind, hasNetworkingParams, hasRcLogicParams, hasScriptingParams, hasSerialPassthrough]
+  )
+  // The rail: the mode's tabs, plus any Expert-only tab revealed this session,
+  // in the canonical order (allAppViews is already sorted).
+  const visibleAppViews = useMemo(() => {
+    if (revealedViewIds.length === 0) return baseVisibleAppViews
+    return allAppViews.filter(
+      (view) => baseVisibleAppViews.some((shown) => shown.id === view.id) || revealedViewIds.includes(view.id)
+    )
+  }, [baseVisibleAppViews, allAppViews, revealedViewIds])
   const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
+  // The ids the vehicle reports, as one string: the search index rebuilds
+  // when the set changes, not on every value.
+  const reportedParameterIdsKey = useMemo(
+    () => snapshot.parameters.map((parameter) => parameter.id).join(','),
+    [snapshot.parameters]
+  )
+  const featureSearchIndex = useMemo(
+    () =>
+      buildFeatureSearchIndex({
+        views: allAppViews,
+        sections: [
+          ...configSections.map((section) => ({ ...section, viewId: 'config' as const })),
+          ...peripheralSections.map((section) => ({ ...section, viewId: 'peripherals' as const })),
+          ...FEATURE_SEARCH_INLINE_SECTIONS
+        ],
+        categoryLabels: Object.fromEntries(CONFIG_CATEGORIES.map((category) => [category.id, category.label])),
+        // Connected: only what this vehicle reports (a fork's parameters do
+        // not show up on a stock board, or in the demo). Before connecting,
+        // the catalog.
+        parameters:
+          reportedParameterIdsKey.length > 0
+            ? reportedParameterIdsKey
+                .split(',')
+                .flatMap((id) => (metadataCatalog.parameters[id] ? [metadataCatalog.parameters[id]] : []))
+            : Object.values(metadataCatalog.parameters),
+        parameterCategoryViews: Object.fromEntries(
+          Object.entries(metadataCatalog.categoryById).map(([id, definition]) => [id, definition.viewId])
+        )
+      }),
+    [allAppViews, configSections, peripheralSections, metadataCatalog, reportedParameterIdsKey]
+  )
+  // Peripherals ▸ Compass order (view-models/compass-order.ts). Its PRIO
+  // drafts apply from the card, not from the tab's Apply: they are not
+  // section fields, and they end in a reboot follow-up of their own.
+  const compassOrder = useMemo(
+    () => buildCompassOrder({ parameters: snapshot.parameters, editedValues }),
+    [snapshot.parameters, editedValues]
+  )
+  const compassOrderDrafts = useMemo(
+    () => selectViewDrafts(parameterDraftEntries, isCompassOrderParamId),
+    [parameterDraftEntries]
+  )
+  const openFeature = useCallback(
+    (entry: FeatureSearchResult) => {
+      // A result on an Expert-only tab, picked outside Expert: the result
+      // said it turns Expert mode on, so it does.
+      if (entry.needsExpert) setProductMode('expert')
+      if (entry.configCategory) {
+        if (entry.viewId === 'peripherals') {
+          setRequestedPeripheralsCategory(entry.configCategory)
+        } else {
+          setRequestedConfigCategory(entry.configCategory)
+        }
+        setRequestedCategoryNonce((nonce) => nonce + 1)
+      }
+      if (entry.viewId === 'parameters' && entry.paramId) {
+        setParameterSearch(entry.paramId)
+      }
+      setActiveViewId(entry.viewId)
+      if (entry.sectionId) {
+        const selector = `[data-testid="config-section-${entry.sectionId}"]`
+        const scroll = (attemptsLeft: number): void => {
+          const target = document.querySelector<HTMLElement>(selector)
+          if (!target) {
+            if (attemptsLeft > 0) requestAnimationFrame(() => scroll(attemptsLeft - 1))
+            return
+          }
+          target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        }
+        requestAnimationFrame(() => scroll(12))
+      }
+    },
+    [setParameterSearch, setProductMode]
+  )
   function formatCategoryLabel(categoryId: string | undefined): string {
     if (!categoryId) {
       return 'Uncategorized'
@@ -6890,12 +7873,42 @@ export function App() {
 
   // The Motor Setup sub-tab IS the reorder/direction panel (formerly a popout);
   // rendered inline (no lightbox chrome) straight into the tab body.
-  function renderMotorSetupReorderPanel(): ReactNode {
+  // "Want props out?" under the motor diagram it changes. Frame class and
+  // type themselves are edited in Setup ▸ Airframe & Powertrain; this only
+  // flips a quad X to Betaflight X Reversed (and back). Staged like any edit.
+  function renderPropsOutCheckbox(): ReactNode {
+    if (!frameTypeParameter) return null
+    const shown = (parameter: ParameterState | undefined): number | undefined => {
+      if (!parameter) return undefined
+      const edited = editedValues[parameter.id]
+      const editedNumber = edited !== undefined && edited !== '' ? Number(edited) : NaN
+      return Number.isFinite(editedNumber) ? editedNumber : parameter.value
+    }
+    const choice = propsOutChoice(shown(frameClassParameter), shown(frameTypeParameter))
+    if (!choice.offered) return null
+    return (
+      <label className="frame-props-out" data-testid="esc-frame-props-out">
+        <input
+          type="checkbox"
+          data-testid="esc-frame-props-out-checkbox"
+          checked={choice.checked}
+          onChange={(event) => setDraft(frameTypeParameter.id, String(propsOutFrameType(event.target.checked)))}
+        />
+        <span>
+          Want props out?
+          <small>Sets Betaflight X Reversed, which also numbers the motors in Betaflight order. Check motor order after applying.</small>
+        </span>
+      </label>
+    )
+  }
+
+  function renderMotorSetupReorderPanel(leftFooter?: ReactNode): ReactNode {
     return (
       <MotorReorderDialog
         inline
+        diagramFooter={renderPropsOutCheckbox()}
+        leftFooter={leftFooter}
         snapshot={snapshot}
-        airframe={airframe}
         busyAction={busyAction}
         editedValues={editedValues}
         motorDialogTab={motorDialogTab}
@@ -6983,52 +7996,6 @@ export function App() {
    * the two read and write the same parameters, so configuring modes from
    * either place is the same edit.
    */
-  function renderFlightModesFooter(): ReactNode {
-    return (
-        <ModesView
-          modeChannelLabel={configuredModeChannel !== undefined ? `CH${configuredModeChannel}` : 'Not configured'}
-          modeChannelParamName={snapshot.vehicle?.vehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH'}
-          // Editable here, not just named: which channel selects the flight
-          // mode is mode setup. Rover calls it MODE_CH.
-          modeChannelParameter={selectParameterById(
-            snapshot,
-            snapshot.vehicle?.vehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH'
-          )}
-          modeChannelRcLogicClaim={configuredModeChannel !== undefined ? rcLogicChannelClaims.get(configuredModeChannel) : undefined}
-          joystickModeNote={
-            snapshot.vehicle?.vehicle === 'ArduSub'
-              ? 'ArduSub selects modes via joystick button assignments (BTNn_FUNCTION), not an RC mode-switch channel — configure them in the Parameters view.'
-              : undefined
-          }
-          currentSlotLabel={modeSwitchEstimate.estimatedSlot !== undefined ? `Slot ${modeSwitchEstimate.estimatedSlot}` : 'Waiting'}
-          currentSlotSubtext={modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs live` : 'No live RC input.'}
-          activeModeLabel={snapshot.vehicle?.flightMode ?? 'Unknown'}
-          slots={MODES_SLOT_DEFINITIONS.map((slot) => {
-            const paramId = modeSlotParamId(snapshot.vehicle?.vehicle, slot.position)
-            const paramValue = readRoundedParameter(snapshot, paramId)
-            // Offer what the vehicle says it can fly, not just what the
-            // catalogue knows — otherwise a fork's custom mode cannot be
-            // assigned from this dropdown at all.
-            const parameter = withFlightModeOptions(
-              selectParameterById(snapshot, paramId),
-              snapshot.availableModes
-            )
-            return {
-              position: slot.position,
-              pwmLabel: slot.pwmLabel,
-              modeLabel: formatModeAssignment(paramValue, snapshot.vehicle?.vehicle, snapshot.availableModes),
-              paramSynced: paramValue !== undefined,
-              isActive: modeSwitchEstimate.estimatedSlot === slot.position,
-              parameter
-            }
-          })}
-          fiberModeAvailable={isFiberModeAvailable(snapshot)}
-          editedValues={editedValues}
-          draftStatusById={parameterDraftById}
-          onChangeSlot={(paramId, value) => setDraft(paramId, value)}
-        />
-    )
-  }
 
   // Config ▸ RC: the live link readout under the receiver settings, and the
   // receiver parameters no curated field covers. Both lived in the Receiver
@@ -7041,17 +8008,6 @@ export function App() {
       .filter((group) => group.parameters.length > 0)
     return (
       <>
-        <div className="config-pills" data-testid="config-receiver-link">
-          <span>RSSI source: {formatArducopterRssiType(readRoundedParameter(snapshot, 'RSSI_TYPE'))}</span>
-          <span>Live RX RSSI: {formatRxRssi(snapshot.liveVerification.rcInput.rssi)}</span>
-          {receiverLinkPorts.length > 0
-            ? receiverLinkPorts.map((port) => (
-                <span key={`receiver-link:${port.portNumber}`}>
-                  {port.label}: {port.protocolLabel}
-                </span>
-              ))
-            : <span>No receiver serial link in the current port roles</span>}
-        </div>
         {residueGroups.length === 0
           ? null
           : renderAdditionalSettingsCard(
@@ -7069,12 +8025,57 @@ export function App() {
     )
   }
 
+  // Setup ▸ Calibration. The bench calibrations (accelerometer, level,
+  // compass, thermal, battery, ESC) are setup steps, so they sit in Setup
+  // instead of a tab of their own.
+  function renderCalibrationSurface(): ReactNode {
+    return (
+        <CalibrationSection
+          embedded
+          onTcalWrite={(writes, description) => void handleTcalWrite(writes, description)}
+          snapshot={snapshot}
+          runtime={runtime}
+          busyAction={busyAction}
+          canApplyDraftParameters={canApplyDraftParameters}
+          airframe={airframe}
+          isCopterVehicle={isCopterVehicle}
+          uiParameterWriteOptions={UI_PARAMETER_WRITE_OPTIONS}
+          editedValues={editedValues}
+          calibrationNotices={calibrationNotices}
+          safetyAcks={safetyAcks}
+          setDraft={setDraft}
+          clearDraft={clearDraft}
+          setParameterNotice={setParameterNotice}
+          handleGuidedAction={handleGuidedAction}
+          handleCancelGuidedAction={handleCancelGuidedAction}
+        />
+    )
+  }
+
+  function renderPowerSectionBadge(): ReactNode {
+    const healthTone = batteryHealthTone(snapshot)
+    const staged = powerStagedDrafts.length
+    const invalid = powerInvalidDrafts.length
+    if (healthTone === 'success' && staged === 0 && invalid === 0) {
+      return null
+    }
+    return (
+      <span className="config-section__badges" data-testid="power-section-badge">
+        {invalid > 0 || staged > 0 ? (
+          <StatusBadge tone={toneForScopedDraftReview(staged, invalid)}>
+            {invalid > 0 ? `${invalid} invalid` : `${staged} staged`}
+          </StatusBadge>
+        ) : null}
+        {healthTone === 'success' ? null : (
+          <StatusBadge tone={healthTone}>{batteryHealthLabel(snapshot)}</StatusBadge>
+        )}
+      </span>
+    )
+  }
+
   function renderPowerSectionFooter(): ReactNode {
     return (
         <PowerView
-          isBatteryVerified={snapshot.liveVerification.batteryTelemetry.verified}
-          batteryHealthLabel={batteryHealthLabel(snapshot)}
-          batteryHealthTone={batteryHealthTone(snapshot)}
           parameterNotice={parameterNotice ? { tone: parameterNotice.tone, toneLabel: statusToneLabel(parameterNotice.tone), text: parameterNotice.text } : null}
           liveMetrics={{
             voltageText: formatVoltage(snapshot.liveVerification.batteryTelemetry.voltageV),
@@ -7100,87 +8101,121 @@ export function App() {
             setDraft(paramId, value)
           }
           draftStatusById={parameterDraftById}
-          scopedReviewStatusLabel={
-            powerInvalidDrafts.length > 0
-              ? `${powerInvalidDrafts.length} invalid`
-              : powerStagedDrafts.length > 0
-                ? `${powerStagedDrafts.length} staged`
-                : 'in sync'
-          }
-          scopedReviewTone={toneForScopedDraftReview(powerStagedDrafts.length, powerInvalidDrafts.length)}
-          draftItems={powerDraftEntries.map((draft): PowerDraftItem => ({
-            id: draft.id,
-            label: draft.label,
-            status: draft.status,
-            badgeTone: toneForParameterDraftStatus(draft.status),
-            summary: draft.status === 'staged'
-              ? `Current ${formatParameterDraftValue(draft.definition, draft.currentValue)} → New ${formatParameterDraftValue(draft.definition, draft.nextValue)}`
-              : draft.reason ?? 'Draft matches the live controller value.'
-          }))}
-          stagedCount={powerStagedDrafts.length}
-          draftCount={powerDraftEntries.length}
-          invalidCount={powerInvalidDrafts.length}
-          canApply={canApplyDraftParameters}
-          isApplying={busyAction === 'power:apply'}
-          isBusy={busyAction !== undefined}
-          onApply={() => void handleApplyScopedParameterDrafts(powerDraftEntries, 'power:apply', 'Power & failsafe')}
-          onDiscard={() => handleDiscardScopedParameterDrafts(powerDraftEntries.map((entry) => entry.id), 'power')}
           additionalSettingsSlot={renderAdditionalSettingsCard(
             'Additional battery settings',
-            'Metadata-backed battery-monitor knobs that extend this view. Failsafe-shaped knobs live exclusively on the Failsafe tab.',
+            // Said once, in the Battery card's "i"; failsafe knobs are on the
+            // Failsafe tab.
+            '',
             powerAdditionalGroups,
             powerAdditionalDraftEntries,
             powerAdditionalStagedDrafts,
             powerAdditionalInvalidDrafts,
             'power:additional',
             'Apply Additional Battery Changes',
-            'additional battery settings'
+            'additional battery settings',
+            undefined,
+            { actions: false }
           )}
         />
     )
   }
 
-  function renderEscDshotFooter(): ReactNode {
+  // The ESC card's per-output masks (bidirectional DShot, reverse): one small
+  // box per output the board has -- one per reported SERVOn_FUNCTION, motors
+  // tagged -- instead of the generic 32-output chip grid. Falls back to the
+  // generic editor when the vehicle reports no outputs, so neither mask is
+  // ever unreachable.
+  function renderEscDshotFieldEditors(): Record<string, ReactNode> {
+    const outputs = escMaskOutputs()
+    if (outputs.length === 0) {
+      return {}
+    }
+    const editors: Record<string, ReactNode> = {}
+    for (const [paramId, testIdPrefix] of [
+      ['SERVO_BLH_BDMASK', 'esc-bdshot-out'],
+      ['SERVO_BLH_RVMASK', 'esc-reverse-out']
+    ] as const) {
+      const parameter = configParametersById.get(paramId)
+      if (!parameter) continue
+      editors[paramId] = (
+        <OutputMaskField
+          parameter={parameter}
+          outputs={outputs}
+          editedValues={editedValues}
+          draftStatusById={parameterDraftById}
+          onChange={(id, value) => setDraft(id, value)}
+          testIdPrefix={testIdPrefix}
+          headerAction={paramId === 'SERVO_BLH_BDMASK' ? renderBdshotAction() : undefined}
+        />
+      )
+    }
+    return editors
+  }
+
+  function isEscDshotProtocol(): boolean {
     const motPwmType = Math.round(
       Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
     )
-    const isDShot = motPwmType >= 4 && motPwmType <= 7 // DShot150/300/600/1200
+    return motPwmType >= 4 && motPwmType <= 7 // DShot150/300/600/1200
+  }
+
+  // The one-click "enable bidirectional DShot" helper: stages it on outputs 1-4
+  // AND turns on BLHeli auto, since ArduPilot needs both. A small text button
+  // on the Bidirectional DShot field's title line, its explanation in the "i".
+  function renderBdshotAction(): ReactNode {
+    const isDShot = isEscDshotProtocol()
+    return (
+      <span className="esc-bdshot-action" data-testid="esc-dshot-footer">
+        <button
+          type="button"
+          className="text-action-button"
+          data-testid="esc-enable-bdshot"
+          disabled={!isDShot}
+          title={isDShot ? undefined : 'Pick a DShot protocol first.'}
+          onClick={() => {
+            setDraft('SERVO_BLH_BDMASK', '15')
+            setDraft('SERVO_BLH_AUTO', '1')
+          }}
+        >
+          Enable on outputs 1-4
+        </button>
+        <InfoDot label="About bidirectional DShot" testId="esc-bdshot-info" wide>
+          Stages bidirectional DShot on outputs 1-4 and turns BLHeli auto on. Selecting a DShot protocol does the
+          same. Most boards support it on the first 4 outputs only — some do 8 or more; check your FC before enabling
+          more.{isDShot ? '' : ' Pick a DShot protocol first.'}
+        </InfoDot>
+      </span>
+    )
+  }
+
+  // The ESC card's footer is only for what has no field to sit on: the
+  // firmware cannot do bidirectional DShot at all, or the vehicle reported no
+  // outputs (the mask then uses the generic editor, and the helper sits here).
+  function renderEscDshotFooter(): ReactNode {
     // BDShot is a compile-time / board feature: SERVO_BLH_BDMASK only exists in
     // the synced parameter tree when the firmware was built with it. Absent =>
     // this firmware/board can't do bidirectional DShot.
     const bdshotSupported = configParametersById.has('SERVO_BLH_BDMASK')
-    return (
-      <div className="esc-dshot-footer" data-testid="esc-dshot-footer">
-        {!bdshotSupported ? (
+    if (!bdshotSupported) {
+      return (
+        <div className="esc-dshot-footer" data-testid="esc-dshot-footer">
           <small className="esc-dshot-footer__warning" data-testid="esc-bdshot-unsupported">
             Your firmware build doesn’t support bidirectional DShot (no SERVO_BLH_BDMASK parameter). Flash a board/firmware
             built with BDShot to get RPM telemetry over the DShot signal wire.
           </small>
-        ) : (
-          <>
-            <button
-              type="button"
-              style={buttonStyle()}
-              data-testid="esc-enable-bdshot"
-              disabled={!isDShot}
-              title={isDShot ? undefined : 'Select a DShot ESC protocol first — bidirectional DShot requires DShot.'}
-              onClick={() => {
-                setDraft('SERVO_BLH_BDMASK', '15')
-                setDraft('SERVO_BLH_AUTO', '1')
-              }}
-            >
-              Enable bidirectional DShot (first 4 outputs)
-            </button>
-            <small>
-              {isDShot
-                ? 'Selecting a DShot protocol auto-stages bdshot on outputs 1-4 (BLHeli auto on). Most boards support bdshot on the first 4 outputs only — a few do 8; check your FC before enabling more.'
-                : 'Pick a DShot protocol above to enable bidirectional DShot (RPM telemetry).'}
-            </small>
-          </>
-        )}
-      </div>
-    )
+        </div>
+      )
+    }
+    if (escMaskOutputs().length > 0) {
+      return null
+    }
+    return <div className="esc-dshot-footer">{renderBdshotAction()}</div>
   }
+
+  function escMaskOutputs() {
+    return outputsFromServoFunctions(configParametersById.keys(), outputMapping.motorOutputs)
+  }
+
 
   function renderMetadataParameterField(parameter: ParameterState) {
     // Shared metadata-driven editor used across Power additional
@@ -7336,7 +8371,7 @@ export function App() {
 
   // Stage a Log-Tuning recommendation as a draft: the analyzer produces a raw
   // param id + numeric value, which goes into the shared editedValues draft set
-  // (the same one the Tuning Review tab and the global draft bar read), so it is
+  // (the same one the global draft bar reads), so it is
   // reviewed and written through the normal verified path — never auto-applied.
   function handleStageLogTuningParam(param: string, value: number): void {
     updateDrafts((existing) => ({ ...existing, [param]: String(value) }))
@@ -7377,8 +8412,8 @@ export function App() {
     }
 
     mergeDrafts(tuningMasterPreviewDraftValues)
-    // Stage in place — do not yank to the Review task. The success notice + the
-    // Review task's staged count confirm the batch; the operator opens Review
+    // Stage in place — do not yank the view. The success notice + the
+    // draft bar's staged count confirm the batch; the operator writes from there
     // when they are ready.
     setParameterNotice({
       tone: 'success',
@@ -7400,7 +8435,7 @@ export function App() {
     }
 
     mergeDrafts(selectedTuningProfileRestore.draftValues)
-    // Stage in place — do not yank to the Review task (the operator opens Review
+    // Stage in place — do not yank the view (the operator writes from the draft bar
     // themselves when ready). The success notice confirms the staged batch.
     setTuningProfileNotice({
       tone: 'success',
@@ -7422,10 +8457,12 @@ export function App() {
     applyActionId: string,
     applyLabel: string,
     discardScope: string,
-    renderField: (parameter: ParameterState) => ReactNode = renderMetadataParameterField
+    renderField: (parameter: ParameterState) => ReactNode = renderMetadataParameterField,
+    options: { actions?: boolean } = {}
   ): ReactNode {
     return (
       <AdditionalSettingsCard
+        showActions={options.actions ?? true}
         title={title}
         description={description}
         groups={groups}
@@ -7448,13 +8485,12 @@ export function App() {
       return
     }
 
-    if (
-      !selectedSetupSectionCandidate ||
-      (!guidedSetupTestingShortcutActive && selectedSetupSectionCandidate.sequenceState === 'locked')
-    ) {
+    // A locked step stays selected: it opens as a preview (the aside turns its
+    // actions off). Only a selection that no longer exists falls back.
+    if (!selectedSetupSectionCandidate) {
       setSelectedSetupSectionId(recommendedSetupSection.id)
     }
-  }, [guidedSetupTestingShortcutActive, recommendedSetupSection, selectedSetupSectionCandidate])
+  }, [recommendedSetupSection, selectedSetupSectionCandidate])
 
   // Keep the "flow active" flag (setupMode) synced to the tab. The Guided Setup
   // tab always shows the wizard, so mark the flow active when it's open — this
@@ -7462,13 +8498,32 @@ export function App() {
   // so the exercise-return effect still bounces them back after an RC/motor
   // exercise. The Status & Info tab is always the overview. setupMode is NOT
   // reset while on a detour view (receiver/motors), so the flow survives it.
+  //
+  // A fresh entry (the flow was NOT active: the nav button, not the return bar
+  // or openSetupWizard) that lands on an already-complete step follows the
+  // recommended one instead — the operator came to do the next thing, not to
+  // re-read a step they signed off last session.
+  //
+  // Step 1's "Open Vehicle Link" lands on Status & Info; scrollToPanel marks
+  // that a detour so the flow stays active and the return bar shows there too.
+  const setupLinkDetourRef = useRef(false)
   useEffect(() => {
     if (activeViewId === 'guided-setup' && setupMode !== 'wizard') {
       setSetupMode('wizard')
-    } else if (activeViewId === 'setup' && setupMode !== 'overview') {
+      if (
+        recommendedSetupSection &&
+        selectedSetupSectionCandidate?.status === 'complete' &&
+        selectedSetupSectionCandidate.id !== recommendedSetupSection.id
+      ) {
+        setSelectedSetupSectionId(recommendedSetupSection.id)
+      }
+    } else if (activeViewId === 'setup' && setupMode !== 'overview' && !setupLinkDetourRef.current) {
       setSetupMode('overview')
     }
-  }, [activeViewId, setupMode])
+    if (activeViewId !== 'setup') {
+      setupLinkDetourRef.current = false
+    }
+  }, [activeViewId, recommendedSetupSection, selectedSetupSectionCandidate, setupMode])
 
   // Auto-return to guided setup wizard when an exercise completes while on another page
   const exerciseReturnRef = useRef<{
@@ -7510,7 +8565,7 @@ export function App() {
     if (shouldReturnFromOrientation) {
       openSetupWizard(
         'airframe',
-        orientationExercise.status === 'passed' ? SETUP_WIZARD_PRIMARY_ACTION_ID : 'wizard-orientation-primary'
+        SETUP_WIZARD_PRIMARY_ACTION_ID
       )
       return
     }
@@ -7680,13 +8735,28 @@ export function App() {
     setDroppedPresetParamIds([])
   }, [selectedPresetDiffSignature])
 
+  // The role filters the RAIL, not where links may go. A link into a
+  // Maintainer tab from the Pilot rail (Status & Info -> Flash, Peripherals
+  // -> CAN, a calibration card's prerequisite) opens it and keeps it on the
+  // rail for the session. Developer tabs stay as Expert always was: hidden
+  // AND unreachable below Developer, so the role picker itself is the only
+  // way to Files or Guided Setup. Changing role clears the reveals and bounces off
+  // a tab the new rail does not carry.
+  const previousExpertModeRef = useRef(isExpertMode)
   useEffect(() => {
+    const modeChanged = previousExpertModeRef.current !== isExpertMode
+    previousExpertModeRef.current = isExpertMode
+    if (modeChanged) {
+      setRevealedViewIds([])
+    }
     if (isExpertMode || !isExpertOnlyView(activeViewId)) {
       return
     }
-
+    if (!modeChanged && revealedViewIds.includes(activeViewId)) {
+      return
+    }
     setActiveViewId('setup')
-  }, [activeViewId, isExpertMode])
+  }, [activeViewId, isExpertMode, revealedViewIds])
 
   // "Show changes" (global draft bar) switches to Parameters AND bumps this so
   // ParametersSection scrolls to the diff grid — a plain boolean can't refire
@@ -7745,9 +8815,10 @@ export function App() {
       // header offset and the paint-aware retry are consistent with every other
       // guided nav, instead of a bare scrollIntoView that races the heavy view.
       case 'mode-switch-exercise':
-        // Flight modes live under Config ▸ Flight Modes.
+        // Stay on the wizard: it is the surface that shows which position to
+        // move to next. The Config ▸ Flight Modes page it used to jump to has
+        // no exercise state at all, so the operator flipped the switch blind.
         handleStartModeSwitchExercise()
-        scrollToPanel('setup-panel-modes')
         return
       case 'rc-range-exercise':
         handleStartRcRangeExercise()
@@ -7791,7 +8862,7 @@ export function App() {
     {
       actionId: 'reboot-autopilot',
       title: 'Reboot',
-      copy: 'Use a controlled reboot after serial-role, board-orientation, or other reboot-sensitive changes before continuing setup.'
+      copy: 'Reboot after changing ports, board orientation or other settings that need one.'
     }
   ] as const
   const setupStatusEntries = snapshot.statusTexts
@@ -7844,8 +8915,8 @@ export function App() {
     copied: noticesCopied,
     onCopyAll: copyAllNotices,
     onClearAll: () => void runtime.clearStatusTexts(),
-    filterValue: productMode === 'expert' ? noticeFilter : undefined,
-    onFilterChange: productMode === 'expert' ? setNoticeFilter : undefined
+    filterValue: noticeFilter,
+    onFilterChange: setNoticeFilter
   }
   const setupHasGpsCard = gpsPeripheralViewModels.length > 0 || snapshot.liveVerification.globalPosition.verified
   // "Configured" means "the GPS chain is set up and working." Two routes:
@@ -7882,13 +8953,6 @@ export function App() {
         : transportMode === 'web-usb-serial'
           ? 'USB (WebUSB) transport'
           : `WebSocket · ${websocketUrl}`
-  const portVisibilitySummary = showAllSerialPorts
-    ? `Showing all ${serialPortViewModels.length} detected serial ports.`
-    : `Showing ${visibleSerialPortViewModels.length} active or edited port${visibleSerialPortViewModels.length === 1 ? '' : 's'} first${
-        hiddenSerialPortCount > 0
-          ? `, with ${hiddenSerialPortCount} unused slot${hiddenSerialPortCount === 1 ? '' : 's'} hidden.`
-          : '.'
-      }`
   const headerBatteryPercent = snapshot.liveVerification.batteryTelemetry.verified
     ? Math.max(8, Math.min(100, snapshot.liveVerification.batteryTelemetry.remainingPercent ?? 62))
     : 6
@@ -8062,13 +9126,11 @@ export function App() {
                 </>
               )}
             </div>
-            <p className="setup-gui-box__note">
-              {setupHasGpsCard
-                ? snapshot.liveVerification.globalPosition.verified
-                  ? 'Live GPS is arriving. Treat the map as a side check while the craft preview stays primary.'
-                  : 'A GPS driver is configured, but live position is not verified yet. Finish the port and GPS workflow, then return here.'
-                : 'No verified GPS source yet. That is acceptable for bench work, but guided modes should wait until GPS is configured.'}
-            </p>
+            {setupHasGpsCard && snapshot.liveVerification.globalPosition.verified ? null : (
+              <p className="setup-gui-box__note">
+                {setupHasGpsCard ? 'GPS configured; no verified position yet.' : 'No GPS configured.'}
+              </p>
+            )}
             {setupHasGpsCard ? (
               <div className="setup-gui-box__map">
                 <LiveGpsMapCard
@@ -8076,6 +9138,7 @@ export function App() {
                   title="GPS map"
                   subtitle="Side check"
                   compact
+                  readouts={false}
                   testId="setup-gps-map-widget"
                 />
               </div>
@@ -8156,6 +9219,7 @@ export function App() {
               variant="inline"
               testIdPrefix="setup-notices"
               entryTestIdPrefix="setup-notice"
+              foldInfo
               expanded={noticesExpanded}
               onToggleExpanded={toggleNoticesExpanded}
               poppedOut={noticesPopoutHandle !== undefined}
@@ -8299,6 +9363,8 @@ export function App() {
                 </div>
               }
             />
+            {/* Tidy Up / Reset Layout, once the page has been rearranged. */}
+            <StatusDashboardLayoutButtons />
           </div>
         </article>
       )
@@ -8318,11 +9384,11 @@ export function App() {
             <p className="setup-gui-box__note">
               {guidedSetupComplete
                 ? guidedSetupHasExceptions
-                  ? 'All steps were resolved, but there are deferred or skipped decisions to review before flight.'
-                  : 'All setup steps were verified. Use the task rail for refinement.'
-                : selectedSetupSection
-                  ? `Next recommended step: ${selectedSetupSection.title}.`
-                  : 'Start guided setup to move through the ArduPilot-specific checklist one step at a time.'}
+                  ? 'Every step is done. Look over the deferred and skipped ones before flying.'
+                  : 'Every step is verified.'
+                : recommendedSetupSection
+                  ? `Next recommended step: ${recommendedSetupSection.title}.`
+                  : 'Set the vehicle up one step at a time.'}
             </p>
             {guidedSetupComplete && guidedSetupOutcomeSummary ? (
               <p className="setup-gui-box__note">{guidedSetupOutcomeSummary}</p>
@@ -8516,6 +9582,15 @@ export function App() {
     </div>
   )
 
+  const configPageDrafts = unionDrafts(configDraftEntries, powerDraftEntries, powerAdditionalDraftEntries)
+  const peripheralPageDrafts = unionDrafts(
+    peripheralDraftEntries,
+    gpsAdditionalDraftEntries,
+    gimbalDraftEntries,
+    flowLidarDraftEntries,
+    relayDraftEntries
+  )
+
   return (
     <>
       {swUpdate.kind === 'available' ? (
@@ -8601,6 +9676,12 @@ export function App() {
           applyAllBusyLabel={applyAllBusyLabel}
           rebootPending={Boolean(parameterFollowUp?.requiresReboot)}
           onShowChanges={() => {
+            // Parameters is Expert-only; outside Expert the button would land
+            // nowhere (a bounce back to Status & Info looked like a dead
+            // button), so it reveals the tab for the session instead.
+            if (!isExpertMode) {
+              setRevealedViewIds((current) => (current.includes('parameters') ? current : [...current, 'parameters']))
+            }
             setActiveViewId('parameters')
             setShowChangesRequestId((n) => n + 1)
           }}
@@ -8615,6 +9696,7 @@ export function App() {
           visibleAppViews={visibleAppViews}
           activeViewId={activeViewId}
           onSelectView={setActiveViewId}
+          searchSlot={<FeatureSearch index={featureSearchIndex} isExpertMode={isExpertMode} onOpen={openFeature} />}
         />
 
         <div className="workspace-main">
@@ -8691,13 +9773,8 @@ export function App() {
               actionsSlot={
                 activeViewId === 'guided-setup' ? (
                   <div className="button-row">
-                    {selectedSetupSection ? (
-                      <StatusBadge tone={toneForSetup(selectedSetupSection.status)}>
-                        Step {selectedSetupSectionIndex + 1}/{setupFlowSections.length}
-                      </StatusBadge>
-                    ) : null}
                     <button style={buttonStyle()} onClick={closeSetupWizard}>
-                      Back to Setup
+                      Back to Status &amp; Info
                     </button>
                   </div>
                 ) : undefined
@@ -8730,55 +9807,13 @@ export function App() {
                      *  on a phone the page is one column and the default order
                      *  stands. */}
                     <StatusDashboardProvider controller={statusDashboard} cards={statusDashboardCards}>
-                    {/* The toolbar is only the Tidy/Reset pair now that the
-                     *  drag-and-drop instructions are gone, so it renders only
-                     *  once there is an arrangement to tidy or reset —
-                     *  otherwise it was an empty flex row still taking a gap. */}
-                    {statusDashboard.customisable && statusDashboard.customised ? (
-                      <div className="status-dash-toolbar" data-testid="status-dash-toolbar">
-                        {statusDashboard.customised ? (
-                          <>
-                            {/* Tidy is the way out of a mess that is not a full
-                             *  Reset: it drops the columns the operator emptied
-                             *  and evens up the widths, keeping the arrangement
-                             *  they actually built. */}
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid="status-dash-tidy-layout"
-                              onClick={statusDashboard.tidyLayout}
-                              title="Close up empty columns and even out the widths, keeping your arrangement"
-                            >
-                              Tidy Up
-                            </button>
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid="status-dash-reset-layout"
-                              onClick={statusDashboard.resetLayout}
-                              title="Put every Status card back where it shipped"
-                            >
-                              Reset Layout to Default
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
                     <div className="setup-bench__workspace">
                       <div className="setup-bench__viewer">
                         <div className="setup-bench__viewer-header">
                           <div className="setup-bench__viewer-titlebar">
                             <strong>Craft View</strong>
                           </div>
-                          <div className="config-pills">
-                            <span>{snapshot.vehicle?.flightMode ?? 'No mode'}</span>
-                            <span>{airframe.frameClassLabel}</span>
-                            <span>{snapshot.vehicle?.armed ? 'Armed' : 'Disarmed'}</span>
-                          </div>
                         </div>
-                        <p className="setup-bench__viewer-note">
-                          Level the aircraft on the desk, verify the model response, then continue into the deeper ArduPilot workflow.
-                        </p>
 
                         {/* No caption source line and no heading-reference
                          *  word here: the card is titled "Craft View" and the
@@ -8866,11 +9901,10 @@ export function App() {
                         <div className="setup-wizard__task-card" data-testid="plane-frame-config">
                           <div className="setup-wizard__task-header">
                             <div>
-                              <strong>Plane Frame Configuration</strong>
+                              <strong>Plane frame</strong>
                               <p>
-                                Set the QuadPlane / tailsitter geometry. Pure fixed-wing builds
-                                leave Q_ENABLE at 0; enable it for VTOL hybrids, then pick the lift-motor
-                                frame class and type.
+                                Fixed-wing only: leave Q_ENABLE at 0. QuadPlane or tailsitter: turn it on,
+                                then pick the lift-motor frame class and type.
                               </p>
                             </div>
                           </div>
@@ -8925,7 +9959,7 @@ export function App() {
                               <p>{orientationExerciseSummary}</p>
                             </div>
                             <StatusBadge tone={toneForModeSwitchExercise(orientationExercise.status)}>
-                              {orientationExercise.status}
+                              {formatExerciseStatus(orientationExercise.status)}
                             </StatusBadge>
                           </div>
 
@@ -8983,39 +10017,7 @@ export function App() {
                           </div>
 
                           <div className="setup-wizard__task-actions">
-                            <button
-                              className="setup-wizard__primary-button"
-                              data-testid="wizard-orientation-primary"
-                              style={buttonStyle(
-                                orientationExercise.status === 'running' ||
-                                  (!canRunOrientationExercise &&
-                                    orientationExercise.status !== 'failed' &&
-                                    orientationExercise.status !== 'passed')
-                                  ? 'secondary'
-                                  : 'hero'
-                              )}
-                              onClick={() =>
-                                handleSetupFlowAction(
-                                  guidedSetupTaskAction?.kind === 'orientation-exercise'
-                                    ? guidedSetupTaskAction
-                                    : { kind: 'orientation-exercise', label: 'Run Orientation Check' }
-                                )
-                              }
-                              disabled={
-                                orientationExercise.status === 'running' ||
-                                (!canRunOrientationExercise &&
-                                  orientationExercise.status !== 'failed' &&
-                                  orientationExercise.status !== 'passed')
-                              }
-                            >
-                              {orientationExercise.status === 'passed'
-                                ? 'Run Orientation Check Again'
-                                : orientationExercise.status === 'failed'
-                                  ? 'Retry Orientation Check'
-                                  : orientationExercise.status === 'running'
-                                    ? 'Orientation Check Running'
-                                    : 'Run Orientation Check'}
-                            </button>
+                            {/* The Run / Retry button is the aside's hero (setup-wizard-primary-action); it used to be repeated here. */}
                             <div className="setup-wizard__secondary-actions">
                               <button
                                 style={buttonStyle()}
@@ -9041,209 +10043,109 @@ export function App() {
                         </div>
                       ) : null}
 
-                      {selectedSetupSection.id === 'outputs' ? (
-                        <div
-                          className={`setup-wizard__task-card setup-wizard__task-card--motor setup-wizard__task-card--${
-                            motorVerification.status === 'passed'
-                              ? 'success'
-                              : motorVerification.status === 'failed'
-                                ? 'danger'
-                                : motorVerification.status === 'running'
-                                  ? 'warning'
-                                  : 'neutral'
-                          }`}
-                          data-testid="wizard-motor-task"
-                        >
-                          <div className="setup-wizard__task-header">
-                            <div>
-                              <strong>Motor Verification</strong>
-                              <p>{motorVerificationSummary}</p>
-                            </div>
-                            <StatusBadge tone={toneForModeSwitchExercise(motorVerification.status)}>
-                              {motorVerification.status}
-                            </StatusBadge>
-                          </div>
-
-                          <div className="setup-wizard__task-copy">
-                            <div className="config-pills">
-                              {outputMapping.motorOutputs.map((output) => {
-                                const verified = motorVerification.verifiedOutputs.includes(output.channelNumber)
-                                const targeted = motorVerification.currentOutputChannel === output.channelNumber
-                                return (
-                                  <span
-                                    key={output.paramId}
-                                    className={verified ? 'is-complete' : targeted ? 'is-target' : undefined}
-                                  >
-                                    OUT{output.channelNumber}
-                                    {output.motorNumber !== undefined ? ` / M${output.motorNumber}` : ''}
-                                  </span>
-                                )
-                              })}
-                            </div>
-
-                            {motorVerification.status === 'running' ? (
-                              <>
-                                <div className="setup-wizard__task-focus">
-                                  <span>Current target</span>
-                                  <strong>{currentMotorVerificationLabel ?? 'Select an output'}</strong>
-                                  <small>
-                                    {currentMotorTestSucceeded
-                                      ? 'Motor spin confirmed. If the correct motor spun in the correct direction, confirm it below.'
-                                      : 'Run the guarded motor test for the current target, then confirm the correct motor and direction.'}
-                                  </small>
-                                </div>
-
-                                <div className="setup-wizard__task-fields">
-                                  <label className="scoped-editor-field scoped-editor-field--compact">
-                                    <span>Throttle %</span>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      max={MAX_MOTOR_TEST_THROTTLE_PERCENT}
-                                      step={1}
-                                      value={motorTestThrottlePercent}
-                                      onChange={(event) => setMotorTestThrottlePercent(Number(event.target.value))}
-                                      disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                                    />
-                                  </label>
-                                  <label className="scoped-editor-field scoped-editor-field--compact">
-                                    <span>Duration (s)</span>
-                                    <input
-                                      type="number"
-                                      min={0.1}
-                                      max={MAX_MOTOR_TEST_DURATION_SECONDS}
-                                      step={0.1}
-                                      value={motorTestDurationSeconds}
-                                      onChange={(event) => setMotorTestDurationSeconds(Number(event.target.value))}
-                                      disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                                    />
-                                  </label>
-                                </div>
-
-                                <div className="motor-test-acknowledgments setup-wizard__task-acknowledgments">
-                                  {/* One acknowledgement. This step rendered three boxes —
-                                      props, area, and a USB-bench extra — for what is one
-                                      decision, and the Motors tab renders the same state as one
-                                      box; three here that tick together would read as a glitch. */}
-                                  <label data-testid="guided-motor-test-ack">
-                                    <input
-                                      type="checkbox"
-                                      checked={propsRemovedAcknowledged && testAreaAcknowledged && (!motorTestOverUsb || usbBenchAcknowledged)}
-                                      onChange={(event) => {
-                                        setPropsRemovedAcknowledged(event.target.checked)
-                                        setTestAreaAcknowledged(event.target.checked)
-                                        setUsbBenchAcknowledged(event.target.checked)
-                                      }}
-                                      disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                                    />
-                                    <span>Props are off, the vehicle is restrained, and the test area is clear.</span>
-                                  </label>
-                                </div>
-
-                                <ul className="output-note-list">
-                                  {guidedMotorTestGuardReasons.length > 0
-                                    ? guidedMotorTestGuardReasons.map((reason) => <li key={reason}>{reason}</li>)
-                                    : snapshot.motorTest.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}
-                                </ul>
-                              </>
-                            ) : (
-                              <p className="setup-wizard__task-note">
-                                Start the guided motor verification and the wizard will walk output-by-output through controlled bench testing.
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="switch-exercise-progress" aria-hidden="true">
-                            <div
-                              className="switch-exercise-progress__fill"
-                              style={{
-                                width: `${
-                                  motorVerification.targetOutputs.length > 0
-                                    ? (motorVerification.verifiedOutputs.length / motorVerification.targetOutputs.length) * 100
-                                    : 0
-                                }%`
-                              }}
-                            />
-                          </div>
-
-                          <div className="setup-wizard__task-actions">
-                            <button
-                              data-testid="wizard-motor-primary"
-                              className={`setup-wizard__primary-button${currentMotorTestSucceeded ? ' guided-action-pulse' : ''}`}
-                              style={buttonStyle(
-                                motorVerification.status === 'running'
-                                  ? currentMotorTestSucceeded
-                                    ? 'hero'
-                                    : canRunGuidedMotorTest
-                                      ? 'hero'
-                                      : 'secondary'
-                                  : canRunMotorVerification
-                                    ? 'hero'
-                                    : 'secondary'
-                              )}
-                              onClick={() => {
-                                if (motorVerification.status === 'running') {
-                                  if (currentMotorTestSucceeded) {
-                                    handleConfirmMotorVerification()
-                                    return
-                                  }
-                                  void handleRunCurrentMotorVerificationTest()
-                                  return
-                                }
-                                handleStartMotorVerification()
-                              }}
-                              disabled={
-                                motorVerification.status === 'running'
-                                  ? currentMotorTestSucceeded
-                                    ? false
-                                    : !canRunGuidedMotorTest
-                                  : !canRunMotorVerification
-                              }
-                            >
-                              {motorVerification.status === 'running'
-                                ? currentMotorTestSucceeded
-                                  ? `Confirm ${currentMotorVerificationLabel ?? 'Current Motor'}`
-                                  : busyAction === 'motor-test'
-                                    ? 'Running Targeted Motor Test…'
-                                    : `Run Motor Test for ${currentMotorVerificationLabel ?? 'Current Output'}`
-                                : motorVerification.status === 'passed'
-                                  ? 'Run Motor Verification Again'
-                                  : motorVerification.status === 'failed'
-                                    ? 'Retry Motor Verification'
-                                    : 'Start Motor Verification'}
-                            </button>
-                            <div className="setup-wizard__secondary-actions">
-                              <button
-                                style={buttonStyle()}
-                                onClick={handleResetMotorVerification}
-                                disabled={motorVerification.status === 'idle'}
-                              >
-                                Reset Verification
-                              </button>
-                              <button
-                                style={buttonStyle('secondary')}
-                                onClick={handleFailMotorVerification}
-                                disabled={motorVerification.status !== 'running'}
-                              >
-                                Mark Failed
-                              </button>
-                              <button
-                                style={buttonStyle()}
-                                onClick={() =>
-                                  scrollToPanel(
-                                    selectedSetupSection.panelId,
-                                    currentMotorTestSucceeded
-                                      ? OUTPUTS_MOTOR_CONFIRM_BUTTON_ID
-                                      : OUTPUTS_MOTOR_TEST_BUTTON_ID
-                                  )
-                                }
-                              >
-                                {currentMotorTestSucceeded
-                                  ? 'Open Confirm Motor Direction'
-                                  : 'Open Run Motor Test'}
-                              </button>
-                            </div>
-                          </div>
+                      {/* Copter only: the motor test behind this card translates
+                          motor numbers through FRAME_CLASS/FRAME_TYPE, which a
+                          QuadPlane does not have (its matrix is Q_FRAME_*), so on
+                          Plane the card offered a test that spins the wrong motor. */}
+                      {selectedSetupSection.id === 'outputs' && isCopterVehicle ? (
+                        <div className="setup-wizard__outputs setup-wizard__work" data-testid="wizard-outputs-task">
+                        <OutputsSection
+                          // Motors and Servos are the same component with a different prop, so
+                          // React reconciles them as one element: the DOM nodes, internal state
+                          // and measured sizes all carry across a tab switch instead of the tabs
+                          // swapping. Keying on the view makes it a real remount, so each tab
+                          // starts from its own clean state rather than mutating the other's.
+                          key="wizard-outputs"
+                          activeViewId="motors"
+                          // The step's work is the Motors tab's own ESC & Protocol and Motor
+                          // Setup, in that order: the protocol first, then order and direction.
+                          wizardTaskIds={['esc-protocol', 'motor-setup']}
+                          snapshot={snapshot}
+                          motorSetupSlot={renderMotorSetupReorderPanel}
+                          canApplyDraftParameters={canApplyDraftParameters}
+                          busyAction={busyAction}
+                          motorTestMaxDurationSeconds={EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS}
+                          editedValues={editedValues}
+                          parameterDraftById={parameterDraftById}
+                          motorOutputAssignments={motorOutputAssignments}
+                          outputAssignmentVisibility={outputAssignmentVisibility}
+                          motorTestConfig={motorTestConfig}
+                          motorManagement={motorManagement}
+                          safetyAcks={safetyAcks}
+                          derived={{
+                            airframe,
+                            outputMapping,
+                            escSetup,
+                            vehicleOutputSummary,
+                            motorPreviewNodes,
+                            motorPreviewCount,
+                            motorPreviewGeometryMode,
+                            motorPreviewFrameKnown,
+                            motorTestEligibility,
+                            isCopterVehicle,
+                            configuredOutputs,
+                            visibleDisabledOutputs,
+                            frameConfigEditable,
+                            frameClassParameter,
+                            frameTypeParameter,
+                            frameDraftEntries,
+                            frameStagedDrafts,
+                            frameInvalidDrafts,
+                            escReviewConfirmation,
+                            escReviewSummary,
+                            motorMixerSummary,
+                            motorDirectionSummary,
+                            currentMotorTestSucceeded,
+                            currentMotorVerificationLabel,
+                            selectedMotorTestOutputLabel,
+                            selectedMotorTestOutputMotorNumber,
+                            motorTestSliderTargets,
+                            motorTestGuardReasons,
+                            motorTestOverUsb,
+                            canRunMotorTest,
+                            canRunMotorVerification,
+                            outputReviewParameters,
+                            outputAssignmentParameters,
+                            showAllOutputAssignments,
+                            outputAssignmentReviewLabel,
+                            servoMappingRows,
+                            outputAssignmentDraftEntries,
+                            outputAssignmentStagedDrafts,
+                            outputAssignmentInvalidDrafts,
+                            outputReviewDraftEntries,
+                            outputReviewStagedDrafts,
+                            outputReviewInvalidDrafts,
+                            outputAdditionalGroups,
+                            outputAdditionalDraftEntries,
+                            outputAdditionalStagedDrafts,
+                            outputAdditionalInvalidDrafts,
+                            outputReviewDraftSummaries,
+                            outputPeripheralStagedDraftCount,
+                            outputPeripheralInvalidDraftCount,
+                            totalOutputStagedDrafts,
+                            totalOutputInvalidDrafts,
+                            outputHasPendingReview,
+                            outputTaskCards,
+                            activeOutputTaskId,
+                            activeOutputTask
+                          }}
+                          handlers={{
+                            handleApplyScopedParameterDrafts,
+                            handleDiscardScopedParameterDrafts,
+                            handleOpenMotorReorderDialog,
+                            handleRunMotorTest,
+                            handleStopMotorTest,
+                            handleStartMotorVerification,
+                            handleConfirmMotorVerification,
+                            handleFailMotorVerification,
+                            handleResetMotorVerification,
+                            renderMetadataParameterField,
+                            renderAdditionalSettingsCard,
+                            setDraft,
+                            setShowAllOutputAssignments,
+                            setOutputTaskOverride
+                          }}
+                        />
                         </div>
                       ) : null}
 
@@ -9257,6 +10159,90 @@ export function App() {
                         compassLocationSlot={
                           runtime ? <CalibrationLocationButton snapshot={snapshot} runtime={runtime} /> : undefined
                         }
+                        maidenFlightSlot={
+                          <MaidenFlightCard
+                            result={maidenFlight.result}
+                            logName={maidenFlight.logName}
+                            onResult={(result, logName) => setMaidenFlight({ result, logName })}
+                            onboardLogs={onboardLogs}
+                          />
+                        }
+                        hoverSlot={
+                          <>
+                            <HoverThrottleLearnCard
+                              snapshot={snapshot}
+                              canApplyDraftParameters={canApplyDraftParameters}
+                              busyAction={busyAction}
+                              setDraft={setDraft}
+                              editedValues={editedValues}
+                            />
+                            <ThrottleControllerCard
+                              snapshot={snapshot}
+                              hoverThrottle={readParameterValue(snapshot, 'MOT_THST_HOVER')}
+                              canApplyDraftParameters={canApplyDraftParameters}
+                              busyAction={busyAction}
+                              editedValues={editedValues}
+                              setDraft={setDraft}
+                            />
+                          </>
+                        }
+                        filtersSlot={
+                          <NotchFromLogCard
+                            plan={notchLog.plan}
+                            logName={notchLog.logName}
+                            setup={buildNotchSetupPlan({
+                              plan: notchLog.plan,
+                              liveEscTelemetry: snapshot.liveVerification.escTelemetry.escs.some((esc) => esc.rpm > 0),
+                              gyroFilterHz: readParameterValue(snapshot, 'INS_GYRO_FILTER'),
+                              hoverThrottle: readParameterValue(snapshot, 'MOT_THST_HOVER'),
+                              current: {
+                                enable: readRoundedParameter(snapshot, 'INS_HNTCH_ENABLE'),
+                                mode: readRoundedParameter(snapshot, 'INS_HNTCH_MODE'),
+                                ref: readParameterValue(snapshot, 'INS_HNTCH_REF'),
+                                freq: readParameterValue(snapshot, 'INS_HNTCH_FREQ'),
+                                bw: readParameterValue(snapshot, 'INS_HNTCH_BW'),
+                                harmonics: readRoundedParameter(snapshot, 'INS_HNTCH_HMNCS'),
+                                options: readRoundedParameter(snapshot, 'INS_HNTCH_OPTS')
+                              }
+                            })}
+                            onPlan={(plan, logName) => setNotchLog({ plan, logName })}
+                            onStage={(drafts) => updateDrafts((existing) => ({ ...existing, ...drafts }))}
+                            canApplyDraftParameters={canApplyDraftParameters}
+                            busyAction={busyAction}
+                            editedValues={editedValues}
+                            onboardLogs={onboardLogs}
+                          />
+                        }
+                        initialTuneSlot={
+                          isCopterVehicle ? (
+                            <InitialTuneView
+                              liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
+                              stagedIds={new Set(parameterDraftById.keys())}
+                              onStage={handleStageInitialTuneParameters}
+                              quadplane={false}
+                              firmwareMajor={initialTuneFirmwareMajor}
+                              hasAccelPMax={snapshot.parameters.some((parameter) => /_ACCEL_P_MAX$/.test(parameter.id))}
+                              hasAcroYawP={snapshot.parameters.some((parameter) => parameter.id === 'ACRO_YAW_P')}
+                            />
+                          ) : undefined
+                        }
+                        autotuneSlot={
+                          <>
+                            <AutotuneFlightCard
+                              snapshot={snapshot}
+                              canApplyDraftParameters={canApplyDraftParameters}
+                              busyAction={busyAction}
+                              setDraft={setDraft}
+                            />
+                            <AutotuneFinishCard
+                              snapshot={snapshot}
+                              canApplyDraftParameters={canApplyDraftParameters}
+                              busyAction={busyAction}
+                              editedValues={editedValues}
+                              setDraft={setDraft}
+                            />
+                          </>
+                        }
                       />
 
                       {['airframe', 'accelerometer', 'compass'].includes(selectedSetupSection.id) ? (
@@ -9267,7 +10253,7 @@ export function App() {
                           </summary>
                           {renderAdditionalSettingsCard(
                             'Advanced setup settings',
-                            'Board orientation, sensor, and related setup parameters stay attached to the guided flow when this step needs them.',
+                            'Board orientation, sensor and related parameters for this step.',
                             setupAdditionalGroups,
                             setupAdditionalDraftEntries,
                             setupAdditionalStagedDrafts,
@@ -9281,6 +10267,7 @@ export function App() {
                     </div>
 
                     <SetupWizardAside
+                      guidedSetupTestingShortcutActive={guidedSetupTestingShortcutActive}
                       selectedSetupSection={selectedSetupSection}
                       previousSetupSection={previousSetupSection}
                       nextSetupSection={nextSetupSection}
@@ -9289,8 +10276,15 @@ export function App() {
                       guidedSetupContextAction={guidedSetupContextAction}
                       guidedSetupContextHint={guidedSetupContextHint}
                       guidedSetupSupportActions={guidedSetupSupportActions}
+                      guidedSetupComplete={guidedSetupComplete}
+                      guidedSetupOutcomeSummary={guidedSetupOutcomeSummary}
                       onAction={handleSetupFlowAction}
                       onMove={moveSetupWizard}
+                      onClose={closeSetupWizard}
+                      onOpenCalibration={() => {
+                        setSetupMode('overview')
+                        setActiveViewId('calibration')
+                      }}
                     />
                   </div>
                 </div>
@@ -9310,7 +10304,6 @@ export function App() {
           serialPortViewModels={serialPortViewModels}
           visibleSerialPortViewModels={visibleSerialPortViewModels}
           canNodePeripheralViewModels={canNodePeripheralViewModels}
-          portVisibilitySummary={portVisibilitySummary}
           portsDraftEntries={portsDraftEntries}
           portsStagedDrafts={portsStagedDrafts}
           portsInvalidDrafts={portsInvalidDrafts}
@@ -9360,17 +10353,8 @@ export function App() {
             serialPortViewModels={serialPortViewModels}
             editedValues={editedValues}
             setDraft={setDraft}
-            parameterDraftEntries={parameterDraftEntries}
             parameterDraftById={parameterDraftById}
-            canApplyDraftParameters={canApplyDraftParameters}
             busyAction={busyAction}
-            onApplyScopedDrafts={handleApplyScopedParameterDrafts}
-            onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
-            vtxTable={vtxTable}
-            powerTable={vtxPowerTable}
-            onPowerSlotChange={handleVtxPowerSlotChange}
-            onPowerEnabledChange={handleVtxPowerEnabledChange}
-            onPowerPreset={handleVtxPowerPreset}
           />
         ) : null}
 
@@ -9468,6 +10452,7 @@ export function App() {
             renderAdditionalSettingsCard,
             setDraft,
             mergeDrafts,
+            setParameterEnumOverride: handleSetParameterEnumOverride,
             setReceiverTaskOverride,
             handleSetArmSwitchChannel
           }}
@@ -9526,14 +10511,10 @@ export function App() {
         key={activeViewId}
         activeViewId={activeViewId}
         snapshot={snapshot}
-        motorSetupSlot={renderMotorSetupReorderPanel()}
+        motorSetupSlot={renderMotorSetupReorderPanel}
         canApplyDraftParameters={canApplyDraftParameters}
         busyAction={busyAction}
-        motorTestMaxDurationSeconds={
-          productMode === 'expert'
-            ? EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS
-            : MAX_MOTOR_TEST_DURATION_SECONDS
-        }
+        motorTestMaxDurationSeconds={EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS}
         editedValues={editedValues}
         parameterDraftById={parameterDraftById}
         motorOutputAssignments={motorOutputAssignments}
@@ -9602,7 +10583,6 @@ export function App() {
           handleApplyScopedParameterDrafts,
           handleDiscardScopedParameterDrafts,
           handleOpenMotorReorderDialog,
-          isExpertMode,
           handleRunMotorTest,
           handleStopMotorTest,
           handleStartMotorVerification,
@@ -9649,7 +10629,6 @@ export function App() {
           busyAction={busyAction}
           canApplyDraftParameters={canApplyDraftParameters}
           parameterFollowUp={parameterFollowUp}
-          isExpertMode={isExpertMode}
           snapshotNotice={snapshotNotice}
           provisioningNotice={provisioningNotice}
           formatCategoryLabel={formatCategoryLabel}
@@ -9680,6 +10659,7 @@ export function App() {
           handlers={{
             handleApplySelectedProvisioningProfile,
             handleApplySelectedSnapshotRestore,
+            handleStageAndWriteSelectedSnapshotRestore,
             // Per-row Apply STAGES the single change as a draft (like the
             // Parameters tab) — the write happens from the global draft bar.
             handleApplySnapshotEntry: (entry) => {
@@ -9881,8 +10861,6 @@ export function App() {
       {activeViewId === 'tuning' && isCopterVehicle ? (
         <TuningCopterSection
           snapshot={snapshot}
-          canApplyDraftParameters={canApplyDraftParameters}
-          busyAction={busyAction}
           parameterNotice={parameterNotice}
           editedValues={editedValues}
           parameterDraftById={parameterDraftById}
@@ -9893,19 +10871,7 @@ export function App() {
             activeTuningTaskId: effectiveTuningTaskId,
             activeTuningTask,
             tuningTaskCards,
-            flightFeelParameters,
-            acroTuningParameters,
-            tuningAccelerationParameters,
-            altHoldPilotParameters,
-            loiterPilotParameters,
-            tuningPidAxisGroups,
-            tuningAdvancedPidParameters,
-            tuningAdvancedPidAxisGroups,
             tuningFilterParameters,
-            tuningFilterAxisGroups,
-            tuningNotchAxisGroups,
-            tuningMasterPreviewEntries,
-            tuningMasterDefaultsActive,
             tuningProfileSourceUsesStaged,
             canCreateTuningProfile,
             savedTuningProfiles,
@@ -9916,43 +10882,23 @@ export function App() {
             selectedTuningProfileDiffGroups,
             selectedTuningProfileChangedEntries,
             selectedTuningProfileInvalidEntries,
-            tuningDraftEntries,
-            tuningStagedDrafts,
-            tuningInvalidDrafts,
-            tuningRateStagedDrafts,
-            tuningRateInvalidDrafts,
-            tuningPidStagedDrafts,
-            tuningPidInvalidDrafts,
             tuningFilterStagedDrafts,
             tuningFilterInvalidDrafts,
             tuningProfileNotice,
             tuningProfileStorageNotice
           }}
           handlers={{
-            handleApplyScopedParameterDrafts,
-            handleDiscardScopedParameterDrafts,
-            handleStageTuningMasterAdjustments,
-            handleResetTuningMasterSliders,
             handleStageSelectedTuningProfile,
             handleCreateTuningProfile,
             handleDeleteSelectedTuningProfile,
             handleToggleSelectedTuningProfileProtection,
             setSelectedTuningProfileId,
-            renderTuningControl,
-          renderFilterControl,
             formatCategoryLabel
           }}
-          isExpertMode={isExpertMode}
-          filterBankSlot={
-            filterBank.supported ? (
-              <FilterBankPanel
-                bank={filterBank}
-                groups={filterBankGroups}
-                indexParameters={filterIndexParameters ?? []}
-                renderField={renderMetadataParameterField}
-              />
-            ) : undefined
-          }
+          pilotFeelSlot={pilotFeelSlot}
+          pidGainsSlot={pidGainsSlot}
+          notchesSlot={notchesSlot}
+          filterManualSlot={filterManualSlot}
           filterNotchSlot={
             <>
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as
@@ -9979,38 +10925,6 @@ export function App() {
               />
             </>
           }
-          /* The notch SUGGESTIONS (bandwidth from base frequency, a reference
-             that actually tracks) travel with the notch fields they fill in,
-             not with the gyro-cutoff panel they used to sit under. */
-          notchHelpSlot={
-            <FilterNotchHelp
-              liveValues={filterLiveValues}
-              editedValues={editedValues}
-              onSetDraft={setDraft}
-              disabled={busyAction !== undefined}
-            />
-          }
-          initialTuneSlot={
-            /* Starting-point tuning. Reads live values to show what each
-               parameter moves FROM, and stages through the shared draft set —
-               it has no write path of its own. */
-            <InitialTuneView
-              isExpertMode={isExpertMode}
-              liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
-              stagedIds={new Set(parameterDraftById.keys())}
-              onStage={handleStageInitialTuneParameters}
-              /* Always Copter here — this section only renders for
-                 isCopterVehicle, so the ATC_/MOT_ prefixes are the right ones.
-                 The builder still supports the QuadPlane Q_A_/Q_M_ prefixes
-                 (and is tested for them) so a Plane surface can reuse it
-                 without the logic being rewritten. */
-              quadplane={false}
-              firmwareMajor={initialTuneFirmwareMajor}
-              hasAccelPMax={snapshot.parameters.some((parameter) => /_ACCEL_P_MAX$/.test(parameter.id))}
-              hasAcroYawP={snapshot.parameters.some((parameter) => parameter.id === 'ACRO_YAW_P')}
-              disabled={busyAction !== undefined}
-            />
-          }
           logTuningSlot={
             /* Rendered inside the Tuning task body when the 'log-tuning' sub-tab
                is active. Self-contained: it owns the uploaded log + analysis, and
@@ -10018,6 +10932,8 @@ export function App() {
             <LogTuningView
               onStageParam={handleStageLogTuningParam}
               stagedParams={new Set(parameterDraftById.keys())}
+              onboardLogs={onboardLogs}
+              onOpenLogSetup={() => setActiveViewId('logs')}
             />
           }
           autotuneSlot={
@@ -10026,18 +10942,63 @@ export function App() {
                overview. Its own disjoint AUTOTUNE_* scoped-draft scope — applying
                here never touches the ATC_* tuning batch. Null on firmware with no
                AUTOTUNE_ params. */
-            <AutotuneCopterSection
+            <>
+              {/* The flight itself: pick axes, fly, come back and see which
+                  axes tuned. Moved here from Calibration ▸ Flight. */}
+              <AutotuneFlightCard
+                snapshot={snapshot}
+                canApplyDraftParameters={canApplyDraftParameters}
+                busyAction={busyAction}
+                setDraft={setDraft}
+              />
+              <AutotuneCopterSection
+                snapshot={snapshot}
+                editedValues={editedValues}
+                parameterDraftById={parameterDraftById}
+                setDraft={setDraft}
+              />
+            </>
+          }
+          hoverSlot={
+            <HoverCalibrationCards
               snapshot={snapshot}
               canApplyDraftParameters={canApplyDraftParameters}
               busyAction={busyAction}
-              editedValues={editedValues}
-              parameterDraftById={parameterDraftById}
-              copterAutotuneDraftEntries={copterAutotuneDraftEntries}
-              copterAutotuneStagedDrafts={copterAutotuneStagedDrafts}
-              copterAutotuneInvalidDrafts={copterAutotuneInvalidDrafts}
               setDraft={setDraft}
-              handleApplyScopedParameterDrafts={handleApplyScopedParameterDrafts}
-              handleDiscardScopedParameterDrafts={handleDiscardScopedParameterDrafts}
+              editedValues={editedValues}
+              onboardLogs={{
+                logs: onboardLogs.logs,
+                status: onboardLogs.status,
+                list: onboardLogs.list,
+                fetchBytes: onboardLogs.fetchBytes,
+                logNamesById: onboardLogs.logNamesById
+              }}
+            />
+          }
+          sfdSlot={
+            <SfdTuningCards
+              snapshot={snapshot}
+              canApplyDraftParameters={canApplyDraftParameters}
+              busyAction={busyAction}
+              setDraft={setDraft}
+              editedValues={editedValues}
+              onboardLogs={{
+                logs: onboardLogs.logs,
+                status: onboardLogs.status,
+                list: onboardLogs.list,
+                fetchBytes: onboardLogs.fetchBytes,
+                logNamesById: onboardLogs.logNamesById
+              }}
+              logServerLabel={
+                logUpload.session ? `${logUpload.session.username} at ${logUpload.session.serverUrl}` : undefined
+              }
+              parameterFor={(paramId) => {
+                const parameter = snapshot.parameters.find((candidate) => candidate.id === paramId)
+                return parameter
+                  ? { ...parameter, definition: metadataCatalog.parameters[paramId] ?? parameter.definition }
+                  : undefined
+              }}
+              draftStatusById={parameterDraftById}
             />
           }
         />
@@ -10142,7 +11103,7 @@ export function App() {
             onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
             onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
             onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
-            paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+            paramMetadata={dronecanParamMetadata}
             title="DroneNet peripherals"
           />
         }
@@ -10312,26 +11273,241 @@ export function App() {
 
       {activeViewId === 'can' ? (
       <CanBusView
-        state={snapshot.canBus}
+        state={canBus}
         vehicleConnected={snapshot.connection.kind === 'connected'}
         selfNodeIds={canSelfNodeIds}
         onStartForward={(bus) => { void runtime?.startCanBusForward(bus) }}
-        onStopForward={() => { void runtime?.stopCanBusForward() }}
-        onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
-        onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
-        onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
-        paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+        onStopForward={() => { void (canOnAdapter ? canAdapter.disconnect() : runtime?.stopCanBusForward()) }}
+        onRefreshNode={(nodeId) => { canBackend?.refreshCanBusNode(nodeId) }}
+        onFetchAllParameters={(nodeId) => { canBackend?.fetchAllCanBusParameters(nodeId) }}
+        onRebootNode={(nodeId) => { void canBackend?.restartCanBusNode(nodeId) }}
+        onApplyAndSave={(nodeId, writes) => { void canBackend?.applyAndSaveCanBusParameters(nodeId, writes) }}
+        paramMetadata={dronecanParamMetadata}
         enablement={canEnablement.needsEnable ? { triggerLabels: canEnablement.triggerLabels } : undefined}
         onEnableCanBus={runtime ? () => { void handleEnableCanBus() } : undefined}
         enableBusy={busyAction === 'can:enable'}
         // --- folded-in DroneCAN inspector (was a separate expert-only tab) ---
         framesPerSec={dronecanFramesPerSec}
-        escTelemetry={snapshot.canBus.escTelemetry}
+        escTelemetry={canBus.escTelemetry}
+        // A USB-CAN adapter as the bus: offered while nothing else is (an
+        // adapter and the autopilot's forwarding never run at once).
+        adapter={
+          canAdapter.supported && (canOnAdapter || snapshot.canBus.status === 'idle')
+            ? {
+                active: canOnAdapter,
+                opening: canAdapter.opening,
+                error: canAdapter.error,
+                bitrate: canAdapter.bitrate,
+                bitrates: SLCAN_BITRATES.map((entry) => entry.bitrate),
+                onBitrate: canAdapter.setBitrate,
+                onConnect: () => { void canAdapter.connect() }
+              }
+            : undefined
+        }
+        workspace={{
+          extraNodeIds: canExtraNodeIds,
+          // Node messages for the rail's scope (the bus, or the selected node).
+          nodeMessages: (scope) => (
+            <CanNodeMessagesView
+              model={buildCanNodeMessages(canNodeLogs, { nodeId: scope === 'bus' ? undefined : scope, filter: canLogFilter, showDebug: canLogDebug })}
+              scopeLabel={scope === 'bus' ? 'Every node on the bus' : `Node ${scope} only (choose All devices for the bus)`}
+              nodeLabel={canNodeLabel}
+              filter={canLogFilter}
+              onFilter={setCanLogFilter}
+              showDebug={canLogDebug}
+              onShowDebug={setCanLogDebug}
+              onClear={() => {
+                canBusMonitor.clearNodeLogs()
+                setCanLogsClearedAtMs(Date.now())
+              }}
+              hasEntries={canNodeLogs.length > 0}
+            />
+          ),
+          // Node ID allocation (it acts on the bus). The autopilot runs
+          // its own allocator on its buses, so this is offered on an adapter.
+          allocator:
+            canBus.status === 'active' ? (
+              <CanAllocatorView
+                state={canBus.allocator}
+                unavailableReason={
+                  canOnAdapter
+                    ? undefined
+                    : 'The autopilot hands out node IDs on its own buses. This is for a bench bus on a USB-CAN adapter.'
+                }
+                nodeAsking={canNodeAsking}
+                onToggle={canAllocationTable.toggle}
+                onForget={canAllocationTable.forget}
+                nodeLabel={canNodeLabel}
+              />
+            ) : undefined,
+          fleet:
+            canBus.nodes.length > 1 ? (
+              <CanFleetView
+                nodes={canBus.nodes}
+                selfNodeIds={canSelfNodeIds}
+                nodeLabel={(nodeId) => {
+                  const name = canNodeLabel(nodeId)
+                  return name ? `${name} (${nodeId})` : `Node ${nodeId}`
+                }}
+                paramMetadata={dronecanParamMetadata}
+                blockedReason={
+                  snapshot.vehicle?.armed && snapshot.connection.kind === 'connected'
+                    ? 'Disarm the vehicle first.'
+                    : canBus.status !== 'active'
+                      ? 'Connect to the bus first.'
+                      : undefined
+                }
+                paramResults={canFleet.paramResults}
+                onApplyParam={(name, writes) => { void canFleet.applyParam(name, writes) }}
+                firmware={{
+                  steps: canFleet.firmwareSteps,
+                  running: canFleet.firmwareRunning,
+                  current: canBus.firmwareUpdate,
+                  onStart: canFleet.startFirmware,
+                  onCancel: canFleet.cancelFirmware,
+                  onClear: canFleet.clearFirmware
+                }}
+              />
+            ) : undefined,
+          // An opened log feeds Messages, Frames and Plot alike; say so above
+          // every sub-tab, with the way back.
+          notice:
+            canBusMonitor.openedLog ? (
+              <div className="can-log-notice" data-testid="can-log-notice">
+                <span>
+                  Showing the log <strong>{canBusMonitor.openedLog.name}</strong> in Messages, Frames and Plot.
+                </span>
+                <button type="button" style={buttonStyle()} onClick={canBusMonitor.closeLog}>
+                  Back to live
+                </button>
+              </div>
+            ) : undefined,
+          // Sub-tabs for everyone (operator call: the layout is clear enough
+          // not to hide them).
+          pages: {
+                page: effectiveCanSubTab,
+                onPage: setCanSubTab,
+                // Devices (see nodes, set their parameters) for everyone; the
+                // bus tools are Expert-only.
+                allowed: canExpertTools ? undefined : ['devices'],
+                messages: (
+                  <CanMessagesPage
+                    topics={canBusMonitor.topics()}
+                    nodes={canMessageNodes}
+                    nodeLabel={canNodeLabel}
+                    live={canBus.status === 'active' || canBusMonitor.openedLog !== undefined}
+                    onShowFrames={(topic) => {
+                      canBusMonitor.showTopicFrames(topic)
+                      setCanSubTab('frames')
+                    }}
+                    onPlotField={plotCanField}
+                    isPlotted={isCanFieldPlotted}
+                    onUnplotField={unplotCanField}
+                  />
+                ),
+                frames: (
+                  <CanBusMonitorView
+                    monitor={canBusMonitor}
+                    live={canBus.status === 'active'}
+                    layout="page"
+                  />
+                ),
+                plot: (
+                  <CanPlotView
+                    series={canBusMonitor.plotSeries}
+                    samplesFor={canBusMonitor.plotSamplesFor}
+                    nowMs={canBusMonitor.plotNowMs}
+                    onRemove={canBusMonitor.removePlotSeries}
+                    onClear={canBusMonitor.clearPlotSeries}
+                    onAddBytes={(label, source) => canBusMonitor.addPlotSeries(label, source)}
+                    onPickFields={() => setCanSubTab('messages')}
+                    topics={canBusMonitor.topics()}
+                    nodeLabel={canNodeLabel}
+                    onPlotField={plotCanField}
+                    isPlotted={isCanFieldPlotted}
+                    onUnplotField={unplotCanField}
+                    onAddSeries={canBusMonitor.addPlotSeries}
+                    paneOf={canBusMonitor.plotPaneOf}
+                    paneHeights={canBusMonitor.plotPaneHeights}
+                    onMoveSeries={canBusMonitor.movePlotSeries}
+                    onPaneHeight={canBusMonitor.setPlotPaneHeight}
+                    nodeLogs={canNodeLogs}
+                  />
+                ),
+                esc: (() => {
+                  const shared = canActuatorShared('esc')
+                  return (
+                    <CanEscToolView
+                      {...shared}
+                      count={canActuatorTest.escCount}
+                      onCount={canActuatorTest.setEscCount}
+                      percents={canActuatorTest.escPercents}
+                      onPercent={canActuatorTest.setEscPercent}
+                      onAll={canActuatorTest.setAllEscPercent}
+                      limitPct={canActuatorTest.escLimitPct}
+                      onLimit={canActuatorTest.setEscLimitPct}
+                      telemetry={buildDronecanEscRows(canBus.escTelemetry)}
+                    />
+                  )
+                })(),
+                servo: (
+                  <CanServoToolView
+                    {...canActuatorShared('servo')}
+                    type={canActuatorTest.servoType}
+                    onType={canActuatorTest.setServoType}
+                    channels={canActuatorTest.servoChannels}
+                    onValue={canActuatorTest.setServoValue}
+                    onActuatorId={canActuatorTest.setServoActuatorId}
+                    onAdd={canActuatorTest.addServo}
+                    onRemove={canActuatorTest.removeServo}
+                    onCenter={canActuatorTest.centerServos}
+                    positions={canActuatorPositions()}
+                  />
+                ),
+                send: (
+                  <CanSendView
+                    catalogue={dronecanCatalogue()}
+                    sourceNodeId={GCS_DRONECAN_NODE_ID}
+                    busLabel={
+                      canBus.status !== 'active'
+                        ? undefined
+                        : canOnAdapter
+                          ? 'the USB-CAN adapter'
+                          : canBus.bus !== undefined
+                            ? `CAN${canBus.bus}`
+                            : undefined
+                    }
+                    blockedReason={
+                      snapshot.vehicle?.armed && snapshot.connection.kind === 'connected'
+                        ? 'Disarm the vehicle to send.'
+                        : canBus.status === 'active'
+                          ? undefined
+                          : canAdapter.supported
+                            ? 'Connect to the bus, or a USB-CAN adapter, on Devices to send.'
+                            : 'Connect to the bus on Devices to send.'
+                    }
+                    nodes={canMessageNodes}
+                    nodeLabel={canNodeLabel}
+                    history={canSender.history}
+                    repeatingId={canSender.repeatingId}
+                    onSend={(job) => { void canSender.send(job) }}
+                    onStartRepeat={canSender.startRepeat}
+                    onStopRepeat={() => canSender.stopRepeat('Stopped.')}
+                    onClearHistory={canSender.clearHistory}
+                    motionAcknowledged={propsRemovedAcknowledged && testAreaAcknowledged}
+                    onMotionAcknowledged={(value) => {
+                      setPropsRemovedAcknowledged(value)
+                      setTestAreaAcknowledged(value)
+                    }}
+                  />
+                )
+              }
+        }}
         busy={busyAction !== undefined}
         // Restart + firmware update were expert-gated by living in the expert-only
         // inspector tab; the CAN tab is always visible, so the gate moves here
         // rather than being lost in the merge.
-        expertActions={isExpertMode ? canDeviceExpertActions : undefined}
+        expertActions={canDeviceExpertActions}
         popout={{
           openNodeIds: canDevicePopouts.openNodeIds,
           onOpen: (nodeId, label) => canDevicePopouts.openDevice(nodeId, label),
@@ -10449,7 +11625,9 @@ export function App() {
               : undefined
           }
           firmwareIndex={relayFirmwareSource}
+          dfuFirmwareIndex={relayHexFirmwareSource}
           connectedBoard={flashConnectedBoard}
+          betaflightTargetName={betaflightMsp.identity?.targetName}
         />
       ) : null}
 
@@ -10527,6 +11705,42 @@ export function App() {
           onRemovePlot={removeMavlinkInspectorPlot}
           onExportPlotCsv={exportMavlinkInspectorPlotCsv}
           maxPlots={MAX_MAVLINK_PLOTS}
+          plotCount={mavlinkInspectorPlots.length + mavlinkPlotWorkspace.open.reduce((total, graph) => total + graph.series.length, 0)}
+          plotWorkspace={
+            <MavlinkPlotWorkspace
+              stats={mavlinkInspectorStats}
+              plots={mavlinkInspectorPlots}
+              maxPlots={MAX_MAVLINK_PLOTS}
+              onAddPlot={addMavlinkInspectorPlot}
+              onRemovePlot={removeMavlinkInspectorPlot}
+              onExportPlotCsv={exportMavlinkInspectorPlotCsv}
+              graphs={mavlinkPlotWorkspace.graphs}
+              openGraphs={mavlinkPlotWorkspace.open}
+              maxGraphs={MAX_LIVE_GRAPHS}
+              onOpenGraph={mavlinkPlotWorkspace.openGraph}
+              onOpenExpression={mavlinkPlotWorkspace.openExpression}
+              canRequest={
+                runtime && snapshot.connection.kind === 'connected'
+                  ? (name) => mavlinkPlotWorkspace.messageIdOf(name) !== undefined
+                  : undefined
+              }
+              onRequestMessages={(names) => {
+                for (const name of names) {
+                  const id = mavlinkPlotWorkspace.messageIdOf(name)
+                  if (id !== undefined) void runtime?.requestMessageInterval(id, intervalUsForRate(4))
+                }
+              }}
+              onCloseGraph={mavlinkPlotWorkspace.closeGraph}
+              paneOf={mavlinkPlotWorkspace.paneOf}
+              paneHeights={mavlinkPlotWorkspace.paneHeights}
+              onMoveSeries={mavlinkPlotWorkspace.moveSeries}
+              onPaneHeight={mavlinkPlotWorkspace.setPaneHeight}
+              bufferSeconds={LIVE_GRAPH_WINDOW_S}
+              modeSpans={mavlinkPlotWorkspace.modeSpans}
+              paramChanges={mavlinkPlotWorkspace.paramChanges}
+              statusTexts={snapshot.statusTexts}
+            />
+          }
         />
       ) : null}
 
@@ -10538,28 +11752,29 @@ export function App() {
           service owns the MAV_CMD_CAN_FORWARD keep-alive for as long as the bus
           is connected. */}
       {canDevicePopouts.windows.map(({ nodeId, handle }) => {
-        const node = snapshot.canBus.nodes.find((entry) => entry.nodeId === nodeId)
+        const node = canBus.nodes.find((entry) => entry.nodeId === nodeId)
         return createPortal(
           node ? (
             <CanDeviceInspectorView
               node={node}
               isSelf={canSelfNodeIds.includes(nodeId)}
-              paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+              paramMetadata={dronecanParamMetadata}
               draftValues={canDevicePopouts.draftValues}
               onDraftChange={canDevicePopouts.setDraft}
               onDropDraft={canDevicePopouts.dropDraft}
               onDropAllDrafts={canDevicePopouts.dropAllDrafts}
               onApplyAndSave={(id, writes) => {
-                void runtime?.applyAndSaveCanBusParameters(id, writes)
+                void canBackend?.applyAndSaveCanBusParameters(id, writes)
                 canDevicePopouts.dropDrafts(id, writes.map((write) => write.name))
               }}
-              onRefreshNode={(id) => { runtime?.refreshCanBusNode(id) }}
-              onFetchAllParameters={(id) => { runtime?.fetchAllCanBusParameters(id) }}
+              onRefreshNode={(id) => { canBackend?.refreshCanBusNode(id) }}
+              onFetchAllParameters={(id) => { canBackend?.fetchAllCanBusParameters(id) }}
+              onRebootNode={(id) => { void canBackend?.restartCanBusNode(id) }}
               busy={busyAction !== undefined}
-              expertActions={isExpertMode ? canDeviceExpertActions : undefined}
+              expertActions={canDeviceExpertActions}
               // Real filtering, not a label: this window only ever shows this
               // node's ESC telemetry out of the bus-wide stream.
-              escTelemetry={filterEscTelemetryForNode(snapshot.canBus.escTelemetry, nodeId)}
+              escTelemetry={filterEscTelemetryForNode(canBus.escTelemetry, nodeId)}
               heading={node.name && node.name.length > 0 ? node.name : `Node ${nodeId}`}
             />
           ) : (
@@ -10600,45 +11815,24 @@ export function App() {
           )
         : null}
 
-      {activeViewId === 'calibration' ? (
-        <CalibrationSection
-          snapshot={snapshot}
-          runtime={runtime}
-          busyAction={busyAction}
-          canApplyDraftParameters={canApplyDraftParameters}
-          airframe={airframe}
-          isCopterVehicle={isCopterVehicle}
-          isExpertMode={isExpertMode}
-          uiParameterWriteOptions={UI_PARAMETER_WRITE_OPTIONS}
-          editedValues={editedValues}
-          calibrationNotices={calibrationNotices}
-          safetyAcks={safetyAcks}
-          setDraft={setDraft}
-          onboardLogs={{
-            logs: onboardLogs.logs,
-            status: onboardLogs.status,
-            list: onboardLogs.list,
-            fetchBytes: onboardLogs.fetchBytes,
-            logNamesById: onboardLogs.logNamesById
-          }}
-          clearDraft={clearDraft}
-          setParameterNotice={setParameterNotice}
-          handleGuidedAction={handleGuidedAction}
-          handleCancelGuidedAction={handleCancelGuidedAction}
-          logServerSignedIn={logUpload.session !== undefined}
-          logServerLabel={
-            logUpload.session ? `${logUpload.session.username} at ${logUpload.session.serverUrl}` : undefined
-          }
-        />
-      ) : null}
 
       {activeViewId === 'config' ? (
         <ConfigView
-          isExpertMode={isExpertMode}
           requestedCategory={requestedConfigCategory}
+          requestedCategoryNonce={requestedCategoryNonce}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
-              return { ...section, footer: renderEscDshotFooter() }
+              return {
+                ...section,
+                footer: (
+                  <>
+                    {renderEscDshotFooter()}
+                    {/* Moved from the Motors tab with the pole-count field. */}
+                    {configParametersById.has('SERVO_BLH_POLES') ? <MotorPoleReference /> : null}
+                  </>
+                ),
+                fieldEditors: renderEscDshotFieldEditors()
+              }
             }
             if (section.id === 'board-orientation') {
               return { ...section, footer: renderBoardOrientationFooter() }
@@ -10647,25 +11841,76 @@ export function App() {
               return { ...section, footer: renderReceiverSignalFooter() }
             }
             return section
-          }).concat([
+          }).concat(
+            isCopterVehicle
+              ? [
+                  {
+                    // Starting-point tuning for a new build. Reads live values to
+                    // show what each parameter moves FROM, and stages through the
+                    // shared draft set; it has no write path of its own.
+                    id: 'initial-tune',
+                    title: 'Initial Tune',
+                    description:
+                      'A starting point for a new build from its prop size and battery: filters, accel limits, thrust curve and battery voltage, the same formulas as Mission Planner. Sets no PID gains.',
+                    category: 'initial-tune' as const,
+                    wide: true,
+                    fields: [],
+                    footer: (
+                      <InitialTuneView
+                        describe={(paramId) => {
+                          const definition =
+                            metadataCatalog.parameters[paramId] ?? snapshot.parameters.find((parameter) => parameter.id === paramId)?.definition
+                          const display = PILOT_FEEL_DISPLAY[paramId]
+                          return {
+                            label: definition?.label ?? paramId,
+                            unit: paramId === 'ANGLE_MAX' ? 'deg' : display?.unit ?? definition?.unit,
+                            display: (raw) => toDisplay(paramId, raw)
+                          }
+                        }}
+                        liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
+                        stagedIds={new Set(parameterDraftById.keys())}
+                        onStage={handleStageInitialTuneParameters}
+                        /* Always Copter here — this section only renders for
+                           isCopterVehicle, so the ATC_/MOT_ prefixes are the right ones.
+                           The builder still supports the QuadPlane Q_A_/Q_M_ prefixes
+                           (and is tested for them) so a Plane surface can reuse it
+                           without the logic being rewritten. */
+                        quadplane={false}
+                        firmwareMajor={initialTuneFirmwareMajor}
+                        hasAccelPMax={snapshot.parameters.some((parameter) => /_ACCEL_P_MAX$/.test(parameter.id))}
+                        hasAcroYawP={snapshot.parameters.some((parameter) => parameter.id === 'ACRO_YAW_P')}
+                        disabled={busyAction !== undefined}
+                      />
+                    )
+                  }
+                ]
+              : []
+          ).concat([
             {
-              id: 'flight-modes',
-              title: 'Flight modes',
+              id: 'calibration',
+              title: 'Calibration',
               description:
-                'Which mode each switch position selects, the mode channel, and the live position reported by the vehicle.',
-              category: 'flight-modes' as const,
+                'Bench calibrations: accelerometer, level, compass and thermal, then battery voltage and current and the ESC throttle range.',
+              category: 'calibration' as const,
               wide: true,
               fields: [],
-              footer: renderFlightModesFooter()
+              footer: renderCalibrationSurface()
             },
             {
+              // One heading for the whole tab. It used to read "Battery &
+              // power", then "Battery", then "Battery monitor", then "Battery
+              // configuration" over the same four fields.
               id: 'power',
-              title: 'Battery & power',
+              title: 'Battery',
               description:
-                'Battery monitor, capacity, and the arming thresholds that depend on them, with live voltage and current from the vehicle.',
+                'Battery monitor, capacity and the arming thresholds that depend on them, with live voltage and current from the vehicle. After changing the monitor source or an arming threshold, check the live readout and pre-arm before flying. The setup checklist counts this done only when the settings and the live telemetry agree. Failsafe triggers and actions are on the Failsafe tab; pre-arm status is on Status & Info.',
               category: 'power' as const,
               wide: true,
               fields: [],
+              // A badge only when there is something to say: the battery needs
+              // attention (or telemetry has not arrived), or battery changes
+              // are staged. "Battery healthy" was a badge saying nothing.
+              badge: renderPowerSectionBadge(),
               footer: renderPowerSectionFooter()
             }
           ])}
@@ -10673,25 +11918,26 @@ export function App() {
           editedValues={editedValues}
           onEditChange={(paramId, value) => setDraft(paramId, value)}
           draftStatusById={parameterDraftById}
-          stagedCount={configStagedDrafts.length}
-          invalidCount={configInvalidDrafts.length}
-          draftCount={configDraftEntries.length}
+          stagedCount={configPageDrafts.staged.length}
+          invalidCount={configPageDrafts.invalid.length}
+          draftCount={configPageDrafts.entries.length}
           canApply={canApplyDraftParameters}
           isApplying={busyAction === 'config:apply'}
           isBusy={busyAction !== undefined}
-          onApply={() => void handleApplyScopedParameterDrafts(configDraftEntries, 'config:apply', 'Configuration')}
-          onRevert={() => handleDiscardScopedParameterDrafts(configDraftEntries.map((entry) => entry.id), 'configuration')}
+          onApply={() => void handleApplyScopedParameterDrafts(configPageDrafts.entries, 'config:apply', 'Setup')}
+          onRevert={() => handleDiscardScopedParameterDrafts(configPageDrafts.entries.map((entry) => entry.id), 'configuration')}
         />
       ) : null}
 
       {activeViewId === 'peripherals' ? (
         <ConfigView
           title="Peripherals"
+          requestedCategory={requestedPeripheralsCategory}
+          requestedCategoryNonce={requestedCategoryNonce}
           // No subtitle: the sub-tabs name what is here, and a paragraph
           // restating them is a line to read past on every visit.
           subtitle=""
           panelId="setup-panel-peripherals"
-          isExpertMode={isExpertMode}
           // The same ConfigView over the peripheral half of the section list.
           // Gimbal and Flow & Lidar have no fixed field list — they are whole
           // metadata-driven parameter groups — so they arrive as footer-only
@@ -10702,7 +11948,25 @@ export function App() {
             // with the GPS peripheral, next to the driver and rate settings
             // that determine whether there is a fix at all.
             ...peripheralSections.map((section) =>
-              section.id === 'gps'
+              section.id === 'compass'
+                ? {
+                    ...section,
+                    footer: (
+                      <CompassOrderCard
+                        model={compassOrder}
+                        stagedDrafts={compassOrderDrafts.staged}
+                        invalidDrafts={compassOrderDrafts.invalid}
+                        busyAction={busyAction}
+                        onSwap={(a, b) => {
+                          for (const draft of swapCompassPriorities(compassOrder, a, b)) setDraft(draft.paramId, draft.value)
+                        }}
+                        onRemove={(priority) => {
+                          for (const draft of removeCompassPriority(compassOrder, priority)) setDraft(draft.paramId, draft.value)
+                        }}
+                      />
+                    )
+                  }
+                : section.id === 'gps'
                 ? {
                     ...section,
                     footer: (
@@ -10728,7 +11992,9 @@ export function App() {
                               gpsAdditionalInvalidDrafts,
                               'peripherals:gps-additional',
                               'Apply GPS Changes',
-                              'GPS settings'
+                              'GPS settings',
+                              undefined,
+                              { actions: false }
                             )}
                       </>
                     )
@@ -10758,7 +12024,9 @@ export function App() {
                     gimbalInvalidDrafts,
                     'outputs:gimbal',
                     'Apply Gimbal Changes',
-                    'gimbal settings'
+                    'gimbal settings',
+                    undefined,
+                    { actions: false }
                   )
                 )
             },
@@ -10822,6 +12090,8 @@ export function App() {
                   isBusy={busyAction !== undefined}
                   onApply={() => void handleApplyScopedParameterDrafts(relayDraftEntries, 'outputs:relays', 'Relays')}
                   onRevert={() => handleDiscardScopedParameterDrafts(relayDraftEntries.map((entry) => entry.id), 'relays')}
+                  // One Apply bar per page: relay drafts ride the Peripherals bar below.
+                  showActions={false}
                 />
               )
             },
@@ -10853,7 +12123,9 @@ export function App() {
                       flowLidarInvalidDrafts,
                       'outputs:flow-lidar',
                       'Apply Flow & Lidar Changes',
-                      'flow and lidar settings'
+                      'flow and lidar settings',
+                      undefined,
+                      { actions: false }
                     )
                   )}
                 </>
@@ -10864,14 +12136,14 @@ export function App() {
           editedValues={editedValues}
           onEditChange={(paramId, value) => setDraft(paramId, value)}
           draftStatusById={parameterDraftById}
-          stagedCount={peripheralStagedDrafts.length}
-          invalidCount={peripheralInvalidDrafts.length}
-          draftCount={peripheralDraftEntries.length}
+          stagedCount={peripheralPageDrafts.staged.length}
+          invalidCount={peripheralPageDrafts.invalid.length}
+          draftCount={peripheralPageDrafts.entries.length}
           canApply={canApplyDraftParameters}
           isApplying={busyAction === 'peripherals:apply'}
           isBusy={busyAction !== undefined}
-          onApply={() => void handleApplyScopedParameterDrafts(peripheralDraftEntries, 'peripherals:apply', 'Peripherals')}
-          onRevert={() => handleDiscardScopedParameterDrafts(peripheralDraftEntries.map((entry) => entry.id), 'peripherals')}
+          onApply={() => void handleApplyScopedParameterDrafts(peripheralPageDrafts.entries, 'peripherals:apply', 'Peripherals')}
+          onRevert={() => handleDiscardScopedParameterDrafts(peripheralPageDrafts.entries.map((entry) => entry.id), 'peripherals')}
         />
       ) : null}
 

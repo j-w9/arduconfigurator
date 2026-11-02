@@ -47,6 +47,10 @@ export interface OutputsViewProps {
    *  sliders); Servos is one wide table and was being squeezed into 1.5fr
    *  with the other column empty. */
   singleColumn?: boolean
+  /** The guided-setup scroll anchor this surface answers to (Servos has its own). */
+  panelId?: string
+  /** No Panel chrome: the task bodies only (the guided setup hosts them in a step). */
+  bare?: boolean
 }
 
 export function OutputsView(props: OutputsViewProps) {
@@ -60,16 +64,15 @@ export function OutputsView(props: OutputsViewProps) {
     title = 'Outputs',
     subtitle,
     singlePage = false,
-    singleColumn = false
+    singleColumn = false,
+    panelId = 'setup-panel-outputs',
+    bare = false
   } = props
 
-  return (
-    <div id="setup-panel-outputs">
-      <Panel title={title} subtitle={subtitle}>
-        {/* Top tab selector: the tasks sit in a row of tabs; the active task's
-            body renders once below them. (Replaced the old expand-in-place
-            accordion.) Suppressed on a single-page surface, where every task is
-            already rendered and the strip would only scroll you around. */}
+  // Top tab selector: the tasks sit in a row of tabs; the active task's body
+  // renders once below them. Suppressed on a single-page surface, where every
+  // task is already rendered and the strip would only scroll you around.
+  const body = (
         <div className={`outputs-tabs-layout${overviewSlot ? '' : ' outputs-tabs-layout--full'}`}>
           {singlePage ? null : (
           <div className="tab-strip" data-testid="outputs-task-nav" role="tablist">
@@ -106,7 +109,15 @@ export function OutputsView(props: OutputsViewProps) {
 
           {reviewDockSlot}
         </div>
-      </Panel>
+  )
+
+  return (
+    <div id={panelId}>
+      {bare ? body : (
+        <Panel title={title} subtitle={subtitle}>
+          {body}
+        </Panel>
+      )}
     </div>
   )
 }

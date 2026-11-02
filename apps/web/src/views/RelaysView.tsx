@@ -29,6 +29,8 @@ export interface RelaysViewProps {
   isApplying: boolean
   isBusy: boolean
   onApply: () => void
+  /** False on a page that has its own Apply bar (Peripherals): the drafts go through that one. */
+  showActions?: boolean
   onRevert: () => void
 }
 
@@ -46,14 +48,12 @@ export function RelaysView(props: RelaysViewProps) {
     isApplying,
     isBusy,
     onApply,
-    onRevert
+    onRevert,
+    showActions = true
   } = props
 
   return (
-    <Panel
-      title="Relays"
-      subtitle="Map flight-controller GPIO pins to relay functions — parachute, camera, ICE, or a plain operator-controlled relay — and set each relay's default state and signal polarity."
-    >
+    <Panel title="Relays">
       <div className="relays-tab" data-testid="relays-task-body">
         {groups.length === 0 ? (
           <p className="bf-note" data-testid="relays-empty">
@@ -149,6 +149,7 @@ export function RelaysView(props: RelaysViewProps) {
           </div>
         )}
 
+        {showActions ? (
         <div className="servo-mapping__toolbar">
           <div className="servo-mapping__toolbar-status">
             <span>{stagedCount} staged</span>
@@ -173,6 +174,7 @@ export function RelaysView(props: RelaysViewProps) {
             Revert
           </button>
         </div>
+        ) : null}
       </div>
     </Panel>
   )

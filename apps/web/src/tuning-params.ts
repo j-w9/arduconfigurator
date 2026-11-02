@@ -30,6 +30,23 @@ export const TUNING_PILOT_ALTHOLD_PARAM_IDS = [
   'PILOT_TKOFF_ALT',
   'PILOT_TKO_ALT_M'
 ] as const
+// The altitude controller AltHold flies with (AC_PosControl's vertical
+// position -> velocity -> acceleration chain), next to the hover throttle its
+// accel gains are scaled by. 4.7 names first; 4.6 FCs stream PSC_ACCZ_* (ten
+// times the scale) and the section shows whichever the FC reports. NOT in
+// TUNING_PARAM_IDS: tuning profiles and the Pilot draft badge stay as they were.
+export const TUNING_ALTHOLD_CONTROLLER_PARAM_IDS = [
+  'MOT_THST_HOVER',
+  'MOT_HOVER_LEARN',
+  'PSC_D_POS_P',
+  'PSC_D_VEL_P',
+  'PSC_D_VEL_I',
+  'PSC_D_ACC_P',
+  'PSC_D_ACC_I',
+  'PSC_D_ACC_IMAX',
+  'PSC_ACCZ_P',
+  'PSC_ACCZ_I'
+] as const
 // Loiter (position-hold) pilot feel — max speed, acceleration, lean angle, and
 // braking. 4.6+ SI renames: LOIT_SPEED -> LOIT_SPEED_MS, LOIT_ACC_MAX ->
 // LOIT_ACC_MAX_M, LOIT_BRK_ACCEL -> LOIT_BRK_ACC_M, LOIT_BRK_JERK -> LOIT_BRK_JRK_M.
@@ -94,6 +111,7 @@ export const TUNING_FILTER_PARAM_IDS = [
   'INS_HNTCH_REF',
   'INS_HNTCH_FREQ',
   'INS_HNTCH_BW',
+  'INS_HNTCH_ATT',
   'INS_HNTCH_HMNCS',
   'INS_HNTCH_OPTS',
   'INS_HNTCH_FM_RAT',
@@ -102,6 +120,7 @@ export const TUNING_FILTER_PARAM_IDS = [
   'INS_HNTC2_REF',
   'INS_HNTC2_FREQ',
   'INS_HNTC2_BW',
+  'INS_HNTC2_ATT',
   'INS_HNTC2_HMNCS',
   'INS_HNTC2_OPTS',
   'INS_HNTC2_FM_RAT',
@@ -186,6 +205,7 @@ export const TUNING_NOTCH_AXIS_GROUPS = [
       'INS_HNTCH_REF',
       'INS_HNTCH_FREQ',
       'INS_HNTCH_BW',
+      'INS_HNTCH_ATT',
       'INS_HNTCH_HMNCS',
       'INS_HNTCH_OPTS',
       'INS_HNTCH_FM_RAT'
@@ -205,6 +225,7 @@ export const TUNING_NOTCH_AXIS_GROUPS = [
       'INS_HNTC2_REF',
       'INS_HNTC2_FREQ',
       'INS_HNTC2_BW',
+      'INS_HNTC2_ATT',
       'INS_HNTC2_HMNCS',
       'INS_HNTC2_OPTS',
       'INS_HNTC2_FM_RAT'

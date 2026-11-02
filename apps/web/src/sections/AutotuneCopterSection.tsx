@@ -1,68 +1,32 @@
-// AutotuneCopterSection — a curated ArduCopter AUTOTUNE surface rendered as a
-// SIBLING alongside TuningCopterSection (not inside it) so the large, complex
-// Copter tuning workbench is left untouched. It surfaces the four real,
-// documented AC_AutoTune_Multi config params (AUTOTUNE_AXES / AGGR / MIN_D /
-// GMBK) through the shared ScopedField controls and the same staged-draft
-// machinery the other tabs use (setDraft -> parameterDraftById ->
-// handleApplyScopedParameterDrafts). It adds NO new write or draft semantics;
-// the scoped apply/discard is its own disjoint paramId scope, so applying here
-// never touches the ATC_* tuning batch. The section also carries the in-flight
-// AUTOTUNE procedure guidance as a bf-note.
+// AutotuneCopterSection — the ArduCopter AUTOTUNE setup (AUTOTUNE_AXES / AGGR
+// / MIN_D / GMBK, AC_AutoTune_Multi) as a compact grid, plus the in-flight
+// procedure. Edits stage through the shared draft set and are written from
+// the global draft bar like every other tab; it has no write path of its own.
 
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactElement } from 'react'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
-import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { AUTOTUNE_COPTER_PARAM_IDS } from '../autotune-params'
-import { formatParameterValue } from '../parameter-format'
+import { formatNumericDisplayValue } from '../parameter-format'
 import { selectParameterById } from '../selectors/parameter-read'
-import { toneForParameterDraftStatus } from '../tone-helpers'
-import { InfoDot } from '../views/InfoDot'
-import { DraftReviewBadge } from '../views/DraftReviewBadge'
-import { ScopedBitmaskField, ScopedField } from '../views/ScopedField'
-
-// The per-field "i" (raw id, description, range) is the Scoped* field's own
-// inline dot now; the sibling bubble this used to add made two dots per field.
-function withAutotuneFieldInfo(parameter: ParameterState, node: ReactNode): ReactNode {
-  return (
-    <div key={parameter.id} className="config-section__field-row">
-      {node}
-    </div>
-  )
-}
+import { FeelGrid, type PilotFeelValue } from '../views/PilotFeel'
 
 export interface AutotuneCopterSectionProps {
   snapshot: ConfiguratorSnapshot
-  canApplyDraftParameters: boolean
-  busyAction: string | undefined
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
-  copterAutotuneDraftEntries: readonly ParameterDraftEntry[]
-  copterAutotuneStagedDrafts: readonly ParameterDraftEntry[]
-  copterAutotuneInvalidDrafts: readonly ParameterDraftEntry[]
   setDraft: (paramId: string, value: string) => void
-  handleApplyScopedParameterDrafts: (
-    drafts: readonly ParameterDraftEntry[],
-    busyKey: string,
-    scopeLabel: string
-  ) => void | Promise<void>
-  handleDiscardScopedParameterDrafts: (paramIds: readonly string[], scopeLabel: string) => void
+}
+
+const LABELS: Record<string, string> = {
+  AUTOTUNE_AXES: 'Axes',
+  AUTOTUNE_AGGR: 'Aggressiveness',
+  AUTOTUNE_MIN_D: 'Minimum D',
+  AUTOTUNE_GMBK: 'Gain margin backoff'
 }
 
 export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactElement | null {
-  const {
-    snapshot,
-    canApplyDraftParameters,
-    busyAction,
-    editedValues,
-    parameterDraftById,
-    copterAutotuneDraftEntries,
-    copterAutotuneStagedDrafts,
-    copterAutotuneInvalidDrafts,
-    setDraft,
-    handleApplyScopedParameterDrafts,
-    handleDiscardScopedParameterDrafts
-  } = props
+  const { snapshot, editedValues, parameterDraftById, setDraft } = props
 
   // Resolve paramIds to live ParameterState, dropping any the controller does
   // not stream — same omit-if-missing behaviour as the tuning sections.
@@ -76,145 +40,55 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
     return null
   }
 
-  const renderField = (parameter: ParameterState): ReactNode => {
-    const common = {
-      key: parameter.id,
-      parameter,
-      liveValue: parameter.value,
-      editedValues,
-      onChange: (paramId: string, value: string) => setDraft(paramId, value),
-      draftStatusById: parameterDraftById
+  // Same value shape as the Pilot cards; edits stage through the shared draft
+  // set and go out from the draft bar like every other tab.
+  const valueFor = (parameter: ParameterState): PilotFeelValue => {
+    const named = parameter.definition?.options ?? []
+    const value: PilotFeelValue = {
+      paramId: parameter.id,
+      label: LABELS[parameter.id] ?? parameter.definition?.label ?? parameter.id,
+      description: parameter.definition?.description,
+      unit: parameter.definition?.unit,
+      text: editedValues[parameter.id] ?? formatNumericDisplayValue(parameter.value),
+      draftStatus: parameterDraftById.get(parameter.id)?.status,
+      min: parameter.definition?.minimum,
+      max: parameter.definition?.maximum,
+      onChange: (next) => setDraft(parameter.id, next)
     }
-    const field =
-      parameter.definition?.bitmask === true ? <ScopedBitmaskField {...common} /> : <ScopedField {...common} />
-    return withAutotuneFieldInfo(parameter, field)
+    if (parameter.definition?.bitmask && named.length > 0) {
+      return { ...value, bits: named.map((option) => ({ bit: option.value, label: option.label })) }
+    }
+    return value
   }
 
-  const reviewBadge = <DraftReviewBadge staged={copterAutotuneStagedDrafts.length} invalid={copterAutotuneInvalidDrafts.length} />
-
   return (
-    <section className="bf-gui-box" data-testid="autotune-copter-section">
+    <section className="bf-gui-box pilot-feel-card" data-testid="autotune-copter-section">
       <div className="bf-gui-box__titlebar">
-        <span className="tuning-card-title">
-          <strong>ArduCopter AutoTune</strong>
-          <InfoDot label="About the AutoTune surface" testId="autotune-copter-info" wide wikiTopic="tuningAutotune">
-            <span className="info-dot-line">Each control is the real ArduPilot parameter from the loaded catalog.</span>
-            <span className="info-dot-line">Edits stage here and apply through the same verified review path as the other tabs — nothing is written until you apply.</span>
-            <span className="info-dot-line">These set up AutoTune; the tuning itself happens in the air.</span>
-          </InfoDot>
-        </span>
-        {reviewBadge}
+        <strong>AutoTune</strong>
       </div>
       <div className="bf-gui-box__body">
-        <article className="tuning-axis-card" data-testid="autotune-copter-config-group">
-          <div className="tuning-axis-card__header">
-            <span className="tuning-card-title">
-              <strong>AutoTune configuration</strong>
-              <InfoDot label="About the AutoTune configuration parameters" testId="autotune-config-info" wide wikiTopic="tuningAutotune">
-                <span className="info-dot-line">AUTOTUNE_AXES picks which axes are tuned (Roll / Pitch / Yaw / YawD).</span>
-                <span className="info-dot-line">AUTOTUNE_AGGR is the bounce-back aggressiveness used to size the D term.</span>
-                <span className="info-dot-line">AUTOTUNE_MIN_D is the lowest D gain AutoTune may set.</span>
-                <span className="info-dot-line">AUTOTUNE_GMBK is the gain-margin backoff applied after tuning for extra stability margin.</span>
-              </InfoDot>
-            </span>
-            <span>{parameters.length} controls</span>
-          </div>
-          <div className="tuning-control-grid tuning-control-grid--compact">{parameters.map(renderField)}</div>
-        </article>
+        <div data-testid="autotune-copter-config-group">
+          <FeelGrid
+            testId="autotune-copter-grid"
+            columns={['']}
+            rows={parameters.map((parameter) => ({ label: LABELS[parameter.id] ?? parameter.id, cells: [valueFor(parameter)] }))}
+          />
+        </div>
 
-        <article className="tuning-axis-card" data-testid="autotune-copter-procedure">
-          <div className="tuning-axis-card__header">
-            <strong>How to run AutoTune (in flight)</strong>
-          </div>
+        <div data-testid="autotune-copter-procedure">
           <p className="bf-note bf-note--warning" data-testid="autotune-copter-safety">
-            Save a known-good tuning snapshot first, and fly in open, calm airspace — AutoTune twitches the aircraft
-            hard on each axis.
+            Save a known-good snapshot first, and fly in open, calm airspace — AutoTune twitches the aircraft hard on
+            each axis.
           </p>
-          <details className="tuning-details" data-testid="autotune-copter-procedure-details">
-            <summary>Show the AutoTune procedure</summary>
-            <p className="bf-note">
-              1. Assign an RC aux switch to the AutoTune function (RC&nbsp;OPTIONS&nbsp;=&nbsp;17).
-              <br />
-              2. Take off and stabilise in AltHold (not Stabilize — AltHold gives AutoTune the steady hover it needs),
-              then engage AutoTune — the copter twitches each selected axis for a few minutes per axis.
-              <br />
-              3. To SAVE the tuned gains: keep the AutoTune switch HIGH and land + disarm.
-              <br />
-              4. To DISCARD: switch AutoTune off (low) before disarming, and the original gains are kept.
-            </p>
+          <details className="calibration-card__howto" data-testid="autotune-copter-procedure-details">
+            <summary>How to run AutoTune</summary>
+            <ol>
+              <li>Assign an RC switch to AutoTune (RC<em>n</em>_OPTION = 17).</li>
+              <li>Take off, settle in AltHold (it needs the steady hover), then switch AutoTune on. Each selected axis takes a few minutes.</li>
+              <li>To keep the new gains: leave the switch on, land and disarm.</li>
+              <li>To discard them: switch AutoTune off before disarming.</li>
+            </ol>
           </details>
-        </article>
-
-        <div className="scoped-review-card scoped-review-card--compact" data-testid="autotune-copter-review">
-          <div className="switch-exercise-card__header">
-            <div>
-              <strong>AutoTune changes in review</strong>
-              <p>Staged AutoTune configuration changes are collected here before they are written to the controller.</p>
-            </div>
-            {reviewBadge}
-          </div>
-
-          {copterAutotuneDraftEntries.length > 0 ? (
-            <div className="scoped-draft-list">
-              {copterAutotuneDraftEntries.map((draft) => (
-                <article key={draft.id} className={`scoped-draft-item scoped-draft-item--${draft.status}`}>
-                  <div className="scoped-draft-item__header">
-                    <strong>{draft.id}</strong>
-                    <StatusBadge tone={toneForParameterDraftStatus(draft.status)}>{draft.status}</StatusBadge>
-                  </div>
-                  <p>{draft.label}</p>
-                  <small>
-                    {draft.status === 'staged'
-                      ? `${formatParameterValue(draft.currentValue, draft.definition?.unit)} to ${formatParameterValue(
-                          draft.nextValue,
-                          draft.definition?.unit
-                        )}`
-                      : draft.reason ?? 'Draft matches the live controller value.'}
-                  </small>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="success-copy">No AutoTune changes are staged right now.</p>
-          )}
-
-          <div className="switch-exercise-controls">
-            <button
-              type="button"
-              data-testid="apply-copter-autotune-changes-button"
-              style={buttonStyle('primary')}
-              onClick={() =>
-                void handleApplyScopedParameterDrafts(
-                  copterAutotuneDraftEntries,
-                  'copter-autotune:apply',
-                  'Copter AutoTune'
-                )
-              }
-              disabled={
-                busyAction !== undefined ||
-                copterAutotuneStagedDrafts.length === 0 ||
-                copterAutotuneInvalidDrafts.length > 0 ||
-                !canApplyDraftParameters
-              }
-            >
-              {busyAction === 'copter-autotune:apply'
-                ? 'Applying…'
-                : `Apply AutoTune Changes (${copterAutotuneStagedDrafts.length})`}
-            </button>
-            <button
-              type="button"
-              style={buttonStyle()}
-              onClick={() =>
-                handleDiscardScopedParameterDrafts(
-                  copterAutotuneDraftEntries.map((entry) => entry.id),
-                  'Copter AutoTune'
-                )
-              }
-              disabled={busyAction !== undefined || copterAutotuneDraftEntries.length === 0}
-            >
-              Discard AutoTune Changes
-            </button>
-          </div>
         </div>
       </div>
     </section>

@@ -13,11 +13,17 @@ import { useCallback, useState, type ReactElement } from 'react'
 import { analyzeLogBuffer, type AxisSpectrum, type LogTuningResult, type TuningRecommendation } from '@arduconfig/log-analysis'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { OnboardLogPicker, type OnboardLogPickerLogs } from '../sections/OnboardLogPicker'
+
 export interface LogTuningViewProps {
   /** Stage a recommended parameter change as a draft (parent owns the draft set). */
   onStageParam: (param: string, value: number) => void
   /** Params already staged from a recommendation, so the row can show "staged". */
   stagedParams?: ReadonlySet<string>
+  /** When given, the view also offers the logs already on the vehicle. */
+  onboardLogs?: OnboardLogPickerLogs
+  /** Opens the Logs tab's "Logging for tuning" card (the batch sampler setup). */
+  onOpenLogSetup?: () => void
 }
 
 const CONFIDENCE_TONE: Record<TuningRecommendation['confidence'], 'success' | 'warning' | 'neutral'> = {
@@ -26,30 +32,34 @@ const CONFIDENCE_TONE: Record<TuningRecommendation['confidence'], 'success' | 'w
   low: 'neutral'
 }
 
-export function LogTuningView({ onStageParam, stagedParams }: LogTuningViewProps): ReactElement {
+export function LogTuningView({ onStageParam, stagedParams, onboardLogs, onOpenLogSetup }: LogTuningViewProps): ReactElement {
   const [result, setResult] = useState<LogTuningResult | null>(null)
   const [filename, setFilename] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleBuffer = useCallback(async (buffer: ArrayBuffer, name: string) => {
     setBusy(true)
     setError(undefined)
     setResult(null)
     try {
-      const buffer = await file.arrayBuffer()
       // Analysis is synchronous but can be a moment on a large log — yield first
       // so the "Analyzing…" state paints.
       await new Promise((resolve) => setTimeout(resolve, 0))
       const analysis = analyzeLogBuffer(buffer)
       setResult(analysis)
-      setFilename(file.name)
+      setFilename(name)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
     } finally {
       setBusy(false)
     }
   }, [])
+
+  const handleFile = useCallback(
+    async (file: File) => handleBuffer(await file.arrayBuffer(), file.name),
+    [handleBuffer]
+  )
 
   return (
     <section className="bf-gui-box log-tuning" data-testid="log-tuning">
@@ -58,12 +68,6 @@ export function LogTuningView({ onStageParam, stagedParams }: LogTuningViewProps
         <StatusBadge tone="warning">beta</StatusBadge>
       </div>
       <div className="bf-gui-box__body">
-        <p className="bf-note">
-          Upload a dataflash flight log (<code>.bin</code>) from the SD card. The analyzer works through
-          vibration, oscillation, motor-noise, and rate-loop tuning, then stages the recommended parameter
-          changes for you to review and apply.
-        </p>
-
         <div className="log-tuning__upload">
           <label className="log-tuning__file" style={buttonStyle('primary')}>
             {busy ? 'Analyzing…' : 'Choose flight log (.bin)'}
@@ -82,17 +86,30 @@ export function LogTuningView({ onStageParam, stagedParams }: LogTuningViewProps
               }}
             />
           </label>
+          {onboardLogs ? (
+            <OnboardLogPicker
+              onboardLogs={onboardLogs}
+              busy={busy}
+              testIdPrefix="log-tuning"
+              onBusy={setBusy}
+              onBytes={(bytes, name) => handleBuffer(bytes.slice().buffer as ArrayBuffer, name)}
+              onError={setError}
+            />
+          ) : null}
           {filename ? <small className="log-tuning__filename">{filename}</small> : null}
         </div>
 
-        <div className="parameter-follow-up parameter-follow-up--warning" data-testid="log-tuning-gate-note">
-          <StatusBadge tone="warning">read first</StatusBadge>
-          <p>
-            This only works on a <strong>good flight log</strong>: a real hover/flight (not a bench run), ideally
-            30–60 s of steady hovering. For the harmonic notch you also want ESC RPM telemetry, and for the best
-            spectrum enable the IMU batch sampler (<code>INS_LOG_BAT_MASK</code>). A poor log gives poor advice.
-          </p>
-        </div>
+        <p className="feel-note" data-testid="log-tuning-gate-note">
+          Use a real flight with 30–60 s of steady hover. The notch advice also needs ESC RPM telemetry.
+          {onOpenLogSetup ? (
+            <>
+              {' '}
+              <button type="button" className="feel-input__suggest" data-testid="log-tuning-open-log-setup" onClick={onOpenLogSetup}>
+                Set up logging for tuning
+              </button>
+            </>
+          ) : null}
+        </p>
 
         {error ? (
           <div className="parameter-follow-up parameter-follow-up--danger" role="alert" data-testid="log-tuning-error">

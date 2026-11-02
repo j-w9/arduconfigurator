@@ -6,6 +6,7 @@
 // It is ONLY the rail now. The identity caption and the Active Baseline panel
 // that used to sit above it were removed: see the comment in the body.
 
+import type { ReactNode } from 'react'
 import type { AppViewId } from '@arduconfig/param-metadata'
 import { NavIcon } from './nav-icons'
 import { StatusBadge } from '@arduconfig/ui-kit'
@@ -16,12 +17,15 @@ export interface WorkspaceSidebarProps {
   visibleAppViews: readonly AppViewDescriptor[]
   activeViewId: AppViewId
   onSelectView: (id: AppViewId) => void
+  /** The Find-a-setting box, above the rail (sections/FeatureSearch.tsx). */
+  searchSlot?: ReactNode
 }
 
-export function WorkspaceSidebar({ visibleAppViews, activeViewId, onSelectView }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ visibleAppViews, activeViewId, onSelectView, searchSlot }: WorkspaceSidebarProps) {
   return (
     <aside className="workspace-sidebar">
       <div className="workspace-sidebar__shell">
+        {searchSlot}
         {/* The sidebar used to open with a "Connected Tabs" caption naming the
             vehicle and transport, and an Active Baseline panel. Both were
             saying something already on screen: the header carries the vehicle,

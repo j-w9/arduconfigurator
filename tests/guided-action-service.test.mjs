@@ -566,10 +566,11 @@ test('reset cancels an in-flight mag calibration', async () => {
   assert.equal(service.getAction('calibrate-compass').status, 'idle')
 })
 
-test('reset() while disconnected does not pretend to cancel — it is honest the cal self-times-out', async () => {
+test('reset() while disconnected does not pretend to cancel — it says the onboard cal keeps running', async () => {
   // The cancel cannot reach the vehicle once the link is down; the old
   // code fired it into a .catch(()=>{}) so it looked handled. It must
-  // not send, and must say plainly the onboard cal will self-time-out.
+  // not send, and must say what the vehicle does: CompassCalibrator has no
+  // timeout — it fits until a result (autosaved) or a reboot.
   const { host, sentCommands, statusEntries } = createHostHarness({ isConnected: () => false })
   const service = new GuidedActionService(host)
   await service.runCalibrationAction('calibrate-compass')
@@ -580,9 +581,10 @@ test('reset() while disconnected does not pretend to cancel — it is honest the
     'no cancel is sent when disconnected'
   )
   assert.ok(
-    statusEntries.some((entry) => entry.severity === 'warning' && /self-time-out/i.test(entry.text)),
-    'an honest self-time-out warning is surfaced'
+    statusEntries.some((entry) => entry.severity === 'warning' && /keeps running/i.test(entry.text) && /only stops on a reboot/i.test(entry.text)),
+    'an honest "keeps running until reboot" warning is surfaced'
   )
+  assert.ok(!statusEntries.some((entry) => /time-out|times out/i.test(entry.text)), 'no invented onboard timeout')
   assert.equal(service.getAction('calibrate-compass').status, 'idle')
 })
 
@@ -759,7 +761,7 @@ test('cancelAction aborts a running compass calibration and clears the write gat
     service.handleMagCalProgress(magCalProgress({ completionPct: 40 }))
     assert.equal(service.hasActiveAction(), true)
 
-    service.cancelAction('calibrate-compass')
+    await service.cancelAction('calibrate-compass')
 
     // Cancelling is a decision, not an error: the card returns to its idle
     // start state so the operator can simply run it again, rather than having
@@ -800,7 +802,10 @@ test('cancelAction aborts an abandoned accelerometer calibration without sending
     // MAVLink has no accel-cal abort; nothing extra goes on the wire, but
     // the operator is told the onboard routine may keep waiting.
     assert.equal(harness.sentCommands.length, commandCountBeforeCancel)
-    assert.ok(harness.statusEntries.some((entry) => /onboard routine may keep waiting/i.test(entry.text)))
+    assert.ok(harness.statusEntries.some((entry) => /no MAVLink command to abort the onboard routine/i.test(entry.text)))
+    // Truthful about the vehicle side: AP_AccelCal has no timeout while it
+    // waits for a posture; only a reboot (or arming) ends it.
+    assert.ok(!harness.statusEntries.some((entry) => /times out/i.test(entry.text)))
   } finally {
     service.destroy()
   }
@@ -1005,5 +1010,774 @@ test('accelerometerAutoHoldMs = 0 disables auto-confirm (click-every-pose flow)'
     assert.equal(confirmCount(harness), before, 'auto-confirm must be fully defeatable')
   } finally {
     service.destroy()
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Post-calibration aftermath (ArduPilot keeps streaming terminal results)
+// ---------------------------------------------------------------------------
+
+function accelPoseCommand(value) {
+  return { type: 'COMMAND_LONG', command: MAV_CMD.ACCELCAL_VEHICLE_POS, params: [value, 0, 0, 0, 0, 0, 0] }
+}
+
+test('the 1 Hz SUCCESS sentinel after an accel cal does not re-complete the action every second', async () => {
+  // AP_AccelCal::update re-sends ACCELCAL_VEHICLE_POS 16777215 every second
+  // for the rest of the boot once a cal has finished. Pre-fix each one
+  // re-ran completeAccelerometerCalibration(): completedAtMs advanced and a
+  // new status entry was pushed, so the reboot prompt keyed on completedAtMs
+  // could never stay dismissed.
+  const harness = createHostHarness({ accelerometerInitialWarmupMs: 10000, accelerometerStepAdvanceMs: 10000 })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+    const done = service.getAction('calibrate-accelerometer')
+    assert.equal(done.status, 'succeeded')
+    const completeEntries = () => harness.statusEntries.filter((e) => e.text === 'Accelerometer calibration complete.').length
+    assert.equal(completeEntries(), 1)
+
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    service.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    service.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+
+    const after = service.getAction('calibrate-accelerometer')
+    assert.equal(after.status, 'succeeded')
+    assert.equal(after.completedAtMs, done.completedAtMs, 'completedAtMs must not move on a re-sent sentinel')
+    assert.equal(completeEntries(), 1, 'no duplicate "complete" status entries')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('a FAILED sentinel left over from a previous run does not touch an idle accelerometer action', () => {
+  const harness = createHostHarness()
+  const service = new GuidedActionService(harness.host)
+  service.handleCommandLong(accelPoseCommand(16777216), VEHICLE.systemId, VEHICLE.componentId)
+  assert.equal(service.getAction('calibrate-accelerometer').status, 'idle')
+  assert.equal(harness.statusEntries.length, 0)
+})
+
+test('a stale MAG_CAL_REPORT arriving before the DO_START_MAG_CAL ack is ignored; the ack opens the gate', async () => {
+  // Compass::send_mag_cal_report streams a report for every calibrator in a
+  // terminal state until stop() — the autosave path never stops them, so the
+  // previous run's SUCCESS keeps arriving. Pre-fix 'requested' accepted it
+  // and the new run was "complete" before the autopilot had started it.
+  let resolveStart
+  const harness = createHostHarness({
+    sendCommand: (command) => {
+      if (command === MAV_CMD.DO_START_MAG_CAL) {
+        return new Promise((resolve) => {
+          resolveStart = resolve
+        })
+      }
+      return Promise.resolve()
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    const run = service.runCalibrationAction('calibrate-compass')
+    assert.equal(service.getAction('calibrate-compass').status, 'requested')
+
+    // Stale terminal report from the previous run lands before the ack.
+    service.handleMagCalReport(magCalReport({ calStatus: 4, autosaved: 1 }))
+    assert.equal(service.getAction('calibrate-compass').status, 'requested', 'must not finalize on a pre-ack report')
+    service.handleMagCalProgress(magCalProgress({ completionPct: 99 }))
+    assert.equal(service.getAction('calibrate-compass').progressPct, undefined, 'pre-ack progress is not this run')
+
+    // The vehicle's ACCEPTED ack, delivered in wire order, opens the gate.
+    service.handleCommandAck(
+      { type: 'COMMAND_ACK', command: MAV_CMD.DO_START_MAG_CAL, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 },
+      VEHICLE.systemId,
+      VEHICLE.componentId
+    )
+    assert.equal(service.getAction('calibrate-compass').status, 'running')
+    service.handleMagCalProgress(magCalProgress({ completionPct: 10 }))
+    assert.equal(service.getAction('calibrate-compass').progressPct, 10)
+
+    resolveStart()
+    await run
+    assert.equal(service.getAction('calibrate-compass').status, 'running')
+
+    service.handleMagCalReport(magCalReport({ calStatus: 4, autosaved: 1 }))
+    assert.equal(service.getAction('calibrate-compass').status, 'succeeded')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('handleCommandAck ignores acks from other systems and non-ACCEPTED results', async () => {
+  let resolveStart
+  const harness = createHostHarness({
+    sendCommand: () =>
+      new Promise((resolve) => {
+        resolveStart = resolve
+      })
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    const run = service.runCalibrationAction('calibrate-compass')
+    const ack = (overrides, systemId = VEHICLE.systemId, componentId = VEHICLE.componentId) =>
+      service.handleCommandAck(
+        { type: 'COMMAND_ACK', command: MAV_CMD.DO_START_MAG_CAL, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190, ...overrides },
+        systemId,
+        componentId
+      )
+    ack({}, 2, 191)
+    assert.equal(service.getAction('calibrate-compass').status, 'requested', 'foreign ack')
+    ack({ result: 5 })
+    assert.equal(service.getAction('calibrate-compass').status, 'requested', 'IN_PROGRESS is not a start')
+    ack({ command: MAV_CMD.PREFLIGHT_CALIBRATION })
+    assert.equal(service.getAction('calibrate-compass').status, 'requested', 'another command')
+    resolveStart()
+    await run
+  } finally {
+    service.destroy()
+  }
+})
+
+test('the PREFLIGHT_CALIBRATION ack opens the accelerometer gate in wire order (prompt in the same chunk is taken)', async () => {
+  let resolveStart
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    accelerometerStepAdvanceMs: 10000,
+    sendCommand: () =>
+      new Promise((resolve) => {
+        resolveStart = resolve
+      })
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    const run = service.runCalibrationAction('calibrate-accelerometer')
+    // A sentinel from the previous run, still streaming before our ack.
+    service.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+    assert.equal(service.getAction('calibrate-accelerometer').status, 'requested')
+
+    service.handleCommandAck(
+      { type: 'COMMAND_ACK', command: MAV_CMD.PREFLIGHT_CALIBRATION, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 },
+      VEHICLE.systemId,
+      VEHICLE.componentId
+    )
+    assert.equal(service.getAction('calibrate-accelerometer').status, 'running')
+    // The first pose prompt right behind the ack (same transport chunk).
+    service.handleCommandLong(accelPoseCommand(1), VEHICLE.systemId, VEHICLE.componentId)
+    assert.equal(service.getAction('calibrate-accelerometer').ctaLabel, 'Confirm Level Position')
+
+    resolveStart()
+    await run
+    // The awaiting runner must not reset the step the prompt already set.
+    assert.equal(service.getAction('calibrate-accelerometer').ctaLabel, 'Confirm Level Position')
+  } finally {
+    service.destroy()
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Accelerometer start ack: budget + late-start resume
+// ---------------------------------------------------------------------------
+
+const ACK_TIMEOUT_ERROR = 'Timed out waiting for PREFLIGHT_CALIBRATION acknowledgment after 15000ms. No COMMAND_ACKs received during the wait.'
+
+test('the accelerometer start ack budget covers the blocking gyro calibration (15 s, like level)', async () => {
+  // GCS_Common.cpp runs calibrate_gyros() BEFORE acking PREFLIGHT_CALIBRATION
+  // param5=1 — 1-30 s depending on how still the vehicle is. A 3 s budget
+  // timed out healthy starts.
+  const harness = createHostHarness({ accelerometerInitialWarmupMs: 10000 })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    const start = harness.sentCommands.find((c) => c.command === MAV_CMD.PREFLIGHT_CALIBRATION)
+    assert.equal(start.options.ackTimeoutMs, 15000)
+  } finally {
+    service.destroy()
+  }
+})
+
+test('a pose prompt shortly after a timed-out start resumes the accelerometer calibration', async () => {
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    accelerometerStepAdvanceMs: 10000,
+    sendCommand: async (command) => {
+      if (command === MAV_CMD.PREFLIGHT_CALIBRATION) throw new Error(ACK_TIMEOUT_ERROR)
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer').catch(() => {})
+    assert.equal(service.getAction('calibrate-accelerometer').status, 'failed')
+
+    // The autopilot was merely slow: it now asks for the level pose.
+    service.handleCommandLong(accelPoseCommand(1), VEHICLE.systemId, VEHICLE.componentId)
+    const resumed = service.getAction('calibrate-accelerometer')
+    assert.equal(resumed.status, 'running')
+    assert.equal(resumed.ctaLabel, 'Confirm Level Position')
+    assert.ok(harness.statusEntries.some((e) => /resuming/i.test(e.text)))
+    assert.equal(service.hasActiveAction(), true)
+  } finally {
+    service.destroy()
+  }
+})
+
+test('a late ACCEPTED ack after a timed-out start also resumes the accelerometer calibration', async () => {
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    sendCommand: async (command) => {
+      if (command === MAV_CMD.PREFLIGHT_CALIBRATION) throw new Error(ACK_TIMEOUT_ERROR)
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer').catch(() => {})
+    service.handleCommandAck(
+      { type: 'COMMAND_ACK', command: MAV_CMD.PREFLIGHT_CALIBRATION, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 },
+      VEHICLE.systemId,
+      VEHICLE.componentId
+    )
+    assert.equal(service.getAction('calibrate-accelerometer').status, 'running')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('the late-start resume does not apply to a rejected start, a stale sentinel, or after the window', async () => {
+  // Rejected (not timed out): the vehicle said no, nothing to resume.
+  const rejected = createHostHarness({
+    sendCommand: async () => {
+      throw new Error('Autopilot rejected PREFLIGHT_CALIBRATION (FAILED).')
+    }
+  })
+  const rejectedService = new GuidedActionService(rejected.host)
+  await rejectedService.runCalibrationAction('calibrate-accelerometer').catch(() => {})
+  rejectedService.handleCommandLong(accelPoseCommand(1), VEHICLE.systemId, VEHICLE.componentId)
+  assert.equal(rejectedService.getAction('calibrate-accelerometer').status, 'failed', 'rejection is final')
+  rejectedService.destroy()
+
+  // Timed out, but only a sentinel (previous run's aftermath) arrives.
+  const sentinel = createHostHarness({
+    sendCommand: async () => {
+      throw new Error(ACK_TIMEOUT_ERROR)
+    }
+  })
+  const sentinelService = new GuidedActionService(sentinel.host)
+  await sentinelService.runCalibrationAction('calibrate-accelerometer').catch(() => {})
+  sentinelService.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+  assert.equal(sentinelService.getAction('calibrate-accelerometer').status, 'failed', 'a sentinel is not a live cal')
+  sentinelService.destroy()
+
+  // Timed out, prompt arrives after the window.
+  const late = createHostHarness({
+    accelerometerLateStartResumeWindowMs: 20,
+    sendCommand: async () => {
+      throw new Error(ACK_TIMEOUT_ERROR)
+    }
+  })
+  const lateService = new GuidedActionService(late.host)
+  await lateService.runCalibrationAction('calibrate-accelerometer').catch(() => {})
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  lateService.handleCommandLong(accelPoseCommand(1), VEHICLE.systemId, VEHICLE.componentId)
+  assert.equal(lateService.getAction('calibrate-accelerometer').status, 'failed', 'window closed')
+  lateService.destroy()
+})
+
+// ---------------------------------------------------------------------------
+// The posture step follows the autopilot's prompts, not a timer
+// ---------------------------------------------------------------------------
+
+test('the posture step does not advance on the timer — it waits for the autopilot\'s next prompt', async () => {
+  // Pre-fix a 1.5 s timer moved the guide to the next pose on its own, so a
+  // re-asked pose (rejected sample) or a slow autopilot left the guide a
+  // posture ahead of the vehicle.
+  const harness = createHostHarness({ accelerometerInitialWarmupMs: 10000, accelerometerStepAdvanceMs: 20 })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(1), VEHICLE.systemId, VEHICLE.componentId)
+    await service.runCalibrationAction('calibrate-accelerometer') // confirm level
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    const waiting = service.getAction('calibrate-accelerometer')
+    assert.equal(waiting.status, 'running')
+    assert.equal(waiting.ctaLabel, undefined, 'no next posture is offered until the autopilot asks for one')
+    assert.match(waiting.summary, /waiting for the autopilot's next posture prompt/i)
+
+    // The autopilot rejected the sample and asks for level AGAIN.
+    service.handleCommandLong(accelPoseCommand(1), VEHICLE.systemId, VEHICLE.componentId)
+    assert.equal(service.getAction('calibrate-accelerometer').ctaLabel, 'Confirm Level Position')
+    // …and then moves on.
+    service.handleCommandLong(accelPoseCommand(2), VEHICLE.systemId, VEHICLE.componentId)
+    assert.equal(service.getAction('calibrate-accelerometer').ctaLabel, 'Confirm Left Side Position')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('auto-confirm never acks a posture the autopilot has not prompted', async () => {
+  // AP_AccelCal consumes a GCS ack only while _waiting_for_mavlink_ack, set
+  // when it prints a NEW pose. An ack sent for a pose it has not asked for
+  // is dropped — or, if it is still on the previous pose, taken for that one.
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    accelerometerStepAdvanceMs: 20,
+    accelerometerAutoHoldMs: 20
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(1), VEHICLE.systemId, VEHICLE.componentId)
+    await service.runCalibrationAction('calibrate-accelerometer') // confirm level
+    const acksAfterLevel = harness.sent.filter((m) => m.type === 'COMMAND_ACK').length
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Frame already on its left side, held still — but the autopilot has not
+    // asked for "left" yet.
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(harness.sent.filter((m) => m.type === 'COMMAND_ACK').length, acksAfterLevel, 'no ack for an unprompted posture')
+
+    // Now the autopilot asks for left: the same held frame auto-confirms.
+    service.handleCommandLong(accelPoseCommand(2), VEHICLE.systemId, VEHICLE.componentId)
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(harness.sent.filter((m) => m.type === 'COMMAND_ACK').length, acksAfterLevel + 1)
+  } finally {
+    service.destroy()
+  }
+})
+
+test('after the sixth posture the action waits for the autopilot\'s verdict instead of declaring success on a timer', async () => {
+  // The vehicle repeats its real verdict (STATUSTEXT, then the 1 Hz
+  // sentinel) indefinitely, so a 4 s "assume it worked" was never needed and
+  // could report a success the vehicle never had.
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    accelerometerStepAdvanceMs: 20,
+    accelerometerCompletionFallbackMs: 20
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(6), VEHICLE.systemId, VEHICLE.componentId)
+    await service.runCalibrationAction('calibrate-accelerometer') // confirm back
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    const action = service.getAction('calibrate-accelerometer')
+    assert.equal(action.status, 'running', 'no verdict yet → still running')
+    assert.match(action.summary, /waiting for the autopilot's verdict/i)
+    assert.ok(!harness.statusEntries.some((e) => e.text === 'Accelerometer calibration complete.'))
+
+    // The real verdict completes it.
+    service.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+    assert.equal(service.getAction('calibrate-accelerometer').status, 'succeeded')
+  } finally {
+    service.destroy()
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Accelerometer no-prompt watchdog + vehicle restart
+// ---------------------------------------------------------------------------
+
+test('accel prompt watchdog fails a running calibration whose autopilot has gone silent', async () => {
+  // AP_AccelCal re-sends the current posture every second. An FC that
+  // rebooted on a link that survived (WS bridge, SITL, Ethernet) sends
+  // nothing, and pre-fix the action stayed 'running' — blocking every
+  // parameter write — until the operator found Cancel.
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerPromptWatchdogMs: 40
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(2), VEHICLE.systemId, VEHICLE.componentId)
+    assert.equal(service.hasActiveAction(), true)
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const action = service.getAction('calibrate-accelerometer')
+    assert.equal(action.status, 'failed')
+    assert.match(action.summary, /no accelerometer calibration prompt arrived/i)
+    assert.equal(service.hasActiveAction(), false, 'write gate must clear')
+    assert.ok(harness.statusEntries.some((e) => e.severity === 'warning' && /prompt arrived/i.test(e.text)))
+  } finally {
+    service.destroy()
+  }
+})
+
+test('accel prompt watchdog is fed by the autopilot\'s 1 Hz prompt re-sends and never fires on a live calibration', async () => {
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerPromptWatchdogMs: 60
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      service.handleCommandLong(accelPoseCommand(2), VEHICLE.systemId, VEHICLE.componentId)
+    }
+    assert.equal(service.getAction('calibrate-accelerometer').status, 'running')
+    assert.equal(service.getAction('calibrate-accelerometer').ctaLabel, 'Confirm Left Side Position')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('handleVehicleRestart fails active calibrations and completes a pending reboot request', async () => {
+  const harness = createHostHarness({ accelerometerInitialWarmupMs: 10000, compassGuidanceTimeoutMs: 10000 })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-compass')
+    service.handleMagCalProgress(magCalProgress({ completionPct: 30 }))
+    service.setAction('reboot-autopilot', {
+      actionId: 'reboot-autopilot',
+      status: 'running',
+      summary: 'Reboot request sent.',
+      instructions: [],
+      statusTexts: [],
+      startedAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      completedAtMs: undefined
+    })
+    assert.equal(service.hasActiveAction(), true)
+
+    service.handleVehicleRestart()
+
+    assert.equal(service.getAction('calibrate-compass').status, 'failed')
+    assert.match(service.getAction('calibrate-compass').summary, /restarted mid-calibration/i)
+    assert.equal(service.getAction('reboot-autopilot').status, 'succeeded')
+    assert.equal(service.getAction('calibrate-accelerometer').status, 'idle', 'idle actions untouched')
+    assert.equal(service.hasActiveAction(), false)
+  } finally {
+    service.destroy()
+  }
+})
+
+// ---------------------------------------------------------------------------
+// reboot-autopilot waits for its ack
+// ---------------------------------------------------------------------------
+
+test('reboot-autopilot succeeds on the ACCEPTED ack instead of waiting for a STATUSTEXT that never comes', async () => {
+  // GCS_Common.cpp acks PREFLIGHT_REBOOT_SHUTDOWN before rebooting and sends
+  // no "reboot requested" text. Pre-fix the action sat 'running' (blocking
+  // parameter writes on link-persistent transports) until disconnect.
+  const harness = createHostHarness({
+    sendCommand: async (command, params, options) => {
+      harness.sentCommands.push({ command, params, options })
+      return { type: 'COMMAND_ACK', command, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 }
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('reboot-autopilot')
+
+  const sent = harness.sentCommands.find((c) => c.command === MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN)
+  assert.deepEqual(sent.params, [1, 0, 0, 0, 0, 0, 0])
+  assert.equal(sent.options?.waitForAck, true)
+  assert.equal(sent.options?.ackTimeoutMs, 3000)
+  const action = service.getAction('reboot-autopilot')
+  assert.equal(action.status, 'succeeded')
+  assert.ok(action.completedAtMs)
+  assert.equal(service.hasActiveAction(), false)
+})
+
+test('reboot-autopilot fails when the autopilot rejects or never acks the request', async () => {
+  const rejected = createHostHarness({
+    sendCommand: async () => {
+      throw new Error('Autopilot rejected PREFLIGHT_REBOOT_SHUTDOWN (DENIED).')
+    }
+  })
+  const rejectedService = new GuidedActionService(rejected.host)
+  await rejectedService.runCalibrationAction('reboot-autopilot').catch(() => {})
+  assert.equal(rejectedService.getAction('reboot-autopilot').status, 'failed')
+  assert.equal(rejectedService.hasActiveAction(), false)
+
+  const silent = createHostHarness({
+    sendCommand: async () => {
+      throw new Error('Timed out waiting for PREFLIGHT_REBOOT_SHUTDOWN acknowledgment after 3000ms.')
+    }
+  })
+  const silentService = new GuidedActionService(silent.host)
+  await silentService.runCalibrationAction('reboot-autopilot').catch(() => {})
+  assert.equal(silentService.getAction('reboot-autopilot').status, 'failed')
+  assert.match(silentService.getAction('reboot-autopilot').summary, /timed out/i)
+})
+
+test('the autopilot re-sending the same pose prompt every second does not restart the auto-confirm hold', async () => {
+  // AP_AccelCal re-sends ACCELCAL_VEHICLE_POS for the posture it is waiting
+  // on every ~1 s. handleCommandLong treated each re-send as a step change
+  // and cleared the hold, so a 1.2 s hold could never complete on a frame
+  // that was perfectly still and aligned — observed on true SITL (120
+  // ATTITUDE samples inside the window, zero auto-confirms) and reported
+  // from real hardware.
+  const harness = createHostHarness({
+    accelerometerAutoHoldMs: 60,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerInitialWarmupMs: 10000
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(2), VEHICLE.systemId, VEHICLE.componentId) // left
+    const acks = () => harness.sent.filter((m) => m.type === 'COMMAND_ACK').length
+    const before = acks()
+
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    service.handleCommandLong(accelPoseCommand(2), VEHICLE.systemId, VEHICLE.componentId) // re-send
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    service.handleCommandLong(accelPoseCommand(2), VEHICLE.systemId, VEHICLE.componentId) // re-send
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    service.handleAttitudeSample(-90, 0)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+
+    assert.equal(acks(), before + 1, 'a still, aligned frame auto-confirms despite the re-sent prompts')
+    assert.equal(service.getAction('calibrate-accelerometer').ctaLabel, undefined, 'posture confirmed')
+  } finally {
+    service.destroy()
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Cancel waits for DO_CANCEL_MAG_CAL to be acknowledged
+// ---------------------------------------------------------------------------
+
+test('cancelling a compass calibration awaits the DO_CANCEL_MAG_CAL ack and reads "Cancelling" meanwhile', async () => {
+  let resolveCancel
+  const harness = createHostHarness({
+    sendCommand: (command, params, options) => {
+      harness.sentCommands.push({ command, params, options })
+      if (command === MAV_CMD.DO_CANCEL_MAG_CAL) {
+        return new Promise((resolve) => {
+          resolveCancel = resolve
+        })
+      }
+      return Promise.resolve()
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-compass')
+    service.handleMagCalProgress(magCalProgress({ completionPct: 40 }))
+
+    const cancelling = service.cancelAction('calibrate-compass')
+    const mid = service.getAction('calibrate-compass')
+    assert.equal(mid.status, 'running', 'still active until the autopilot confirms')
+    assert.match(mid.summary, /cancelling compass calibration/i)
+    assert.equal(mid.progressPct, undefined)
+    const cancel = harness.sentCommands.find((c) => c.command === MAV_CMD.DO_CANCEL_MAG_CAL)
+    assert.equal(cancel.options?.waitForAck, true)
+    assert.equal(cancel.options?.ackTimeoutMs, 3000)
+
+    // A second click while the first is in flight does not re-send.
+    void service.cancelAction('calibrate-compass')
+    assert.equal(harness.sentCommands.filter((c) => c.command === MAV_CMD.DO_CANCEL_MAG_CAL).length, 1)
+
+    resolveCancel({ type: 'COMMAND_ACK', command: MAV_CMD.DO_CANCEL_MAG_CAL, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 })
+    await cancelling
+    assert.equal(service.getAction('calibrate-compass').status, 'idle')
+    assert.equal(service.hasActiveAction(), false)
+  } finally {
+    service.destroy()
+  }
+})
+
+test('a compass cancel the autopilot does not acknowledge is reported as a failed cancel, not a clean stop', async () => {
+  const harness = createHostHarness({
+    sendCommand: async (command, params, options) => {
+      harness.sentCommands.push({ command, params, options })
+      if (command === MAV_CMD.DO_CANCEL_MAG_CAL) {
+        throw new Error('Timed out waiting for DO_CANCEL_MAG_CAL acknowledgment after 3000ms.')
+      }
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-compass')
+    await service.cancelAction('calibrate-compass')
+
+    const action = service.getAction('calibrate-compass')
+    assert.equal(action.status, 'failed')
+    assert.match(action.summary, /did not confirm the compass calibration cancel/i)
+    assert.match(action.summary, /autosave/i)
+    assert.match(action.summary, /only stops on a reboot/i)
+    assert.equal(service.hasActiveAction(), false, 'the write gate still clears — the configurator-side wait is over')
+    assert.ok(harness.statusEntries.some((e) => e.severity === 'warning' && /did not confirm/i.test(e.text)))
+  } finally {
+    service.destroy()
+  }
+})
+
+// ---------------------------------------------------------------------------
+// MAG_CAL_PROGRESS attempt > 1 (retry=1 means a bad fit never reports)
+// ---------------------------------------------------------------------------
+
+test('a compass retrying its fit (attempt > 1) is named in the summary while the action stays cancellable', async () => {
+  // With retry=1 in DO_START_MAG_CAL a FAILED/BAD_* fit restarts the
+  // calibrator with attempt++ and never reaches MAG_CAL_REPORT, so a compass
+  // that cannot fit spins forever at "N% — keep rotating" with no hint why.
+  const { host } = createHostHarness()
+  const service = new GuidedActionService(host)
+  try {
+    await service.runCalibrationAction('calibrate-compass')
+    service.handleMagCalProgress(magCalProgress({ compassId: 0, calMask: 0b11, completionPct: 80, attempt: 1 }))
+    assert.doesNotMatch(service.getAction('calibrate-compass').summary, /retry/i)
+
+    service.handleMagCalProgress(magCalProgress({ compassId: 1, calMask: 0b11, completionPct: 12, attempt: 3 }))
+    const action = service.getAction('calibrate-compass')
+    assert.equal(action.status, 'running', 'Cancel must stay available')
+    assert.match(action.summary, /compass 2 failed its fit — retrying, attempt 3/i)
+    assert.match(action.summary, /interference|orientation/i)
+
+    // The hint persists across the healthy compass's next progress frame.
+    service.handleMagCalProgress(magCalProgress({ compassId: 0, calMask: 0b11, completionPct: 85, attempt: 1 }))
+    assert.match(service.getAction('calibrate-compass').summary, /compass 2 failed its fit/i)
+
+    // A new run starts clean.
+    service.handleMagCalReport(magCalReport({ compassId: 0, calMask: 0b11, calStatus: 4, autosaved: 1 }))
+    service.handleMagCalReport(magCalReport({ compassId: 1, calMask: 0b11, calStatus: 4, autosaved: 1 }))
+    assert.equal(service.getAction('calibrate-compass').status, 'succeeded')
+    await service.runCalibrationAction('calibrate-compass')
+    service.handleMagCalProgress(magCalProgress({ completionPct: 5, attempt: 1 }))
+    assert.doesNotMatch(service.getAction('calibrate-compass').summary, /retry/i)
+  } finally {
+    service.destroy()
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Level ack payload + post-calibration parameter re-reads
+// ---------------------------------------------------------------------------
+
+test('level calibration does not report success on an IN_PROGRESS ack whose final result never came', async () => {
+  // The waiter resolves with the remembered IN_PROGRESS beat when no final
+  // ack arrives. calibrate_trim() answers synchronously, so that is not a
+  // stored trim; pre-fix the action ignored the payload and said "complete".
+  const harness = createHostHarness({
+    sendCommand: async (command) => ({ type: 'COMMAND_ACK', command, result: 5, progress: 50, resultParam2: 0, targetSystem: 255, targetComponent: 190 })
+  })
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('calibrate-level').catch(() => {})
+  const action = service.getAction('calibrate-level')
+  assert.equal(action.status, 'failed')
+  assert.match(action.summary, /never confirmed it finished/i)
+})
+
+function matchingIds(patterns, ids) {
+  return ids.filter((id) => patterns.some((pattern) => pattern.test(id)))
+}
+
+const CAL_PARAM_IDS = [
+  'AHRS_TRIM_X', 'AHRS_TRIM_Y', 'AHRS_TRIM_Z', 'AHRS_ORIENTATION',
+  'INS_ACCOFFS_X', 'INS_ACC2OFFS_Z', 'INS_ACC3SCAL_Y', 'INS_ACC_ID', 'INS_ACC2_ID', 'INS_ACCEL_FILTER', 'INS_GYROFFS_X',
+  'COMPASS_OFS_X', 'COMPASS_OFS2_Y', 'COMPASS_DIA3_Z', 'COMPASS_ODI_X', 'COMPASS_SCALE', 'COMPASS_SCALE2', 'COMPASS_ORIENT2', 'COMPASS_USE', 'COMPASS_DEV_ID'
+]
+
+test('a successful level calibration re-reads AHRS_TRIM_X/Y and nothing else', async () => {
+  const refreshed = []
+  const harness = createHostHarness({
+    sendCommand: async (command) => ({ type: 'COMMAND_ACK', command, result: 0, progress: 0, resultParam2: 0, targetSystem: 255, targetComponent: 190 }),
+    refreshParameters: async (patterns) => {
+      refreshed.push(...matchingIds(patterns, CAL_PARAM_IDS))
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('calibrate-level')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(service.getAction('calibrate-level').status, 'succeeded')
+  assert.deepEqual(refreshed.sort(), ['AHRS_TRIM_X', 'AHRS_TRIM_Y'])
+})
+
+test('a successful accelerometer calibration re-reads the INS_ACC offsets/scales/ids and the trim', async () => {
+  const refreshed = []
+  const harness = createHostHarness({
+    accelerometerInitialWarmupMs: 10000,
+    refreshParameters: async (patterns) => {
+      refreshed.push(...matchingIds(patterns, CAL_PARAM_IDS))
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  try {
+    await service.runCalibrationAction('calibrate-accelerometer')
+    service.handleCommandLong(accelPoseCommand(16777215), VEHICLE.systemId, VEHICLE.componentId)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    assert.deepEqual(
+      refreshed.sort(),
+      ['AHRS_TRIM_X', 'AHRS_TRIM_Y', 'INS_ACC2OFFS_Z', 'INS_ACC2_ID', 'INS_ACC3SCAL_Y', 'INS_ACCOFFS_X', 'INS_ACC_ID']
+    )
+    assert.ok(!refreshed.includes('INS_ACCEL_FILTER') && !refreshed.includes('INS_GYROFFS_X'))
+  } finally {
+    service.destroy()
+  }
+})
+
+test('a successful compass calibration re-reads COMPASS_OFS/DIA/ODI/SCALE/ORIENT', async () => {
+  const refreshed = []
+  const harness = createHostHarness({
+    refreshParameters: async (patterns) => {
+      refreshed.push(...matchingIds(patterns, CAL_PARAM_IDS))
+    }
+  })
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('calibrate-compass')
+  service.handleMagCalReport(magCalReport({ calStatus: 4, autosaved: 1 }))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(service.getAction('calibrate-compass').status, 'succeeded')
+  assert.deepEqual(
+    refreshed.sort(),
+    ['COMPASS_DIA3_Z', 'COMPASS_ODI_X', 'COMPASS_OFS2_Y', 'COMPASS_OFS_X', 'COMPASS_ORIENT2', 'COMPASS_SCALE', 'COMPASS_SCALE2']
+  )
+  assert.ok(!refreshed.includes('COMPASS_USE') && !refreshed.includes('COMPASS_DEV_ID'))
+})
+
+// ---------------------------------------------------------------------------
+// STATUSTEXT matching stays about the calibration (true-SITL findings)
+// ---------------------------------------------------------------------------
+
+test('unrelated "complete" status texts do not finish a running compass or accelerometer calibration', async () => {
+  const { host } = createHostHarness({ accelerometerInitialWarmupMs: 10000 })
+  const service = new GuidedActionService(host)
+  try {
+    await service.runCalibrationAction('calibrate-compass')
+    for (const text of [
+      'EKF3 IMU0 tilt alignment complete',
+      'EKF3 IMU1 MAG0 initial yaw alignment complete',
+      'Barometer 1 calibration complete',
+      'Successful'
+    ]) {
+      service.processStatusText(text)
+      assert.equal(service.getAction('calibrate-compass').status, 'running', `"${text}" must not complete the compass cal`)
+    }
+    // The verdict is the report.
+    service.handleMagCalReport(magCalReport({ calStatus: 4, autosaved: 1 }))
+    assert.equal(service.getAction('calibrate-compass').status, 'succeeded')
+
+    // A finished compass cal is not re-opened by the pre-arm text that
+    // mentions it.
+    service.processStatusText('PreArm: Compass calibration running')
+    assert.equal(service.getAction('calibrate-compass').status, 'succeeded')
+  } finally {
+    service.destroy()
+  }
+
+  const accelHarness = createHostHarness({ accelerometerInitialWarmupMs: 10000 })
+  const accelService = new GuidedActionService(accelHarness.host)
+  try {
+    await accelService.runCalibrationAction('calibrate-accelerometer')
+    accelService.processStatusText('EKF3 IMU0 tilt alignment complete')
+    accelService.processStatusText('Successful')
+    assert.equal(accelService.getAction('calibrate-accelerometer').status, 'running')
+    // AP_AccelCal's own verdict still counts.
+    accelService.processStatusText('Calibration successful')
+    assert.equal(accelService.getAction('calibrate-accelerometer').status, 'succeeded')
+  } finally {
+    accelService.destroy()
   }
 })

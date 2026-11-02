@@ -70,6 +70,8 @@ test('catalog override applies every 4.7 correction for a >= 4.7 copter build', 
 
   // Ranges.
   assert.equal(c.parameters.VTX_POWER.maximum, 1000)
+  // 0 mW stays valid: it is pit mode on a SmartAudio 2.1 VTX.
+  assert.equal(c.parameters.VTX_POWER.minimum, 0)
   assert.equal(c.parameters.VTX_MAX_POWER.minimum, 25)
   assert.equal(c.parameters.VTX_MAX_POWER.maximum, 1000)
 

@@ -9,11 +9,8 @@ import type { ReactElement, ReactNode } from 'react'
 import type { ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
 import {
   ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS,
-  ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS,
-  formatArducopterNotificationLedBrightness,
-  formatArducopterNotificationLedOverride
+  ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS
 } from '@arduconfig/param-metadata'
-import { buttonStyle } from '@arduconfig/ui-kit'
 
 import type { deriveOutputMappingSummary } from '@arduconfig/ardupilot-core'
 
@@ -104,18 +101,12 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
     notificationBuzzVolume,
     editedNotificationLedTypes,
     editedNotificationBuzzTypes,
-    notificationLedOutputs,
-    outputNotificationDraftEntries,
     outputNotificationStagedDrafts,
     outputNotificationInvalidDrafts,
     parameterDraftById,
     editedValues,
-    busyAction,
-    canApplyDraftParameters,
     setDraft,
-    updateDrafts,
-    handleApplyScopedParameterDrafts,
-    handleDiscardScopedParameterDrafts
+    updateDrafts
   } = props
 
   return (
@@ -125,21 +116,8 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
           <div className="switch-exercise-card__header">
             <div>
               <strong>LED & buzzer notifications</strong>
-              <p>Notification LEDs and the buzzer, without dropping into raw parameters.</p>
             </div>
             <DraftReviewBadge staged={outputNotificationStagedDrafts.length} invalid={outputNotificationInvalidDrafts.length} />
-          </div>
-
-          <div className="config-pills">
-            {notificationLedTypesParameter ? <span>LED drivers: {describeBitmaskSelections(notificationLedTypes, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}</span> : null}
-            {notificationLedBrightnessParameter ? <span>Brightness: {formatArducopterNotificationLedBrightness(notificationLedBrightness)}</span> : null}
-            {notificationLedLengthParameter ? <span>LED length: {notificationLedLength ?? 'Unknown'}</span> : null}
-            {notificationLedOverrideParameter ? <span>LED source: {formatArducopterNotificationLedOverride(notificationLedOverride)}</span> : null}
-            {notificationBuzzTypesParameter ? <span>Buzzer drivers: {describeBitmaskSelections(notificationBuzzTypes, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}</span> : null}
-            {notificationBuzzVolumeParameter ? <span>Buzzer volume: {notificationBuzzVolume !== undefined ? `${notificationBuzzVolume}%` : 'Unknown'}</span> : null}
-            {notificationLedOutputs.length > 0
-              ? notificationLedOutputs.map((output) => <span key={`notification-output:${output.channelNumber}`}>OUT{output.channelNumber}: {output.functionLabel}</span>)
-              : <span>No NeoPixel output assignment detected yet</span>}
           </div>
 
           <div className="scoped-editor-grid">
@@ -174,12 +152,11 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
                       )
                     })}
                   </div>
-                  <small>
-                    {parameterDraftById.get(notificationLedTypesParameter.id)?.status === 'staged'
-                      ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationLedTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`
-                      : parameterDraftById.get(notificationLedTypesParameter.id)?.reason ??
-                        `Current ${describeBitmaskSelections(notificationLedTypes, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`}
-                  </small>
+                  {parameterDraftById.get(notificationLedTypesParameter.id)?.status === 'staged' ? (
+                    <small>{`Staged ${describeBitmaskSelections(parameterDraftById.get(notificationLedTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`}</small>
+                  ) : parameterDraftById.get(notificationLedTypesParameter.id)?.reason ? (
+                    <small>{parameterDraftById.get(notificationLedTypesParameter.id)?.reason}</small>
+                  ) : null}
                 </label>
               </NotificationFieldRow>
             ) : null}
@@ -251,12 +228,11 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
                       )
                     })}
                   </div>
-                  <small>
-                    {parameterDraftById.get(notificationBuzzTypesParameter.id)?.status === 'staged'
-                      ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationBuzzTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`
-                      : parameterDraftById.get(notificationBuzzTypesParameter.id)?.reason ??
-                        `Current ${describeBitmaskSelections(notificationBuzzTypes, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`}
-                  </small>
+                  {parameterDraftById.get(notificationBuzzTypesParameter.id)?.status === 'staged' ? (
+                    <small>{`Staged ${describeBitmaskSelections(parameterDraftById.get(notificationBuzzTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`}</small>
+                  ) : parameterDraftById.get(notificationBuzzTypesParameter.id)?.reason ? (
+                    <small>{parameterDraftById.get(notificationBuzzTypesParameter.id)?.reason}</small>
+                  ) : null}
                 </label>
               </NotificationFieldRow>
             ) : null}
@@ -274,36 +250,6 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
             ) : null}
           </div>
 
-          <ul className="output-note-list">
-            <li>Assign a NeoPixel output in the Output assignments card before expecting external LED strips to respond.</li>
-            <li>After notification-driver changes, bench-check the LEDs and buzzer with props off before flight.</li>
-          </ul>
-
-          <div className="switch-exercise-controls">
-            <button
-              style={buttonStyle('primary')}
-              onClick={() =>
-                void handleApplyScopedParameterDrafts(outputNotificationDraftEntries, 'outputs:notifications', 'Notification outputs')
-              }
-              disabled={
-                busyAction !== undefined ||
-                outputNotificationStagedDrafts.length === 0 ||
-                outputNotificationInvalidDrafts.length > 0 ||
-                !canApplyDraftParameters
-              }
-            >
-              {busyAction === 'outputs:notifications' ? 'Applying…' : `Apply Notification Changes (${outputNotificationStagedDrafts.length})`}
-            </button>
-            <button
-              style={buttonStyle()}
-              onClick={() =>
-                handleDiscardScopedParameterDrafts(outputNotificationDraftEntries.map((entry) => entry.id), 'notification outputs')
-              }
-              disabled={busyAction !== undefined || outputNotificationDraftEntries.length === 0}
-            >
-              Discard Notification Changes
-            </button>
-          </div>
         </div>
       ) : null}
     </>

@@ -13,7 +13,6 @@ import { useEffect, useRef, type ReactElement } from 'react'
 import { StatusBadge } from '@arduconfig/ui-kit'
 
 import { formatSetupOutcome } from '../setup-format-helpers'
-import { toneForSetup, toneForSetupSequence } from '../tone-helpers'
 import type { SetupFlowFollowUpDescriptor, SetupFlowSectionDescriptor } from '../app-types'
 
 export interface SetupWizardHeaderProps {
@@ -47,16 +46,30 @@ export function SetupWizardHeader({
   return (
     <>
       <div className="setup-wizard__header">
-        <div>
-          <p className="eyebrow">Step {selectedSetupSectionIndex + 1} of {setupFlowSections.length}</p>
-          <h3>{selectedSetupSection.title}</h3>
+        <div className="setup-wizard__header-main">
+          <div className="setup-wizard__header-title">
+            <p className="eyebrow">Step {selectedSetupSectionIndex + 1} of {setupFlowSections.length}</p>
+            <h3>{selectedSetupSection.title}</h3>
+          </div>
           <p>{selectedSetupSection.summary}</p>
         </div>
         <div className="setup-wizard__header-status">
-          <StatusBadge tone={toneForSetupSequence(selectedSetupSection.sequenceState)}>{selectedSetupSection.sequenceState}</StatusBadge>
-          <StatusBadge tone={toneForSetup(selectedSetupSection.status)}>
-            {selectedSetupSection.criteriaMetCount}/{selectedSetupSection.criteria.length} criteria
-          </StatusBadge>
+          {/* A locked step opens read-only: a look ahead, with its actions off. */}
+          {selectedSetupSection.sequenceState === 'locked' ? (
+            <span className="setup-wizard__preview-chip" data-testid="setup-wizard-preview" role="status">
+              Preview
+            </span>
+          ) : null}
+          {/* A complete step says so in a small chip, not a banner of its own. */}
+          {selectedSetupSection.status === 'complete' ? (
+            <span className="setup-wizard__complete-chip" data-testid="setup-wizard-complete-banner" role="status">
+              ✓ complete
+            </span>
+          ) : null}
+          {/* The sequence state used to render here as a raw enum badge
+           *  ("current", "complete", "locked"). The rail chip already carries it
+           *  as styling and a "Do this now" cue, and the complete banner below
+           *  says "complete" in words. */}
           {guidedSetupTestingShortcutActive ? <StatusBadge tone="warning">Testing shortcut</StatusBadge> : null}
           {selectedSetupSection.confirmationOutcome && selectedSetupSection.confirmationOutcome !== 'complete' ? (
             <StatusBadge tone="warning">{formatSetupOutcome(selectedSetupSection.confirmationOutcome)}</StatusBadge>
@@ -69,14 +82,13 @@ export function SetupWizardHeader({
             type="button"
             className="setup-wizard__reset"
             data-testid="setup-wizard-reset"
-            title="Forget every confirmed step and start guided setup from the beginning"
+            title="Start guided setup over"
             onClick={() => {
               if (
                 typeof window !== 'undefined' &&
                 !window.confirm(
                   'Start guided setup over?\n\n' +
-                    'Every step becomes unconfirmed and the exercises are cleared. Parameters already written ' +
-                    'to the vehicle are NOT changed.'
+                    'Every step is unconfirmed again. Nothing already written to the vehicle changes.'
                 )
               ) {
                 return
@@ -89,15 +101,6 @@ export function SetupWizardHeader({
         </div>
       </div>
 
-      {selectedSetupSection.status === 'complete' ? (
-        <div className="setup-wizard__complete-banner" data-testid="setup-wizard-complete-banner" role="status">
-          <span className="setup-wizard__complete-check" aria-hidden="true">✓</span>
-          <strong>{selectedSetupSection.title} complete</strong>
-          <span className="setup-wizard__complete-count">
-            {selectedSetupSection.criteriaMetCount}/{selectedSetupSection.criteria.length} checks
-          </span>
-        </div>
-      ) : null}
 
       <div className="switch-exercise-progress" aria-hidden="true">
         <div className="switch-exercise-progress__fill" style={{ width: `${setupFlowProgress}%` }} />
@@ -125,7 +128,6 @@ export function SetupWizardHeader({
             data-step-status={section.status}
             className={`setup-wizard-step${section.id === selectedSetupSection.id ? ' is-active' : ''}${section.status === 'complete' ? ' is-complete' : ''}${section.sequenceState === 'current' ? ' is-current' : ''}${section.sequenceState === 'locked' ? ' is-locked' : ''}`}
             onClick={() => onSelectStep(section.id)}
-            disabled={!guidedSetupTestingShortcutActive && section.sequenceState === 'locked'}
           >
             <small>Step {index + 1}</small>
             <span>{section.title}</span>

@@ -515,6 +515,29 @@ export function formatParameterValueForLog(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(6).replace(/\.?0+$/, '')
 }
 
+/**
+ * Operator-facing names of the guided actions. Mirrors the web layer's
+ * `actionLabels` (apps/web/src/guided-action-labels.ts) so a refusal the
+ * runtime throws reads exactly like the tooltip the UI shows for the same
+ * reason.
+ */
+export function guidedActionLabel(actionId: GuidedActionId): string {
+  switch (actionId) {
+    case 'request-parameters':
+      return 'Sync Parameters'
+    case 'calibrate-accelerometer':
+      return 'Calibrate Accelerometer'
+    case 'calibrate-level':
+      return 'Calibrate Level'
+    case 'calibrate-compass':
+      return 'Calibrate Compass'
+    case 'reboot-autopilot':
+      return 'Request Reboot'
+    default:
+      return actionId
+  }
+}
+
 export function idleSummaryForAction(actionId: GuidedActionId): string {
   switch (actionId) {
     case 'request-parameters':
@@ -651,6 +674,15 @@ export function includesAny(text: string, fragments: string[]): boolean {
 }
 
 export function matchesGenericCalibrationSuccess(text: string): boolean {
+  // Anchor on "calibration"/"cal " exactly like the failure matcher. Seen on
+  // true SITL mid-compass-cal: "EKF3 IMU0 tilt alignment complete" (and at
+  // boot "Barometer 1 calibration complete" — anchored, but see the
+  // compass branch) flipped the running action to 'succeeded' long before
+  // the autopilot's MAG_CAL_REPORT, which the 'running'-only gate then
+  // ignored. Any text with "complete"/"done" in it is not a verdict.
+  if (!text.includes('calibration') && !text.includes('cal ')) {
+    return false
+  }
   return includesAny(text, [
     'successful',
     'succeeded',
@@ -840,17 +872,19 @@ export function matchGuidedActionText(
   }
 
   if (actionId === 'calibrate-compass') {
+    // Success is decided by MAG_CAL_REPORT (handleMagCalReport); ArduPilot
+    // emits no "compass calibration complete" STATUSTEXT of its own. Only a
+    // text that NAMES the compass may complete the action here — SITL showed
+    // "Barometer 1 calibration complete" doing it through the un-anchored
+    // "calibration complete" fragment while the start was still pending.
     if (
       normalized.includes('compass calibration complete') ||
       (actionIsActive &&
         includesAny(normalized, [
           'compass calibration successful',
           'mag calibration successful',
-          'calibration successful',
-          'calibration complete',
-          'calibration completed'
-        ])) ||
-      (actionIsActive && matchesGenericCalibrationSuccess(normalized))
+          'compass calibration completed'
+        ]))
     ) {
       return {
         status: 'succeeded',
@@ -890,7 +924,11 @@ export function matchGuidedActionText(
         instructions: defaultInstructionsForAction(actionId)
       }
     }
-    if (normalized.includes('compass calibration')) {
+    // "PreArm: Compass calibration running" and friends: a sign of life for
+    // an active or externally started cal, never a reason to re-open one
+    // that already finished or failed (seen on SITL: succeeded → running →
+    // succeeded within one run).
+    if (normalized.includes('compass calibration') && current.status !== 'succeeded' && current.status !== 'failed') {
       return {
         status: 'running',
         summary: text,

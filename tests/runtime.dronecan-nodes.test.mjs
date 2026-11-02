@@ -371,9 +371,11 @@ test('demo DroneCAN simulator populates the inspector with named nodes + params'
       (snap) => {
         const gps = snap.canBus.nodes.find((node) => node.nodeId === 124)
         const power = snap.canBus.nodes.find((node) => node.nodeId === 50)
+        const px4 = snap.canBus.nodes.find((node) => node.nodeId === 88)
         return (
           Boolean(gps?.name) &&
           Boolean(power?.name) &&
+          Boolean(px4?.name) &&
           gps.parameters.some((param) => param.name === 'GPS_TYPE') &&
           power.parameters.some((param) => param.name === 'BATT_CAPACITY')
         )
@@ -383,7 +385,8 @@ test('demo DroneCAN simulator populates the inspector with named nodes + params'
     assert.ok(snapshot, 'two named nodes with their parameter tables were discovered')
 
     const names = snapshot.canBus.nodes.map((node) => node.name).sort()
-    assert.deepEqual(names, ['com.botblox.dronenet', 'com.hex.here3', 'org.ardupilot.ap_periph'])
+    // Node 88 is the PX4 cannode (an ARK RTK GPS) — the CAN tab reads PX4 metadata for it.
+    assert.deepEqual(names, ['com.botblox.dronenet', 'com.hex.here3', 'org.ardupilot.ap_periph', 'org.ark.can-rtk-gps'])
 
     // The DroneNet peripheral carries a NET_ tree — the Networking tab's DroneNet
     // section reads/writes these over DroneCAN.

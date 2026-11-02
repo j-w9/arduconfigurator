@@ -14,7 +14,7 @@
 // popout is a React portal into a child window, NOT a second runtime, so both
 // copies read the same snapshot and share the same draft map.
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type {
@@ -31,7 +31,11 @@ import {
   buildDronecanParamRows
 } from '../view-models/dronecan-inspector'
 import { buildCanBusStagedChanges, healthLabel, modeLabel } from '../view-models/can-bus'
+import { periphPickerOptions, periphPreselect } from '../view-models/dronecan-firmware-picker'
+import { dronecanNodeBoardId } from '@arduconfig/firmware-flash'
 import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
+import { EnumPicker } from './EnumPicker'
+import { InfoDot } from './InfoDot'
 
 /**
  * Which parts of a device's inspector to render.
@@ -90,6 +94,10 @@ export interface DronecanFirmwareOnlineSource {
    *  flashes (the same bytes a local .bin yields), plus a display name. The
    *  host handles the .apj→raw decode. Rejects with a human message on failure. */
   download: (candidate: DronecanFirmwareCandidate) => Promise<{ fileName: string; image: Uint8Array }>
+  /** Every AP_Periph build, when the source has the whole list (the website's
+   *  index): the panel then offers a picker over all of them instead of a
+   *  board-id lookup that can come back empty. */
+  allBuilds?: readonly DronecanFirmwareCandidate[]
 }
 
 /** The destructive per-device actions. Bundled behind one optional prop because
@@ -109,6 +117,185 @@ export interface CanDeviceExpertActions {
   /** Online firmware lookup (desktop-only). Omit to hide the online affordance
    *  entirely; pass `available: false` to show the degrade note. */
   firmwareOnline?: DronecanFirmwareOnlineSource
+  /** Give a node a new ID (CAN_NODE, save, restart). Omit to hide. */
+  onChangeNodeId?: (nodeId: number, newNodeId: number) => void
+  /** Node IDs already on the bus, so a clash is caught before sending. */
+  takenNodeIds?: readonly number[]
+  /** Flash a node's bootloader from its firmware (FLASH_BOOTLOADER = 1). Omit to hide. */
+  onFlashBootloader?: (nodeId: number) => void
+  /** The bootloader flash in progress or just finished, if any. */
+  bootloaderFlash?: { nodeId: number; status: 'flashing' | 'ok' | 'failed' | 'timeout'; message: string }
+}
+
+/** The param names a node has reported, kept across re-fetches (per node id). */
+const stickyParamNames = new Map<number, Set<string>>()
+function useStickyParamNames(nodeId: number, parameters: readonly { name: string }[]): ReadonlySet<string> {
+  let known = stickyParamNames.get(nodeId)
+  if (!known) {
+    known = new Set()
+    stickyParamNames.set(nodeId, known)
+  }
+  for (const entry of parameters) known.add(entry.name)
+  return known
+}
+
+/** The node's params whose change needs a reboot. */
+function paramRowsForReboot(node: DronecanInspectedNode, lookup: DronecanParamCatalogLookup | undefined): string[] {
+  return node.parameters.filter((entry) => lookup?.(entry.name, node)?.rebootRequired).map((entry) => entry.name)
+}
+
+/** "CAN bitrate" for CAN_BAUDRATE, "Debug" for DEBUG: a display name that only
+ *  rewords the param name says nothing the name does not. */
+/** The one line under a param's name, or undefined when there is nothing to add. */
+function paramSummary(row: { name: string; label: string; description?: string }): string | undefined {
+  if (row.label && row.label !== row.name && !labelEchoesName(row.label, row.name)) return row.label
+  const sentence = row.description?.split(/(?<=[.!?])\s/)[0]?.replace(/\.$/, '')
+  return sentence && !labelEchoesName(sentence, row.name) ? sentence : undefined
+}
+
+function labelEchoesName(label: string, name: string): boolean {
+  const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
+  const nameWords = new Set(words(name))
+  const labelWords = words(label)
+  return labelWords.length > 0 && labelWords.filter((word) => nameWords.has(word)).length / labelWords.length >= 0.5
+}
+
+/** AP_Periph's bootloader-update trigger (Tools/AP_Periph/Parameters.cpp). */
+const FLASH_BOOTLOADER_PARAM = 'FLASH_BOOTLOADER'
+
+/**
+ * Flash the node's bootloader from the copy embedded in its firmware. Asks
+ * twice -- a node whose bootloader write fails mid-way may not boot -- then
+ * shows what the node reports.
+ */
+function BootloaderFlash(props: {
+  nodeId: number
+  disabled: boolean
+  state: CanDeviceExpertActions['bootloaderFlash']
+  onFlash: (nodeId: number) => void
+}): ReactElement {
+  const { nodeId } = props
+  const [step, setStep] = useState<0 | 1 | 2>(0)
+  const mine = props.state?.nodeId === nodeId ? props.state : undefined
+  const flashing = mine?.status === 'flashing'
+  return (
+    <div className="dronecan-inspector__bootloader" data-testid={`dronecan-bootloader-${nodeId}`}>
+      {step === 0 ? (
+        <button type="button" style={buttonStyle()} disabled={props.disabled || flashing} onClick={() => setStep(1)} data-testid={`dronecan-bootloader-start-${nodeId}`}>
+          {flashing ? 'Flashing bootloader…' : 'Flash bootloader'}
+        </button>
+      ) : step === 1 ? (
+        <span className="dronecan-inspector__node-id">
+          <span className="dronecan-inspector__confirm-text">
+            Rewrite node #{nodeId}&apos;s bootloader from the copy in its firmware?
+          </span>
+          <button type="button" style={buttonStyle('primary')} onClick={() => setStep(2)} data-testid={`dronecan-bootloader-confirm-${nodeId}`}>
+            Continue
+          </button>
+          <button type="button" style={buttonStyle()} onClick={() => setStep(0)}>
+            Cancel
+          </button>
+        </span>
+      ) : (
+        <span className="dronecan-inspector__node-id">
+          <span className="dronecan-inspector__confirm-text dronecan-inspector__danger-text">
+            Sure? Keep the node powered until it reports — a bootloader cut off mid-write may not boot.
+          </span>
+          <button
+            type="button"
+            style={buttonStyle('primary')}
+            onClick={() => {
+              setStep(0)
+              props.onFlash(nodeId)
+            }}
+            data-testid={`dronecan-bootloader-confirm2-${nodeId}`}
+          >
+            Flash bootloader now
+          </button>
+          <button type="button" style={buttonStyle()} onClick={() => setStep(0)}>
+            Cancel
+          </button>
+        </span>
+      )}
+      {mine ? (
+        <p className={`dronecan-inspector__bootloader-status is-${mine.status}`} data-testid={`dronecan-bootloader-status-${nodeId}`}>
+          {mine.message}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/** AP_Periph's node ID parameter (Tools/AP_Periph/Parameters.cpp). */
+const CAN_NODE_PARAM = 'CAN_NODE'
+
+/**
+ * Change a node's ID: writes CAN_NODE, saves, and restarts the node, which
+ * comes back under the new ID. 0 hands the choice to an allocator. Only for
+ * nodes that have CAN_NODE (AP_Periph firmware).
+ */
+function NodeIdChange(props: {
+  nodeId: number
+  takenNodeIds: readonly number[]
+  disabled: boolean
+  onChange: (nodeId: number, newNodeId: number) => void
+}): ReactElement {
+  const { nodeId } = props
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const value = Number(text)
+  const problem =
+    text.trim() === ''
+      ? undefined
+      : !Number.isInteger(value) || value < 0 || value > 125
+        ? '1 to 125, or 0 to let an allocator choose.'
+        : value === nodeId
+          ? 'That is its ID now.'
+          : value !== 0 && props.takenNodeIds.includes(value)
+            ? `Node ${value} is already on the bus.`
+            : undefined
+  if (!open) {
+    return (
+      <button type="button" style={buttonStyle()} onClick={() => setOpen(true)} disabled={props.disabled} data-testid={`dronecan-node-id-${nodeId}`}>
+        Change node ID
+      </button>
+    )
+  }
+  return (
+    <span className="dronecan-inspector__node-id" data-testid={`dronecan-node-id-form-${nodeId}`}>
+      <label>
+        <span>New ID</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={text}
+          onChange={(event) => setText(event.target.value.trim())}
+          aria-invalid={problem !== undefined}
+          placeholder="1–125"
+          data-testid={`dronecan-node-id-input-${nodeId}`}
+        />
+      </label>
+      <button
+        type="button"
+        style={buttonStyle('primary')}
+        onClick={() => {
+          props.onChange(nodeId, value)
+          setOpen(false)
+          setText('')
+        }}
+        disabled={props.disabled || text.trim() === '' || problem !== undefined}
+        data-testid={`dronecan-node-id-apply-${nodeId}`}
+      >
+        Save and restart
+      </button>
+      <button type="button" style={buttonStyle()} onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+      <small className={problem ? 'dronecan-inspector__node-id-problem' : undefined}>
+        {problem ?? 'Writes CAN_NODE, saves, and restarts the node under its new ID.'}
+      </small>
+    </span>
+  )
 }
 
 export interface CanDeviceInspectorViewProps {
@@ -126,6 +313,8 @@ export interface CanDeviceInspectorViewProps {
   onApplyAndSave: (nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) => void
   onRefreshNode: (nodeId: number) => void
   onFetchAllParameters: (nodeId: number) => void
+  /** Reboot the node (offered after applying a change that needs one). */
+  onRebootNode?: (nodeId: number) => void
   /** Something else is mid-write; the destructive actions gate on it. */
   busy?: boolean
   /** Expert-only actions (restart, firmware update). Omit outside Expert mode. */
@@ -142,6 +331,107 @@ export interface CanDeviceInspectorViewProps {
 /** Per-node firmware-update affordance: file picker, prominent brick-risk
  *  confirmation, progress bar, and clear success/error. Only one update runs at
  *  a time — all the node's other actions are disabled while one is underway. */
+/**
+ * Every AP_Periph build in a dropdown (release, search), the node's own
+ * pre-selected when its name or board id tells it; Download stages the image
+ * for the same confirm + Update path as a local file.
+ */
+function PeriphFirmwarePicker(props: {
+  nodeId: number
+  node: DronecanInspectedNode
+  builds: readonly DronecanFirmwareCandidate[]
+  disabled: boolean
+  downloadingUrl: string | null
+  stagedUrl: string | null
+  error: string | null
+  onDownload: (candidate: DronecanFirmwareCandidate) => void
+}): ReactElement {
+  const { nodeId, node } = props
+  const [channel, setChannel] = useState('Stable')
+  const [query, setQuery] = useState('')
+  const identity = useMemo(() => ({ name: node.name, boardId: dronecanNodeBoardId(node.hwVersion) }), [node.name, node.hwVersion])
+  const options = useMemo(() => periphPickerOptions(props.builds, { channel, query, node: identity }), [props.builds, channel, query, identity])
+  const [selectedUrl, setSelectedUrl] = useState<string | undefined>(undefined)
+  const selected = options.find((option) => option.url === selectedUrl)
+  useEffect(() => {
+    if (selected) return
+    setSelectedUrl(periphPreselect(options)?.url)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options])
+  const matched = options.some((option) => option.match !== undefined)
+  return (
+    <div className="dronecan-inspector__fwupdate-online firmware-finder" data-testid={`dronecan-fwupdate-picker-${nodeId}`}>
+      <div className="firmware-finder__controls">
+        <label className="firmware-finder__search">
+          <span>Search</span>
+          <input
+            type="search"
+            value={query}
+            placeholder="Target or board id: MatekL431, ARK, 1062"
+            onChange={(event) => setQuery(event.target.value)}
+            spellCheck={false}
+            data-testid={`dronecan-fwupdate-picker-search-${nodeId}`}
+          />
+        </label>
+        <label>
+          <span>Release</span>
+          <select value={channel} onChange={(event) => setChannel(event.target.value)} data-testid={`dronecan-fwupdate-picker-channel-${nodeId}`}>
+            <option value="Stable">Stable</option>
+            <option value="Beta">Beta</option>
+            <option value="Dev">Latest (dev)</option>
+          </select>
+        </label>
+      </div>
+      <p className="firmware-finder__board">
+        {matched
+          ? `${node.name ?? `Node ${nodeId}`}: its builds are at the top of the list.`
+          : `${node.name ?? `Node ${nodeId}`} does not name an AP_Periph build; pick it from the list.`}
+      </p>
+      <label className="firmware-finder__board-pick">
+        <span>Build</span>
+        <select
+          value={selected?.url ?? ''}
+          onChange={(event) => setSelectedUrl(event.target.value || undefined)}
+          data-testid={`dronecan-fwupdate-picker-select-${nodeId}`}
+        >
+          <option value="">{`Choose a build (${options.length})…`}</option>
+          {options.map((option) => (
+            <option key={option.url} value={option.url}>
+              {option.platform} · {option.versionLabel}
+              {option.match === 'name' ? ' · this node' : option.match === 'board' ? ' · this board id' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selected ? (
+        props.stagedUrl === selected.url ? (
+          <button type="button" className="firmware-finder__done" disabled data-testid={`dronecan-fwupdate-picker-download-${nodeId}`}>
+            ✓ Downloaded {selected.platform} {selected.versionLabel}
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={buttonStyle('primary')}
+            disabled={props.disabled || props.downloadingUrl !== null}
+            onClick={() => {
+              const candidate = props.builds.find((build) => build.url === selected.url)
+              if (candidate) props.onDownload(candidate)
+            }}
+            data-testid={`dronecan-fwupdate-picker-download-${nodeId}`}
+          >
+            {props.downloadingUrl === selected.url ? 'Downloading…' : `Download ${selected.platform} ${selected.versionLabel}`}
+          </button>
+        )
+      ) : null}
+      {props.error ? (
+        <p className="dronecan-inspector__fwupdate-error" data-testid={`dronecan-fwupdate-online-error-${nodeId}`}>
+          {props.error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 function NodeFirmwareUpdate(props: {
   node: DronecanInspectedNode
   view: ReturnType<typeof buildDronecanFirmwareUpdateView>
@@ -211,6 +501,8 @@ function NodeFirmwareUpdate(props: {
   const [onlineError, setOnlineError] = useState<string | null>(null)
   const [onlineCandidates, setOnlineCandidates] = useState<DronecanFirmwareCandidate[] | null>(null)
   const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null)
+  // The online build now staged as the image (shown as "✓ Downloaded").
+  const [stagedUrl, setStagedUrl] = useState<string | null>(null)
 
   // This node's own update (progress / result) takes over the section.
   if (view && view.nodeId === nodeId) {
@@ -313,13 +605,17 @@ function NodeFirmwareUpdate(props: {
     if (!online?.available) {
       return
     }
+    setStagedUrl(null)
     setOnlineError(null)
     setReadError(null)
     setAcknowledged(false)
     setDownloadingUrl(candidate.url)
     online
       .download(candidate)
-      .then(({ fileName, image }) => setFile({ name: fileName, bytes: image }))
+      .then(({ fileName, image }) => {
+        setFile({ name: fileName, bytes: image })
+        setStagedUrl(candidate.url)
+      })
       .catch((err) =>
         setOnlineError(err instanceof Error ? err.message : 'Could not download the firmware image.')
       )
@@ -334,20 +630,21 @@ function NodeFirmwareUpdate(props: {
       {anotherUpdateActive ? (
         <p className="telemetry-note">Another node is updating — wait for it to finish.</p>
       ) : null}
-      <label className="dronecan-inspector__fwupdate-file">
-        <span>Image (.bin)</span>
-        <input
-          type="file"
-          accept=".bin,application/octet-stream"
-          disabled={disabled}
-          onChange={(event) => pickFile(event.target.files?.[0])}
-          data-testid={`dronecan-fwupdate-file-${nodeId}`}
-        />
-      </label>
 
       {/* ---- Find firmware online (desktop-only; matches the node to AP_Periph
               builds on firmware.ardupilot.org and stages the decoded image) ---- */}
-      {online ? (
+      {online?.available && online.allBuilds ? (
+        <PeriphFirmwarePicker
+          nodeId={nodeId}
+          node={node}
+          builds={online.allBuilds}
+          disabled={disabled}
+          downloadingUrl={downloadingUrl}
+          stagedUrl={file ? stagedUrl : null}
+          error={onlineError}
+          onDownload={useCandidate}
+        />
+      ) : online ? (
         online.available ? (
           <div className="dronecan-inspector__fwupdate-online" data-testid={`dronecan-fwupdate-online-${nodeId}`}>
             <button
@@ -423,6 +720,18 @@ function NodeFirmwareUpdate(props: {
         )
       ) : null}
 
+      {/* After the lookup and its notes, which point down at it ("load it below"). */}
+      <label className="dronecan-inspector__fwupdate-file">
+        <span>Image (.bin)</span>
+        <input
+          type="file"
+          accept=".bin,application/octet-stream"
+          disabled={disabled}
+          onChange={(event) => pickFile(event.target.files?.[0])}
+          data-testid={`dronecan-fwupdate-file-${nodeId}`}
+        />
+      </label>
+
       {readError ? <p className="dronecan-inspector__fwupdate-error">{readError}</p> : null}
       {file ? (
         <>
@@ -471,6 +780,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
     onApplyAndSave,
     onRefreshNode,
     onFetchAllParameters,
+    onRebootNode,
     busy = false,
     expertActions,
     sections = ALL_CAN_DEVICE_SECTIONS,
@@ -480,17 +790,38 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
   const nodeId = node.nodeId
   // Node id awaiting a restart confirmation (two-step button).
   const [confirmRestart, setConfirmRestart] = useState(false)
+  // Param search: name, label, description or the current enum label.
+  const [paramQuery, setParamQuery] = useState('')
   const fwView = buildDronecanFirmwareUpdateView(expertActions?.firmwareUpdate)
   const shows = (section: CanDeviceSection): boolean => sections.includes(section)
   // While an update is transferring, lock every node's other actions (one update
   // at a time, and a write/restart mid-flash could corrupt the node).
   const updateInProgress = !!(fwView && fwView.inProgress)
   const paramRows = buildDronecanParamRows(node, paramMetadata)
+  const paramNeedle = paramQuery.trim().toLowerCase()
+  const visibleParamRows = paramNeedle
+    ? paramRows.filter((row) =>
+        [row.name, row.label, row.description ?? '', row.enumLabel ?? ''].some((text) => text.toLowerCase().includes(paramNeedle))
+      )
+    : paramRows
   const stagedChanges = buildCanBusStagedChanges(node, draftValues)
   const validChanges = stagedChanges.filter((change) => change.parsed !== undefined)
   const escRows = escTelemetry ? buildDronecanEscRows(escTelemetry) : []
 
+  // Params a node has shown stay "known" through a re-fetch: the walk empties
+  // the list and refills it, and gating the Flash bootloader / Change node ID
+  // buttons on the live list made them blink in and out, the row shifting.
+  const knownParams = useStickyParamNames(nodeId, node.parameters)
+
+  // A change that only takes effect after a reboot: once applied, offer one.
+  const rebootRequiredNames = new Set(paramRowsForReboot(node, paramMetadata))
+  const [rebootOffered, setRebootOffered] = useState(false)
+  const noteReboot = (names: readonly string[]) => {
+    if (names.some((name) => rebootRequiredNames.has(name))) setRebootOffered(true)
+  }
+
   function applyAndSaveDrafts(): void {
+    noteReboot(validChanges.map((change) => change.name))
     const writes = validChanges.map((change) => ({
       name: change.name,
       value: change.parsed as DronecanParamValueState
@@ -503,6 +834,17 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
     // parent's job so an inline view and its popout clear together.
     onApplyAndSave(nodeId, writes)
   }
+
+  const detailList = (
+    <dl className="mavlink-inspector__fields can-device-inspector__detail" data-testid={`dronecan-node-detail-${nodeId}`}>
+      {buildDronecanNodeDetailRows(node).map((row) => (
+        <div key={row.label} className="mavlink-inspector__field-row">
+          <dt>{row.label}</dt>
+          <dd>{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
 
   return (
     <div className="can-bus-node__body" data-testid={`can-device-inspector-${nodeId}`}>
@@ -518,6 +860,28 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
         </header>
       ) : null}
 
+      {shows('params') && rebootOffered ? (
+        <div className="can-bus-reboot-offer" data-testid={`can-bus-reboot-offer-${nodeId}`} role="status">
+          <span>Some of these changes take effect after the node reboots.</span>
+          {onRebootNode ? (
+            <button
+              type="button"
+              style={buttonStyle('primary')}
+              onClick={() => {
+                onRebootNode(nodeId)
+                setRebootOffered(false)
+              }}
+              data-testid={`can-bus-reboot-offer-button-${nodeId}`}
+            >
+              Reboot node
+            </button>
+          ) : null}
+          <button type="button" style={buttonStyle()} onClick={() => setRebootOffered(false)}>
+            Later
+          </button>
+        </div>
+      ) : null}
+
       {shows('params') && stagedChanges.length > 0 ? (
         <div className="can-bus-staged" data-testid={`can-bus-staged-${nodeId}`}>
           <header className="can-bus-staged__header">
@@ -531,9 +895,9 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 onClick={applyAndSaveDrafts}
                 disabled={validChanges.length === 0 || updateInProgress}
                 data-testid={`can-bus-apply-all-${nodeId}`}
-                title="Write every staged value to the node, persist it to flash (survives a power cycle), then re-fetch."
+                title="Write every staged value to the node and save it there (DroneCAN keeps a value only once saved), then re-fetch."
               >
-                Apply &amp; Save ({validChanges.length})
+                Apply All ({validChanges.length})
               </button>
               <button
                 type="button"
@@ -541,7 +905,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 onClick={() => onDropAllDrafts(nodeId)}
                 data-testid={`can-bus-drop-all-${nodeId}`}
               >
-                Drop all
+                Discard All
               </button>
             </div>
           </header>
@@ -553,13 +917,27 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                   {change.currentLabel} → {change.nextLabel}
                   {change.parsed === undefined ? <em> (invalid)</em> : null}
                 </span>
+                {/* One change on its own, as the Parameters page's per-row Apply. */}
+                <button
+                  type="button"
+                  style={buttonStyle('primary')}
+                  onClick={() => {
+                    if (change.parsed === undefined) return
+                    noteReboot([change.name])
+                    onApplyAndSave(nodeId, [{ name: change.name, value: change.parsed }])
+                  }}
+                  disabled={change.parsed === undefined || updateInProgress}
+                  data-testid={`can-bus-staged-apply-${nodeId}-${change.name}`}
+                >
+                  Apply
+                </button>
                 <button
                   type="button"
                   style={buttonStyle()}
                   onClick={() => onDropDraft(nodeId, change.name)}
                   data-testid={`can-bus-staged-drop-${nodeId}-${change.name}`}
                 >
-                  Drop
+                  Discard
                 </button>
               </li>
             ))}
@@ -570,14 +948,13 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
       {shows('params') ? (
       <div className="can-bus-node__toolbar">
         <small>
-          Param fetch:{' '}
           {node.paramFetch.status === 'fetching'
-            ? `walking index ${node.paramFetch.nextIndex}…`
+            ? `Reading parameters… index ${node.paramFetch.nextIndex}`
             : node.paramFetch.status === 'complete'
-              ? `${node.parameters.length} parameters loaded`
+              ? `${node.parameters.length} parameter${node.parameters.length === 1 ? '' : 's'}`
               : node.paramFetch.status === 'stalled'
-                ? 'stalled — retry?'
-                : 'idle'}
+                ? 'Parameter read stalled. Re-fetch to retry.'
+                : 'Parameters not read yet'}
         </small>
         <div className="can-bus-node__toolbar-buttons">
           <button
@@ -612,6 +989,22 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
         // A DroneCAN param table is five columns wide; in a narrow popout window
         // (or on a phone) it scrolls inside its own box rather than pushing the
         // document into a horizontal scroll.
+        <>
+        <div className="can-bus-params__search">
+          <input
+            type="search"
+            placeholder="Search parameters"
+            aria-label="Search parameters"
+            value={paramQuery}
+            onChange={(event) => setParamQuery(event.target.value)}
+            data-testid={`can-bus-param-search-${nodeId}`}
+          />
+          {paramNeedle ? (
+            <small data-testid={`can-bus-param-search-count-${nodeId}`}>
+              {visibleParamRows.length} of {paramRows.length}
+            </small>
+          ) : null}
+        </div>
         <div className="can-bus-params-scroll">
         <table className="can-bus-params">
           <thead>
@@ -624,7 +1017,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
             </tr>
           </thead>
           <tbody>
-            {paramRows.map((row) => {
+            {visibleParamRows.map((row) => {
               const draft = draftValues[`${nodeId}:${row.name}`]
               const displayed = draft ?? row.valueLabel
               // A draft that doesn't parse for this param's type is flagged in
@@ -635,60 +1028,90 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 stagedChanges.some((change) => change.name === row.name && change.parsed === undefined)
               return (
                 <tr key={row.name} data-testid={`can-bus-param-${nodeId}-${row.name}`}>
-                  <td title={row.description}>
-                    <code>{row.name}</code>
-                    {row.label !== row.name ? <small className="can-bus-params__label">{row.label}</small> : null}
+                  <td className="can-bus-params__name-cell" title={row.description}>
+                    <span className="can-bus-params__name">
+                      <code>{row.name}</code>
+                      {row.rebootRequired ? (
+                        <span className="can-bus-params__tag" title="Takes effect after the node reboots" data-testid={`can-bus-param-reboot-${nodeId}-${row.name}`}>
+                          reboot
+                        </span>
+                      ) : null}
+                      {row.readOnly ? <span className="can-bus-params__tag">read-only</span> : null}
+                    </span>
+                    {/* One quiet line: the short display name where it says more than
+                        the param name, else the description's first sentence. The
+                        whole description is on hover. */}
+                    {paramSummary(row) ? <small className="can-bus-params__summary">{paramSummary(row)}</small> : null}
                   </td>
-                  <td>
-                    {row.editable ? (
+                  <td className="can-bus-params__value">
+                    {row.editable && row.options ? (
+                      // Named values, as on the Parameters page: pick one.
+                      <EnumPicker
+                        value={displayed}
+                        options={row.options}
+                        disabled={updateInProgress}
+                        invalid={draftInvalid}
+                        onChange={(next) => onDraftChange(nodeId, row.name, next)}
+                        ariaLabel={row.name}
+                        testId={`can-bus-param-select-${nodeId}-${row.name}`}
+                      />
+                    ) : row.editable ? (
                       <input
                         type="text"
                         value={displayed}
                         disabled={updateInProgress}
                         onChange={(event) => onDraftChange(nodeId, row.name, event.target.value)}
+                        title={row.step !== undefined ? `Step ${row.step}` : undefined}
                         className={draftInvalid ? 'can-bus-params__input--invalid' : undefined}
                         data-testid={`can-bus-param-input-${nodeId}-${row.name}`}
                       />
                     ) : (
                       <span>{displayed}</span>
                     )}
-                    {row.enumLabel && draft === undefined ? (
+                    {row.enumLabel && draft === undefined && !row.options ? (
                       <small className="can-bus-params__enum">{row.enumLabel}</small>
                     ) : null}
+                    {/* A bitmask: which bits the value sets, by name. */}
+                    {row.bitsLabel && draft === undefined ? (
+                      <small className="can-bus-params__enum" data-testid={`can-bus-param-bits-${nodeId}-${row.name}`}>
+                        {row.bitsLabel}
+                      </small>
+                    ) : null}
                   </td>
-                  <td>{row.type}</td>
-                  <td>{row.defaultLabel ?? '—'}</td>
-                  <td>{row.rangeLabel ?? '—'}</td>
+                  <td className="can-bus-params__meta" data-label="Type">{row.type}</td>
+                  <td className="can-bus-params__meta" data-label="Default">{row.defaultLabel ?? '—'}</td>
+                  <td className="can-bus-params__meta" data-label="Range">{row.rangeLabel ?? '—'}</td>
                 </tr>
               )
             })}
           </tbody>
         </table>
         </div>
+        </>
       )
       ) : null}
 
       {/* ---- Identity detail ---- */}
       {shows('detail') ? (
-      <details className="can-device-inspector__detail-block" open={sections.length === 1}>
-        <summary data-testid={`can-device-detail-toggle-${nodeId}`}>Device detail</summary>
-        <dl className="mavlink-inspector__fields" data-testid={`dronecan-node-detail-${nodeId}`}>
-          {buildDronecanNodeDetailRows(node).map((row) => (
-            <div key={row.label} className="mavlink-inspector__field-row">
-              <dt>{row.label}</dt>
-              <dd>{row.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
+        sections.length === 1 ? (
+          // Opened from its own Details button: no second disclosure to click.
+          detailList
+        ) : (
+          <details className="can-device-inspector__detail-block">
+            <summary data-testid={`can-device-detail-toggle-${nodeId}`}>Device detail</summary>
+            {detailList}
+          </details>
+        )
       ) : null}
 
       {/* ---- ESC telemetry for THIS device (popout only; the CAN tab shows one
               bus-wide table under the device list) ---- */}
       {shows('esc') && escTelemetry && escRows.length > 0 ? (
         <div className="dronecan-inspector__esc" data-testid={`can-device-esc-${nodeId}`}>
-          <h3>ESC telemetry</h3>
-          <p className="telemetry-note">Live uavcan.equipment.esc.Status from this node. Observe-only.</p>
+          <h4 className="dronecan-inspector__esc-title">
+            ESC telemetry
+            <InfoDot label="About ESC telemetry">Live uavcan.equipment.esc.Status from this node. Read-only.</InfoDot>
+          </h4>
           <div className="mavlink-inspector__table">
             <div className="dronecan-inspector__esc-row dronecan-inspector__esc-row--head">
               <span>ESC</span>
@@ -723,7 +1146,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
             {confirmRestart ? (
               <>
                 <span className="dronecan-inspector__confirm-text">
-                  Restart node #{nodeId}? It will reboot and drop off the bus briefly.
+                  Reboot node #{nodeId}? It drops off the bus for a moment.
                 </span>
                 <button
                   type="button"
@@ -735,7 +1158,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                   disabled={busy || updateInProgress}
                   data-testid={`dronecan-restart-confirm-${nodeId}`}
                 >
-                  Confirm restart
+                  Confirm reboot
                 </button>
                 <button
                   type="button"
@@ -754,9 +1177,25 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 disabled={busy || updateInProgress}
                 data-testid={`dronecan-restart-${nodeId}`}
               >
-                Restart node
+                Reboot node
               </button>
             )}
+            {expertActions.onFlashBootloader && knownParams.has(FLASH_BOOTLOADER_PARAM) && !confirmRestart ? (
+              <BootloaderFlash
+                nodeId={nodeId}
+                disabled={busy || updateInProgress}
+                state={expertActions.bootloaderFlash}
+                onFlash={expertActions.onFlashBootloader}
+              />
+            ) : null}
+            {expertActions.onChangeNodeId && knownParams.has(CAN_NODE_PARAM) && !confirmRestart ? (
+              <NodeIdChange
+                nodeId={nodeId}
+                takenNodeIds={expertActions.takenNodeIds ?? []}
+                disabled={busy || updateInProgress}
+                onChange={expertActions.onChangeNodeId}
+              />
+            ) : null}
           </div>
 
           <NodeFirmwareUpdate

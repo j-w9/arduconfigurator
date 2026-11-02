@@ -67,6 +67,17 @@ async function connectToPlane(page: Page): Promise<void> {
 }
 
 async function openView(page: Page, viewId: string): Promise<void> {
+  // Calibration is a Setup category, not a tab of its own.
+  if (viewId === 'calibration') {
+    await page.getByTestId('view-button-config').click()
+    await page.getByTestId('config-category-calibration').click()
+    return
+  }
+  // Files is an Expert-only tab, and so are the CAN tab's bus tools.
+  if (((viewId === 'can' || viewId === 'files') && (await page.getByTestId(`view-button-${viewId}`).count()) === 0) || viewId === 'can') {
+    const expert = page.getByTestId('product-mode-expert')
+    if (!(await expert.isChecked())) await expert.click()
+  }
   await page.getByTestId(`view-button-${viewId}`).click()
 }
 
@@ -97,14 +108,12 @@ async function applySingleTuningChange(page: Page, value: string): Promise<void>
   await page.getByTestId('tuning-tab-rates').click()
   // The Pilot mode sections are collapsible and default collapsed — expand
   // Angle to reach its ATC_INPUT_TC control.
-  await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
   await page.getByTestId('tuning-input-ATC_INPUT_TC').fill(value)
   await page.getByTestId('tuning-input-ATC_INPUT_TC').blur()
-  // Editing stages in place and no longer auto-redirects to Review, so the
-  // operator (and this helper) opens the Review task to reach Apply.
-  await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i }).click()
-  await page.getByTestId('apply-tuning-changes-button').click()
-  await expect(page.getByText('Verified 1 tuning change(s) from this view.')).toBeVisible()
+  // Editing stages in place; the write is the draft bar's "Write all" (the
+  // Tuning Review task is gone, operator call 2026-10-22).
+  await page.getByTestId('global-draft-write').click()
+  await expect(page.getByText('Verified 1 staged parameter change(s).')).toBeVisible()
   // Deliberately NOT asserting the Pull Parameters button is visible here. The
   // app sets that follow-up state and then immediately auto-refreshes out of
   // it, so the button is a transient — the pullParameters() helper above was
@@ -163,7 +172,7 @@ test.describe('browser configurator regression flows', () => {
 
   test('upstream import enriches the raw parameter table for uncurated params', async ({ page }) => {
     await connectToVehicle(page, 'demo')
-    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('product-mode-expert').check()
     await openView(page, 'parameters')
     await page.getByTestId('parameter-search-input').fill('BRD_BOOT_DELAY')
     // BRD_BOOT_DELAY isn't in the curated catalog, so without the upstream
@@ -177,7 +186,7 @@ test.describe('browser configurator regression flows', () => {
 
   test('bitmask params in the raw parameter table render as per-bit chips', async ({ page }) => {
     await connectToVehicle(page, 'demo')
-    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('product-mode-expert').check()
     await openView(page, 'parameters')
     await page.getByTestId('parameter-search-input').fill('FS_OPTIONS')
     // FS_OPTIONS is a curated bitmask param — its Draft cell must render the
@@ -197,9 +206,39 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByLabel('FS_OPTIONS value')).toHaveCount(0)
   })
 
-  test('parameter table can filter by category', async ({ page }) => {
+  test('a bitmask row shows its value, and a set bit outside the list can be seen and cleared', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     await page.getByTestId('product-mode-expert').click()
+    await openView(page, 'parameters')
+    await page.getByTestId('parameter-search-input').fill('FS_OPTIONS')
+    // The row's collapsed editor; the expanded detail repeats the test id.
+    const field = page.locator('.parameter-row details[data-testid="scoped-bitmask-FS_OPTIONS"]')
+    await field.scrollIntoViewIfNeeded()
+    const summary = field.getByTestId('scoped-bitmask-summary-FS_OPTIONS')
+    await expect(summary).toHaveText('0 · None set')
+
+    // Stock firmware lists bits 0-5. A fork bit (6, the SFD AltHold-drift
+    // option) typed as a raw value must not vanish.
+    // The first click can expand the row instead of opening the dropdown, so
+    // click until the raw value box shows.
+    const raw = field.getByLabel('FS_OPTIONS raw bitmask value')
+    await expect(async () => {
+      if (!(await raw.isVisible())) await field.locator('summary').click()
+      await expect(raw).toBeVisible({ timeout: 1000 })
+    }).toPass({ timeout: 10000 })
+    await raw.fill('64')
+    await expect(summary).toHaveText('64 · bit 6 not in list')
+    const unlisted = field.getByTestId('scoped-bitmask-unlisted-FS_OPTIONS-6')
+    await expect(unlisted).toBeVisible()
+
+    await unlisted.click()
+    await expect(summary).toHaveText('0 · None set')
+    await expect(unlisted).toHaveCount(0)
+  })
+
+  test('parameter table can filter by category', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await page.getByTestId('product-mode-expert').check()
     await openView(page, 'parameters')
     const filter = page.getByTestId('parameter-category-filter')
     await expect(filter).toBeVisible()
@@ -367,9 +406,9 @@ test.describe('browser configurator regression flows', () => {
 
     // The one-click "Save changes" finish is gated on a COMPLETED identify run
     // that actually changed something — before any motor has spun there is
-    // nothing to save, so only the plain Stage action is offered.
+    // nothing to save, and nothing to stage either.
     await expect(page.getByTestId('motor-reorder-save')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /Stage Reorder/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Stage Reorder/ })).toHaveCount(0)
 
     const startButton = page.getByTestId('motor-reorder-guided-start')
     await expect(startButton).toBeVisible()
@@ -465,7 +504,7 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('motor-test-usb-ack')).toHaveCount(0)
     await expect(page.locator('[data-testid$="-ack"] input[type="checkbox"]')).toHaveCount(1)
     // Default request: every motor in order, 5 s (long enough to feel each
-    // motor's direction; also the non-expert ceiling). ALL is already the
+    // motor's direction; the ceiling is 30 s). ALL is already the
     // selected row and "In order" the lit mode, so Test is live as soon as the
     // box is ticked.
     await expect(page.getByTestId('motor-test-sliders-in-order')).toHaveAttribute('aria-pressed', 'true')
@@ -513,29 +552,27 @@ test.describe('browser configurator regression flows', () => {
   test('tuning exposes linked PID edits, master sliders, advanced terms, and local tuning profiles', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 
-    // PID Gains and Profiles are Expert-only on the task strip: basic mode
-    // offers the five tasks that make up a working tune (Pilot, Filters,
-    // Autotune, Review, Initial Tune).
-    await page.getByTestId('product-mode-expert').click()
+    // Every task is on the strip for every role (PID Gains and Profiles were
+    // Expert-only; roles pick tabs, not features).
     await openView(page, 'tuning')
     await expect(page.getByTestId('tuning-task-nav')).toBeVisible()
     await expect(page.getByTestId('tuning-tab-rates')).toBeVisible()
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
-    await expect(page.getByText('Axis controller gains', { exact: true })).toBeVisible()
-    await expect(page.getByTestId('tuning-roll-pitch-link-button')).toBeVisible()
+    await expect(page.getByTestId('pid-gains-grid')).toBeVisible()
+    await expect(page.getByTestId('tuning-roll-pitch-link-toggle')).toBeChecked()
 
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.12')
     await expect(page.getByTestId('tuning-input-ATC_RAT_PIT_P')).toHaveValue('0.12')
 
-    await page.getByTestId('tuning-roll-pitch-unlink-button').click()
+    await page.getByTestId('tuning-roll-pitch-link-toggle').uncheck()
     await page.getByTestId('tuning-input-ATC_RAT_RLL_P').fill('0.14')
     await expect(page.getByTestId('tuning-input-ATC_RAT_PIT_P')).toHaveValue('0.12')
 
     await page.getByTestId('tuning-toggle-advanced-button').click()
-    await expect(page.getByText('Roll D Feedforward', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ATC_RAT_RLL_D_FF')).toBeVisible()
 
-    await page.getByTestId('tuning-master-pi-range').focus()
-    await page.getByTestId('tuning-master-pi-range').press('ArrowRight')
+    await page.getByTestId('pid-gains-scale').locator('summary').click()
+    await page.getByTestId('tuning-master-pi-range').fill('1.05')
     await expect(page.getByTestId('tuning-stage-master-adjustments-button')).toBeEnabled()
     await page.getByTestId('tuning-stage-master-adjustments-button').click()
     // The master sliders scale the live PID gains and stage the result as a
@@ -556,33 +593,29 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('create-tuning-profile-button')).toBeEnabled()
     await page.getByTestId('create-tuning-profile-button').click()
     await expect(page.getByRole('heading', { name: 'Bench Test Profile' })).toBeVisible()
-    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i }).click()
-    await expect(page.getByText('Tuning changes in review', { exact: true })).toBeVisible()
   })
 
-  test('staging a tuning change stays in place and does not auto-redirect to Review', async ({ page }) => {
-    // Regression: editing a tuning value used to flip the active task to 'review'
-    // mid-edit (the recommended-task memo returned 'review' as soon as anything
-    // was staged, and the task override was still unset). Tuning now matches every
-    // other parameter tab: edits stage in place; the operator opens Review.
+  test('staging a tuning change stays in place; the draft bar carries it', async ({ page }) => {
+    // Regression: editing a tuning value used to flip the active task to a
+    // review panel mid-edit. Tuning matches every other parameter tab: edits
+    // stage in place, and the global draft bar is where they are written from
+    // (the Tuning Review task is gone, operator call 2026-10-22).
     await connectToVehicle(page, 'demo')
     await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-rates').click()
 
     // Default landing task is rates (Pilot); its mode sections are collapsible
     // and default collapsed — expand Angle to reach the flight-feel input.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible()
 
-    // Edit a rate -> stages a change. We must NOT be yanked to the Review panel.
+    // Edit a rate -> stages a change. The input stays under the operator and
+    // the draft bar reports the staged change.
     await input.fill('0.2')
     await input.blur()
     await expect(input).toBeVisible()
-    await expect(page.getByText('Tuning changes in review', { exact: true })).toHaveCount(0)
-
-    // The operator can still reach Review manually.
-    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i }).click()
-    await expect(page.getByText('Tuning changes in review', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i })).toHaveCount(0)
+    await expect(page.locator('body')).toContainText('1 staged change')
   })
 
   test('manual motor test: Stop is disabled until a test is running', async ({ page }) => {
@@ -661,16 +694,17 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('setup-start-guided-button').click()
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
     await expect(page.getByTestId('wizard-orientation-task')).toBeVisible()
-    await expect(page.getByTestId('wizard-orientation-primary')).toBeVisible()
-    await page.getByTestId('wizard-orientation-primary').click()
-    await expect(page.getByTestId('wizard-orientation-task')).toContainText('running')
+    // The Run button is the aside's hero; the task card no longer repeats it.
+    await expect(page.getByTestId('setup-wizard-primary-action')).toHaveText(/Run Orientation Check/)
+    await page.getByTestId('setup-wizard-primary-action').click()
+    await expect(page.getByTestId('wizard-orientation-task')).toContainText(/running/i)
     // Orientation check now lives ONLY in the Setup wizard (the duplicate
     // copy in the Motors tab was removed — orientation is a Setup-flow
     // concern). Click Mark Failed in the same wizard's secondary actions
     // to drive it into the 'failed' state and confirm the primary button
     // copy flips to "Retry…".
     await page.getByRole('button', { name: 'Mark Failed' }).first().click()
-    await expect(page.getByTestId('wizard-orientation-primary')).toContainText('Retry Orientation Check')
+    await expect(page.getByTestId('setup-wizard-primary-action')).toContainText('Retry Orientation Check')
     // The guided wizard is now its own tab, so the nav title reads "Guided
     // Setup" while in it (the Status & Info dashboard is a separate tab).
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Guided Setup')
@@ -739,8 +773,11 @@ test.describe('browser configurator regression flows', () => {
     // Failsafe tab so the operator has one place to think about loss-of-link
     // behavior.
     await openView(page, 'config')
-    await page.getByTestId('config-category-power').click()
-    await expect(page.getByText('Battery configuration')).toBeVisible()
+    await page.getByTestId('config-category-system').click()
+    // One heading, "Battery", over the live readout and the battery fields.
+    await expect(page.getByTestId('config-section-power').locator('.config-section__header strong')).toHaveText('Battery')
+    await expect(page.getByTestId('power-live-metrics')).toBeVisible()
+    await expect(page.getByTestId('power-fields')).toBeVisible()
 
     // Already Expert since the Guided Setup walk above; check() keeps it on.
     await page.getByTestId('product-mode-expert').check()
@@ -795,7 +832,7 @@ test.describe('browser configurator regression flows', () => {
     await connectToVehicle(page, 'demo')
     await openView(page, 'config')
     // Arming has its own category tab now (split out of "RC & Arming").
-    await page.getByTestId('config-category-arming').click()
+    await page.getByTestId('config-category-rc').click()
 
     // ARMING_CHECK is flagged bitmask, so the Config arming section shows
     // per-bit chips. Demo seeds ARMING_CHECK=1 (bit 0 = "All checks").
@@ -804,8 +841,12 @@ test.describe('browser configurator regression flows', () => {
     await expect(field).toBeVisible()
     const allChecks = field.locator('.scoped-bitmask-bit').first()
     await expect(allChecks).toHaveClass(/is-set/)
-    // A non-"All" bit (e.g. Compass, bit 2) is present.
+    // A non-"All" bit (e.g. Compass, bit 2) is present -- dimmed while
+    // "All checks" covers it, and still there to click.
     await expect(field.getByText('Compass')).toBeVisible()
+    await expect(field.getByText('Compass')).toHaveCSS('opacity', '0.45')
+    // The raw value entry stays, on the field's title line.
+    await expect(field.getByLabel('ARMING_CHECK raw bitmask value')).toHaveValue('1')
   })
 
   test('snapshots and presets stay consistent through a tuning-write round-trip', async ({ page }) => {
@@ -813,6 +854,7 @@ test.describe('browser configurator regression flows', () => {
 
     await openView(page, 'snapshots')
     await page.getByTestId('snapshot-label-input').fill('E2E baseline')
+    await page.getByTestId('snapshot-capture-details-toggle').click()
     await page.getByTestId('snapshot-protected-toggle').check()
     await page.getByTestId('capture-live-snapshot-button').click()
 
@@ -949,7 +991,7 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('apply-preset-button')).toBeEnabled()
     await page.getByTestId('apply-preset-button').click()
     // The combined write reports both presets as the source of the live changes.
-    await expect(page.getByText(/2 presets \(Smooth Explorer, Sport Acro\) changed live tuning values/).first()).toBeVisible()
+    await expect(page.getByText(/2 presets \(Smooth Explorer, Sport Acro\) written/).first()).toBeVisible()
 
     // Re-clicking an active card toggles it back off.
     await page.getByTestId('preset-card-flight-feel-soft').click()
@@ -1024,6 +1066,7 @@ test.describe('browser configurator regression flows', () => {
 
     await openView(page, 'snapshots')
     await page.getByTestId('snapshot-label-input').fill('Protected baseline')
+    await page.getByTestId('snapshot-capture-details-toggle').click()
     await page.getByTestId('snapshot-protected-toggle').check()
     await page.getByTestId('capture-live-snapshot-button').click()
 
@@ -1044,8 +1087,8 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText(/Saved snapshot "Provisioning baseline" with \d+ parameters\./)).toBeVisible()
 
     await openView(page, 'tuning')
-    // Pilot mode sections default collapsed — expand Angle to reach ATC_INPUT_TC.
-    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
+    await page.getByTestId('tuning-tab-rates').click()
+    // ATC_INPUT_TC is on the Pilot task's Angle modes card.
     await page.getByTestId('tuning-input-ATC_INPUT_TC').fill('0.2')
 
     await openView(page, 'snapshots')
@@ -1105,7 +1148,7 @@ test.describe('browser configurator regression flows', () => {
     // The fix attaches the anchor and defers revoke; assert a real download
     // event fires.
     await connectToVehicle(page, 'demo')
-    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('product-mode-expert').check()
     await openView(page, 'parameters')
     const exportPicker = page.getByTestId('export-parameter-backup')
     await expect(exportPicker).toBeEnabled()
@@ -1118,7 +1161,7 @@ test.describe('browser configurator regression flows', () => {
 
   test('Expert import can skip calibration parameters from another airframe', async ({ page }) => {
     await connectToVehicle(page, 'demo')
-    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('product-mode-expert').check()
     await openView(page, 'parameters')
 
     // A .parm carrying one normal tuning change plus one compass calibration
@@ -1141,7 +1184,7 @@ test.describe('browser configurator regression flows', () => {
 
   test('Expert export can skip calibration params (Skip on export)', async ({ page }) => {
     await connectToVehicle(page, 'demo')
-    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('product-mode-expert').check()
     await openView(page, 'parameters')
 
     // Skip-on-export defaults to calibration only; stream-rates/mission off.

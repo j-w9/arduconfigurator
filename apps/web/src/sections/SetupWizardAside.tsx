@@ -44,10 +44,41 @@ export interface SetupWizardAsideProps {
   guidedSetupPrimaryAction: SetupFlowActionDescriptor | undefined
   guidedSetupContextAction: SetupFlowActionDescriptor | undefined
   guidedSetupContextHint: string | undefined
+  /** The localhost-only ?guidedSetupStep= shortcut: a locked step is fully live under it. */
+  guidedSetupTestingShortcutActive?: boolean
   guidedSetupSupportActions: SetupFlowActionDescriptor[]
+  /** Every step complete. With the last step selected this swaps the action
+   *  chain for the completion card. */
+  guidedSetupComplete: boolean
+  /** "2 already done • 1 deferred", or empty when every step was verified
+   *  outright. Shown on the completion card. */
+  guidedSetupOutcomeSummary: string
   onAction: (action: SetupFlowActionDescriptor) => void
   onMove: (offset: -1 | 1) => void
+  /** Leave the wizard for Status & Info (the completion card's second button). */
+  onClose: () => void
+  /** Open the Calibration tab -- where the bench hands over to the first
+   *  flight (hover throttle, tuning). The completion card's hero. */
+  onOpenCalibration: () => void
 }
+
+/** How many support actions show before the rest fold behind "More…". */
+const VISIBLE_SUPPORT_ACTIONS = 2
+
+/**
+ * Actions that must never fold: the undo of a recorded sign-off (a folded
+ * undo is a trap), a reboot (the thing the step is waiting on), and a cancel
+ * (the way out of something running).
+ */
+function isPinnedSupportAction(action: SetupFlowActionDescriptor): boolean {
+  return (
+    action.kind === 'clear-confirmation' ||
+    action.kind === 'cancel-guided' ||
+    (action.kind === 'guided' && action.actionId === 'reboot-autopilot')
+  )
+}
+
+/** Evidence pills past this many fold; the aside has to fit one screen. */
 
 export function SetupWizardAside({
   selectedSetupSection,
@@ -57,36 +88,120 @@ export function SetupWizardAside({
   guidedSetupPrimaryAction,
   guidedSetupContextAction,
   guidedSetupContextHint,
+  guidedSetupTestingShortcutActive = false,
   guidedSetupSupportActions,
+  guidedSetupComplete,
+  guidedSetupOutcomeSummary,
   onAction,
-  onMove
+  onMove,
+  onClose,
+  onOpenCalibration
 }: SetupWizardAsideProps): ReactElement {
   const stepComplete = selectedSetupSection.status === 'complete'
+  // Looking ahead: a locked step is shown with every action off. The brief
+  // (its blocking reason) says which step to finish first.
+  const preview = selectedSetupSection.sequenceState === 'locked' && !guidedSetupTestingShortcutActive
+  // In a preview the way to the page stays open; what changes state is off.
+  const previewBlocks = (action: SetupFlowActionDescriptor): boolean => preview && action.kind !== 'scroll'
+  // The end of the flow: the last step, and nothing left anywhere. The action
+  // chain has nothing useful to offer here (after the sign-off the step's only
+  // action is its Clear), so the card says the setup is done and offers the
+  // way out instead.
+  const setupFinished = guidedSetupComplete && nextSetupSection === undefined && stepComplete
   // Only worth saying when neither the primary button nor the Continue button
   // is the answer — otherwise it is a caption for a button that is right there.
-  const showActionGuidance = !guidedSetupPrimaryAction && !continueButtonTargeted
+  const showActionGuidance = !guidedSetupPrimaryAction && !continueButtonTargeted && !setupFinished
+  // One hero, at most two support actions in view, the rest behind "More…" --
+  // the aside has to fit one desktop screen without scrolling (Radio has five
+  // support actions). Pinned actions always show, even past the cap.
+  const pinnedSupportActions = guidedSetupSupportActions.filter(isPinnedSupportAction)
+  const unpinnedSupportActions = guidedSetupSupportActions.filter((action) => !isPinnedSupportAction(action))
+  const unpinnedVisibleCount = Math.max(0, VISIBLE_SUPPORT_ACTIONS - pinnedSupportActions.length)
+  const visibleSupportActions = [...pinnedSupportActions, ...unpinnedSupportActions.slice(0, unpinnedVisibleCount)]
+  const foldedSupportActions = unpinnedSupportActions.slice(unpinnedVisibleCount)
+  // The step builder may say what comes after this step in one line. The
+  // field is optional on the descriptor; read it without depending on it so
+  // the builder can grow it independently.
+  const nextStep = (selectedSetupSection as { nextStep?: string }).nextStep
+
+  const renderSupportAction = (action: SetupFlowActionDescriptor) => (
+    <button
+      key={`${selectedSetupSection.id}:${action.kind}:${action.label}`}
+      style={buttonStyle('secondary')}
+      onClick={() => onAction(action)}
+      disabled={previewBlocks(action) || action.disabled}
+    >
+      {action.label}
+    </button>
+  )
+
+  // The brief heads the rail: what to do, the first thing still needed, and
+  // any reason the step is held. The work itself sits in the main pane.
+  const nextUnmetCriterion = selectedSetupSection.criteria.find((criterion) => !criterion.met)
 
   return (
     <aside className="setup-wizard__aside">
-      <div className="setup-wizard__action-card">
-        <strong>Next Action</strong>
-        {showActionGuidance ? <p>Complete the current criteria or use the workspace navigation for more context.</p> : null}
-        {guidedSetupPrimaryAction ? (
+      <div className="setup-wizard__brief">
+        <p className="setup-wizard__instruction">{selectedSetupSection.detail}</p>
+        {nextUnmetCriterion ? (
+          <p className="setup-wizard__next-criterion" data-testid="setup-wizard-next-criterion">
+            <strong>Still needed:</strong> {nextUnmetCriterion.label}
+          </p>
+        ) : null}
+        {selectedSetupSection.blockingReason ? (
+          <p className="setup-flow__blocking-copy">{selectedSetupSection.blockingReason}</p>
+        ) : null}
+      </div>
+      <div
+        className={`setup-wizard__action-card${setupFinished ? ' setup-wizard__action-card--finished' : ''}`}
+        data-testid={setupFinished ? 'setup-wizard-finished' : undefined}
+      >
+        {setupFinished ? <strong>Setup complete</strong> : null}
+        {setupFinished ? (
+          <p>
+            Setup on the bench is done
+            {guidedSetupOutcomeSummary ? `: ${guidedSetupOutcomeSummary}` : ''}. Next: props on, pack on, first
+            flight.
+          </p>
+        ) : null}
+        {showActionGuidance ? <p>No button to press here. The checks below say what this step still needs.</p> : null}
+        {setupFinished ? (
+          <>
+            <button
+              id={SETUP_WIZARD_PRIMARY_ACTION_ID}
+              className="setup-wizard__primary-button setup-wizard__primary-button--target"
+              data-testid="setup-wizard-finish-calibration"
+              style={buttonStyle('hero')}
+              onClick={onOpenCalibration}
+            >
+              <span aria-hidden="true">→</span>
+              <span>Open Calibration ▸ Flight</span>
+            </button>
+            <button style={buttonStyle('secondary')} data-testid="setup-wizard-finish" onClick={onClose}>
+              Back to Status &amp; Info
+            </button>
+          </>
+        ) : guidedSetupPrimaryAction ? (
           <button
             id={SETUP_WIZARD_PRIMARY_ACTION_ID}
             className={`setup-wizard__primary-button${
               guidedSetupPrimaryAction.disabled ? '' : ' setup-wizard__primary-button--target'
             }`}
             data-testid="setup-wizard-primary-action"
-            style={buttonStyle(guidedSetupPrimaryAction.disabled ? 'secondary' : 'hero')}
+            style={buttonStyle(previewBlocks(guidedSetupPrimaryAction) || guidedSetupPrimaryAction.disabled ? 'secondary' : 'hero')}
             onClick={() => onAction(guidedSetupPrimaryAction)}
-            disabled={guidedSetupPrimaryAction.disabled}
+            disabled={previewBlocks(guidedSetupPrimaryAction) || guidedSetupPrimaryAction.disabled}
           >
             <span aria-hidden="true">→</span>
             <span>{guidedSetupPrimaryAction.label}</span>
           </button>
         ) : null}
-        {guidedSetupContextAction ? (
+        {nextStep && !setupFinished ? (
+          <p className="setup-wizard__next" data-testid="setup-wizard-next">
+            {nextStep}
+          </p>
+        ) : null}
+        {guidedSetupContextAction && !setupFinished ? (
           <>
             {/* Always secondary. This is the "go look at another view" action;
              *  rendering it at its descriptor tone put a second primary-weight
@@ -95,45 +210,49 @@ export function SetupWizardAside({
             <button
               style={buttonStyle('secondary')}
               onClick={() => onAction(guidedSetupContextAction)}
-              disabled={guidedSetupContextAction.disabled}
+              disabled={previewBlocks(guidedSetupContextAction) || guidedSetupContextAction.disabled}
             >
               {guidedSetupContextAction.label}
             </button>
             {guidedSetupContextHint ? <p className="setup-wizard__context-hint">{guidedSetupContextHint}</p> : null}
           </>
         ) : null}
-        {guidedSetupSupportActions.length > 0 ? (
+        {visibleSupportActions.length > 0 ? (
           <div className="setup-wizard__support-actions">
-            {guidedSetupSupportActions.map((action) => (
-              <button
-                key={`${selectedSetupSection.id}:${action.kind}:${action.label}`}
-                style={buttonStyle(action.tone ?? 'secondary')}
-                onClick={() => onAction(action)}
-                disabled={action.disabled}
-              >
-                {action.label}
-              </button>
-            ))}
+            {/* Secondary, whatever the descriptor says. These are the waivers,
+             *  the undo and the re-sync -- the long tail under the hero. One of
+             *  them at its own 'primary' tone (Link's Re-sync) made a green
+             *  button among grey ones with no reason it should stand out. */}
+            {visibleSupportActions.map(renderSupportAction)}
           </div>
+        ) : null}
+        {foldedSupportActions.length > 0 ? (
+          <details className="setup-wizard__more" data-testid="setup-wizard-more">
+            <summary>More…</summary>
+            <div className="setup-wizard__support-actions">{foldedSupportActions.map(renderSupportAction)}</div>
+          </details>
         ) : null}
 
         <div className="setup-wizard__nav">
           <button style={buttonStyle()} onClick={() => onMove(-1)} disabled={!previousSetupSection}>
             Previous Step
           </button>
+          {/* On the last step there is nowhere to continue to. Before the
+           *  sign-off the button says what finishes the flow; after it the
+           *  completion card above has taken over. */}
           <button
             id={SETUP_WIZARD_NEXT_STEP_ID}
             className={`setup-wizard__continue-button${continueButtonTargeted ? ' setup-wizard__continue-button--target guided-action-pulse' : ''}`}
             data-testid="setup-wizard-next-step"
             style={{
-              ...buttonStyle(nextSetupSection && selectedSetupSection.status === 'complete' ? 'hero' : 'secondary'),
+              ...buttonStyle(nextSetupSection && stepComplete ? 'hero' : 'secondary'),
               width: '100%'
             }}
             onClick={() => onMove(1)}
-            disabled={!nextSetupSection || selectedSetupSection.status !== 'complete'}
+            disabled={!nextSetupSection || !stepComplete}
           >
             {continueButtonTargeted ? <span aria-hidden="true">→ </span> : null}
-            {nextSetupSection ? `Continue to ${nextSetupSection.title}` : 'Setup Complete'}
+            {nextSetupSection ? `Continue to ${nextSetupSection.title}` : stepComplete ? 'Finish earlier steps' : 'Confirm to finish'}
           </button>
         </div>
       </div>
@@ -145,7 +264,7 @@ export function SetupWizardAside({
       <div className="setup-wizard__status-card">
         <details className="setup-flow__criteria" data-testid="setup-wizard-criteria" open={!stepComplete}>
           <summary>
-            <strong>Completion Criteria</strong>
+            <strong>Checks</strong>
             <span className="setup-flow__criteria-count">
               {selectedSetupSection.criteriaMetCount}/{selectedSetupSection.criteria.length} done
             </span>
@@ -165,17 +284,6 @@ export function SetupWizardAside({
             ))}
           </ul>
         </details>
-
-        {selectedSetupSection.evidence.length > 0 ? (
-          <div className="setup-wizard__evidence">
-            <strong>Live Evidence</strong>
-            <div className="config-pills">
-              {selectedSetupSection.evidence.map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
     </aside>
   )

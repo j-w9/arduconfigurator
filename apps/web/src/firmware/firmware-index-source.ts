@@ -12,21 +12,31 @@ export interface FirmwareIndexSource {
   download(path: string, gitSha?: string): Promise<string>
 }
 
-export const relayFirmwareSource: FirmwareIndexSource = {
-  async loadIndex() {
-    const response = await fetch('/fw/index.json', { cache: 'no-cache' })
-    if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
-      throw new Error('No firmware index on this site.')
+/** The site's index at `indexPath`, and its one relay for the files. */
+function relaySource(indexPath: string): FirmwareIndexSource {
+  return {
+    async loadIndex() {
+      const response = await fetch(indexPath, { cache: 'no-cache' })
+      if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
+        throw new Error('No firmware index on this site.')
+      }
+      return parseFirmwareIndex(await response.json())
+    },
+    async download(path, gitSha) {
+      // The commit in the URL gives each build its own cache entry, here and at the edge.
+      const response = await fetch(`/fw/apj?path=${encodeURIComponent(path)}${gitSha ? `&sha=${encodeURIComponent(gitSha)}` : ''}`)
+      if (!response.ok) throw new Error((await response.text()) || `Download failed (HTTP ${response.status}).`)
+      return response.text()
     }
-    return parseFirmwareIndex(await response.json())
-  },
-  async download(path, gitSha) {
-    // The commit in the URL gives each build its own cache entry, here and at the edge.
-    const response = await fetch(`/fw/apj?path=${encodeURIComponent(path)}${gitSha ? `&sha=${encodeURIComponent(gitSha)}` : ''}`)
-    if (!response.ok) throw new Error((await response.text()) || `Download failed (HTTP ${response.status}).`)
-    return response.text()
   }
 }
+
+/** The Flash tab's .apj builds. */
+export const relayFirmwareSource: FirmwareIndexSource = relaySource('/fw/index.json')
+
+/** The DFU tab's *_with_bl.hex builds: the same targets, firmware with the
+ *  bootloader in front, for a board in STM32 DFU mode. */
+export const relayHexFirmwareSource: FirmwareIndexSource = relaySource('/fw/hex-index.json')
 
 /** The desktop shell's source: its main process reaches firmware.ardupilot.org directly. */
 export function desktopFirmwareSource(bridge: {

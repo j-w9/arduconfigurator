@@ -5,12 +5,15 @@
 // self-contained — own file/parse/flash state — so it doesn't entangle the
 // large serial-flash wizard.
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { buttonStyle } from '@arduconfig/ui-kit'
 import { parseIntelHex, type DfuFlashProgress, type ParsedIntelHex } from '@arduconfig/firmware-flash'
 
 import { describeProtectedSectors } from '@arduconfig/firmware-flash'
+import { FirmwareFinder } from './FirmwareFinder'
+import type { FirmwareIndexSource } from './firmware-index-source'
+import { firmwareBuildKey, type ConnectedBoard, type FirmwareIndexRow, type FirmwareTarget } from '../view-models/firmware-finder'
 import { flashSegmentsOverDfu, isWebUsbSupported } from './web-usb-dfu'
 
 function formatBytes(bytes: number): string {
@@ -27,9 +30,29 @@ export interface DfuHexFlasherProps {
   onActivateDfu?: () => Promise<void>
   /** Why the activate button is disabled (e.g. not connected / armed). */
   activateDfuDisabledReason?: string
+  /** ArduPilot's published *_with_bl.hex builds (the private deploy's index +
+   *  relay). When it loads, a finder leads and the file input folds under it. */
+  firmwareIndex?: FirmwareIndexSource
+  /** The connected flight controller, while it is still connected: the finder
+   *  pre-selects its build. A board in DFU mode cannot say what it is. */
+  board?: ConnectedBoard
+  /** "ArduCopter", "ArduPlane", ... for the finder's Vehicle default. */
+  connectedVehicle?: string
+  /** A Betaflight board's target name ("MATEKH743"): the finder's search starts with it. */
+  betaflightTargetName?: string
+  /** The Flash card's debug log: each DFU step and error lands there too. */
+  onDebug?: (msg: string, ...args: unknown[]) => void
 }
 
-export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuHexFlasherProps) {
+export function DfuHexFlasher({
+  onActivateDfu,
+  activateDfuDisabledReason,
+  firmwareIndex,
+  board,
+  connectedVehicle,
+  betaflightTargetName,
+  onDebug
+}: DfuHexFlasherProps) {
   const supported = isWebUsbSupported()
   const [dfuArmed, setDfuArmed] = useState(false)
   const [activateBusy, setActivateBusy] = useState(false)
@@ -60,12 +83,66 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
   // Default ON: a full chip erase wipes all flash (sized per FC) before
   // programming — the safe default for a clean reflash.
   const [fullErase, setFullErase] = useState(true)
+  // The phase a flash had reached, so a failure can say what state it left the board in.
+  const reachedPhaseRef = useRef<DfuFlashProgress['phase'] | null>(null)
+
+  // Closing or reloading the page mid-flash leaves the board half written.
+  useEffect(() => {
+    if (!busy || typeof window === 'undefined') {
+      return undefined
+    }
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [busy])
+
+  // ArduPilot's *_with_bl.hex builds. Undefined rows (no index on this site)
+  // hide the finder and leave the file input as it was.
+  const [indexRows, setIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
+  useEffect(() => {
+    if (!firmwareIndex) return
+    let cancelled = false
+    firmwareIndex
+      .loadIndex()
+      .then((rows) => {
+        if (!cancelled && rows.length > 0) setIndexRows(rows)
+      })
+      .catch(() => {
+        // No index here (public build, desktop bundle): the file input stays.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [firmwareIndex])
+  // The finder build now parsed (firmwareBuildKey), for its "Downloaded" state.
+  const [loadedBuild, setLoadedBuild] = useState<string | undefined>(undefined)
+
+  const handleFinderLoad = useCallback(
+    async (target: FirmwareTarget) => {
+      if (!firmwareIndex) return
+      setError(null)
+      setNotice(null)
+      const text = await firmwareIndex.download(target.path, target.gitSha)
+      const result = parseIntelHex(text)
+      if (result.segments.length === 0) {
+        throw new Error('The downloaded .hex has no data records to flash.')
+      }
+      setParsed(result)
+      setFileName(`${target.platform} ${target.version} (${target.path.split('/').pop() ?? target.path})`)
+      setLoadedBuild(firmwareBuildKey(target))
+    },
+    [firmwareIndex]
+  )
 
   const handleFile = useCallback(async (file: File | undefined) => {
     setError(null)
     setNotice(null)
     setParsed(null)
     setFileName(null)
+    setLoadedBuild(undefined)
     if (!file) {
       return
     }
@@ -78,9 +155,10 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
       setParsed(result)
       setFileName(file.name)
     } catch (caught) {
+      onDebug?.('ERROR: dfu hex', caught)
       setError(caught instanceof Error ? caught.message : 'Could not read that .hex file.')
     }
-  }, [])
+  }, [onDebug])
 
   const handleFlash = useCallback(async () => {
     if (!parsed || busy) {
@@ -90,9 +168,22 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
     setError(null)
     setNotice(null)
     setProgress(null)
+    reachedPhaseRef.current = null
+    let lastStep = ''
+    const onProgress = (next: DfuFlashProgress) => {
+      reachedPhaseRef.current = next.phase
+      if (next.label !== lastStep) onDebug?.(`dfu progress: ${next.label}`)
+      lastStep = next.label
+      setProgress(next)
+    }
+    onDebug?.(`dfu: start ${fileName ?? '.hex'} ${parsed.totalBytes} bytes fullErase=${fullErase}`)
     try {
-      const { deviceName } = await flashSegmentsOverDfu(parsed.segments, setProgress, {
+      const { deviceName, transferSize } = await flashSegmentsOverDfu(parsed.segments, onProgress, {
         fullErase,
+        log: (line) => {
+          console.info(line)
+          onDebug?.(line)
+        },
         // The board says it will refuse part of this write. Put that in front
         // of the operator with the sectors named, rather than starting an erase
         // that fails halfway and takes the working firmware with it. Overriding
@@ -112,8 +203,9 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
         }
       })
       setError(null)
+      onDebug?.(`dfu: done ${deviceName} ${transferSize}-byte blocks`)
       setNotice(
-        `Flashed and verified ${formatBytes(parsed.totalBytes)} to ${deviceName}. Now unplug the flight controller and plug it back in to boot the new firmware, then reconnect.`
+        `Flashed and verified ${formatBytes(parsed.totalBytes)} to ${deviceName} (${transferSize}-byte blocks). Now unplug the flight controller and plug it back in to boot the new firmware, then reconnect.`
       )
       // Leave the completed steps on screen (all done) so the operator can see
       // what ran — the phases otherwise flash by too fast to read. Cleared on
@@ -122,12 +214,35 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
       const message = caught instanceof Error ? caught.message : 'DFU flash failed.'
       // requestDevice() throwing because the user dismissed the chooser is not
       // an error worth a red banner.
-      setError(/no device selected|cancelled|the user (did|denied)|chooser/i.test(message) ? 'No DFU device selected.' : message)
+      const phase = reachedPhaseRef.current
+      onDebug?.(`ERROR: dfu ${message}`, { phase, lastStep })
+      // Which step it stopped on, so a screenshot of the banner says where.
+      const where = lastStep ? ` (stopped at: ${lastStep})` : ''
+      setError(
+        /no device selected|cancelled|the user (did|denied)|chooser/i.test(message)
+          ? 'No DFU device selected.'
+          : phase === 'erase' || phase === 'program'
+            ? `${message}${where} The flash stopped partway; the board will not start the half-written firmware. Flash again now, while it is still in DFU mode. If it was unplugged, use the .apj flash on the Firmware tab, or hold BOOT0 while plugging it in if it does not show up.`
+            : `${message}${where}`
+      )
       setProgress(null)
     } finally {
       setBusy(false)
     }
-  }, [parsed, busy, fullErase])
+  }, [parsed, busy, fullErase, fileName, onDebug])
+
+  const fileInput = (
+    <label className="scoped-editor-field">
+      <span>Firmware (.hex)</span>
+      <input
+        type="file"
+        accept=".hex"
+        data-testid="dfu-hex-file"
+        disabled={busy}
+        onChange={(event) => void handleFile(event.target.files?.[0])}
+      />
+    </label>
+  )
 
   return (
     <div className="bf-gui-box dfu-hex-flasher" data-testid="dfu-hex-flasher">
@@ -137,15 +252,13 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
       </div>
       <div className="bf-gui-box__body">
         <p className="dfu-hex-flasher__intro">
-          Use this when the flight controller is in <strong>DFU mode</strong> — re-plug it while holding the
-          BOOT/DFU button, or use “Enter DFU mode”, so it re-enumerates as an STM32 bootloader. Then load the
-          ArduPilot <code>.hex</code> for your board and flash it directly over USB.
+          For a board in <strong>DFU mode</strong>: hold <strong>BOOT0</strong> while plugging it in, or use Activate DFU
+          mode below. Pick the build, then flash.
         </p>
 
         <p className="bf-note bf-note--warning" data-testid="dfu-hex-flaky-note">
-          Heads up: entering DFU via the <strong>software button</strong> (&ldquo;Activate DFU mode&rdquo; /
-          reboot-to-bootloader) is flaky on ArduPilot 4.6 and current 4.7. If the board doesn&rsquo;t enumerate as a
-          DFU device, use the hardware method instead: power off, hold <strong>BOOT0</strong>, then plug in.
+          Activate DFU mode is unreliable on ArduPilot 4.6 and 4.7. If the board does not show up as a DFU device, hold{' '}
+          <strong>BOOT0</strong> and re-plug.
         </p>
 
         <details className="dfu-hex-flasher__help" data-testid="dfu-hex-boot0-help">
@@ -219,16 +332,27 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
           </div>
         ) : (
           <>
-            <label className="scoped-editor-field">
-              <span>Firmware (.hex)</span>
-              <input
-                type="file"
-                accept=".hex"
-                data-testid="dfu-hex-file"
+            {indexRows && firmwareIndex ? (
+              <FirmwareFinder
+                rows={indexRows}
+                board={board}
+                connectedVehicle={connectedVehicle}
+                initialQuery={betaflightTargetName}
                 disabled={busy}
-                onChange={(event) => void handleFile(event.target.files?.[0])}
+                loadedBuild={parsed ? loadedBuild : undefined}
+                onLoad={handleFinderLoad}
               />
-            </label>
+            ) : null}
+
+            {/* The file input: folded under the finder when there is one. */}
+            {indexRows ? (
+              <details className="firmware-wizard__manual" data-testid="dfu-hex-file-drop">
+                <summary>Or drop a .hex file</summary>
+                {fileInput}
+              </details>
+            ) : (
+              fileInput
+            )}
 
             {parsed && fileName ? (
               <dl className="dfu-hex-flasher__summary" data-testid="dfu-hex-summary">
@@ -252,8 +376,7 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
             <label className="dfu-hex-flasher__full-erase" data-testid="dfu-hex-full-erase">
               <input type="checkbox" checked={fullErase} disabled={busy} onChange={(event) => setFullErase(event.target.checked)} />
               <span>
-                Full chip erase before flashing — wipes <strong>all</strong> flash (sized to this board), not just the
-                programmed sectors. Recommended for a clean reflash.
+                Full chip erase first (recommended): wipes <strong>all</strong> flash, not only the sectors written.
               </span>
             </label>
 
@@ -266,6 +389,12 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
             >
               {busy ? 'Flashing over DFU…' : 'Flash via DFU'}
             </button>
+
+            {busy ? (
+              <p className="bf-note" data-testid="dfu-hex-busy-note">
+                Keep the board plugged in and the computer awake until it says verified. Other tabs are fine.
+              </p>
+            ) : null}
 
             {progress ? (
               <ol className="dfu-hex-flasher__steps" data-testid="dfu-hex-progress">
@@ -293,6 +422,12 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
               </ol>
             ) : null}
 
+            {busy && progress ? (
+              <p className="dfu-hex-flasher__status" data-testid="dfu-hex-progress-label" aria-live="polite">
+                {progress.label}
+              </p>
+            ) : null}
+
             {notice ? (
               <p className="bf-note" data-testid="dfu-hex-notice">
                 {notice}
@@ -303,7 +438,7 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
               <div className="firmware-error-banner" role="alert" data-testid="dfu-hex-error">
                 <span className="firmware-error-banner__badge" aria-hidden="true">!</span>
                 <div className="firmware-error-banner__body">
-                  <strong>DFU flash refused</strong>
+                  <strong>DFU flash failed</strong>
                   <p>{error}</p>
                 </div>
               </div>

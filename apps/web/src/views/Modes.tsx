@@ -48,6 +48,8 @@ export interface ModesViewProps {
   editedValues?: Record<string, string>
   draftStatusById?: ScopedFieldDraftMap
   onChangeSlot?: (paramId: string, value: string) => void
+  /** See ScopedSelectField.onEnumOverride: a typed unlisted mode number is written, not left invalid. */
+  onEnumOverride?: (paramId: string, overridden: boolean) => void
   /**
    * When set (ArduSub), the vehicle has no RC mode-switch channel — modes are
    * bound to joystick buttons. The mode-channel card, PWM slot table and the
@@ -71,7 +73,8 @@ export function ModesView(props: ModesViewProps) {
     editedValues,
     draftStatusById,
     onChangeSlot,
-    joystickModeNote
+    joystickModeNote,
+    onEnumOverride
   } = props
   // Edit-in-place is available iff the caller supplied the staged-draft
   // plumbing AND at least one slot has a bound parameter.
@@ -85,36 +88,31 @@ export function ModesView(props: ModesViewProps) {
     return (
       <div id="setup-panel-modes">
         <div className="modes-stack">
-          <div className="modes-status">
-            <article className="modes-status__card">
-              <span>Active mode</span>
+          <div className="modes-status" data-testid="modes-status">
+            <span className="modes-status__item">
+              <span className="modes-status__label">Active mode</span>
               <strong>{activeModeLabel}</strong>
-            </article>
+            </span>
           </div>
-
-          <div className="modes-help">
-            <p data-testid="modes-joystick-note">{joystickModeNote}</p>
-          </div>
+          <p className="modes-note" data-testid="modes-joystick-note">{joystickModeNote}</p>
         </div>
       </div>
     )
   }
 
+  const channelEditable = canEditInPlace && modeChannelParameter !== undefined
+
   return (
     <div id="setup-panel-modes">
-      {/* No Panel of its own. This renders inside the Config card already
-          headed "Flight modes", so a second heading and a sentence restating
-          it were two lines to read past before the thing itself. */}
+      {/* No Panel of its own: this renders inside the Config card already
+          headed "Flight modes". The mode channel, the current slot and the
+          active mode are one status line over the table -- they were three
+          boxes. */}
       <div className="modes-stack">
-          <div className="modes-status">
-            <article className="modes-status__card">
-              {/* The editor names the parameter itself (label + id + info
-                  bubble), so the card kicker and the sentence under it only
-                  repeat it. Both stay for the read-only case, where nothing
-                  else says what this is. */}
-              {canEditInPlace && modeChannelParameter ? null : <span>Mode channel</span>}
-              {canEditInPlace && modeChannelParameter ? (
-                <div data-testid="modes-mode-channel-field">
+          <div className="modes-status" data-testid="modes-status">
+            <span className="modes-status__item modes-status__item--channel">
+              {channelEditable ? (
+                <span data-testid="modes-mode-channel-field" className="modes-status__channel-field">
                   <ScopedSelectField
                     parameter={modeChannelParameter}
                     liveValue={modeChannelParameter.value}
@@ -122,37 +120,41 @@ export function ModesView(props: ModesViewProps) {
                     onChange={onChangeSlot!}
                     draftStatusById={draftStatusById!}
                     allowCustomValue
+                    onEnumOverride={onEnumOverride}
                   />
-                </div>
+                </span>
               ) : (
-                <strong>{modeChannelLabel}</strong>
+                <>
+                  <span className="modes-status__label">Mode channel</span>
+                  <strong>{modeChannelLabel}</strong>
+                  <InfoDot label="About the mode channel">
+                    {modeChannelParamName} selects which RC channel switches the flight mode.
+                  </InfoDot>
+                </>
               )}
-              {canEditInPlace && modeChannelParameter ? null : (
-                <small>{modeChannelParamName} selects which RC channel switches the flight mode.</small>
-              )}
-              {modeChannelRcLogicClaim?.length ? (
-                <small className="modes-mode-channel__rcl-claim" data-testid="modes-mode-channel-rcl-claim">
-                  ⚠ This channel also drives an RC Mixer function: {modeChannelRcLogicClaim.join(', ')}
-                </small>
-              ) : null}
-            </article>
-            <article className="modes-status__card">
-              <span>Current slot</span>
+            </span>
+            <span className="modes-status__item" data-testid="modes-current-slot">
+              <span className="modes-status__label">Slot</span>
               <strong>{currentSlotLabel}</strong>
               <small>{currentSlotSubtext}</small>
-            </article>
-            <article className="modes-status__card">
-              <span>Active mode</span>
+            </span>
+            <span className="modes-status__item" data-testid="modes-active-mode">
+              <span className="modes-status__label">Active</span>
               <strong>{activeModeLabel}</strong>
-            </article>
+            </span>
           </div>
+          {modeChannelRcLogicClaim?.length ? (
+            <small className="modes-mode-channel__rcl-claim" data-testid="modes-mode-channel-rcl-claim">
+              ⚠ This channel also drives an RC Mixer function: {modeChannelRcLogicClaim.join(', ')}
+            </small>
+          ) : null}
 
           <div className="modes-table" role="table" aria-label="Flight mode slots" data-testid="modes-slot-table">
             <div className="modes-table__row modes-table__row--head" role="row">
               <span role="columnheader">Slot</span>
-              <span role="columnheader">PWM range</span>
+              <span role="columnheader">PWM</span>
               <span role="columnheader">
-                Assigned mode
+                Mode
                 {/* Fork-only surface: rendered only when the connected vehicle
                     actually reports Fiber, so a stock build never sees a
                     pointer to a mode it cannot fly. */}
@@ -182,18 +184,18 @@ export function ModesView(props: ModesViewProps) {
                   </InfoDot>
                 ) : null}
               </span>
-              <span role="columnheader">State</span>
             </div>
             {slots.map((slot) => (
               <div
                 key={slot.position}
                 className={`modes-table__row${slot.isActive ? ' is-active' : ''}`}
                 role="row"
+                aria-current={slot.isActive ? 'true' : undefined}
                 data-testid={`modes-slot-${slot.position}`}
               >
-                <span role="cell"><strong>{slot.position}</strong></span>
-                <span role="cell">{slot.pwmLabel}</span>
-                <span role="cell">
+                <span role="cell" className="modes-table__slot">{slot.position}</span>
+                <span role="cell" className="modes-table__pwm">{slot.pwmLabel}</span>
+                <span role="cell" className="modes-table__mode">
                   {canEditInPlace && slot.parameter ? (
                     <ScopedSelectField
                       parameter={slot.parameter}
@@ -202,6 +204,7 @@ export function ModesView(props: ModesViewProps) {
                       onChange={onChangeSlot!}
                       draftStatusById={draftStatusById!}
                       allowCustomValue
+                      onEnumOverride={onEnumOverride}
                     />
                   ) : (
                     <span className="modes-table__mode-readonly">
@@ -219,15 +222,10 @@ export function ModesView(props: ModesViewProps) {
                       ) : null}
                     </span>
                   )}
-                </span>
-                <span role="cell">
-                  {slot.isActive ? (
-                    <StatusBadge tone="success">live</StatusBadge>
-                  ) : !slot.paramSynced ? (
-                    <StatusBadge tone="warning">not synced</StatusBadge>
-                  ) : (
-                    <StatusBadge tone="neutral">—</StatusBadge>
-                  )}
+                  {/* The live slot is the highlighted row; the STATE column of
+                      "—" pills is gone. Only a slot the vehicle has not
+                      reported still says so. */}
+                  {slot.paramSynced ? null : <StatusBadge tone="warning">not synced</StatusBadge>}
                 </span>
               </div>
             ))}

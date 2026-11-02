@@ -39,9 +39,9 @@ const byId = (views: AppViewDescriptor[], id: string): AppViewDescriptor => {
 }
 
 describe('buildVisibleAppViews', () => {
-  it('appends the non-metadata descriptors (guided-setup, calibration, can, flash, files)', () => {
+  it('appends the non-metadata descriptors (guided-setup, can, flash, files); Calibration is a Setup category, not a tab', () => {
     const result = ids(buildVisibleAppViews(baseInputs()))
-    for (const extra of ['guided-setup', 'calibration', 'can', 'flash', 'files']) {
+    for (const extra of ['guided-setup', 'can', 'flash', 'files']) {
       expect(result).toContain(extra)
     }
   })
@@ -73,10 +73,9 @@ describe('buildVisibleAppViews', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasNetworkingParams: false })))).not.toContain('networking')
   })
 
-  it('gates the AI Assistant view behind Expert mode alone (no FC capability)', () => {
-    // Unlike Networking/Lua it needs no capability flag — Expert mode is the
-    // only gate, since it is useful even before a vehicle is connected.
-    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).toContain('ai-assistant')
+  it('hides the AI Assistant view for everyone, Expert included (AI_ASSISTANT_ENABLED)', () => {
+    // Operator call 2026-10-21: the tab stays in the build but is on no rail.
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).not.toContain('ai-assistant')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))).not.toContain('ai-assistant')
   })
 
@@ -104,19 +103,19 @@ describe('buildVisibleAppViews', () => {
     const result = ids(
       buildVisibleAppViews(baseInputs({ appViews: [view('modes'), view('setup'), view('mystery-view')] }))
     )
-    // setup leads, then AMC Guided and the Simulator, then Peripherals and
-    // Calibration, modes before the tools cluster, unknown id last. (Config is
-    // absent from this input, so Peripherals lands fourth.)
+    // setup leads, then AMC Guided and the Simulator; modes and tuning come
+    // before peripherals (flying first), modes before the tools cluster,
+    // unknown id last. Calibration is a Setup category now, not a tab.
     //
     // The Simulator sits beside AMC Guided because it is the same kind of
     // thing: somewhere to work without a vehicle in front of you. Guided Setup
-    // is Expert-only and goes after every listed tab now (a mainline call);
-    // this input has Expert on, so it is here, just ahead of the unknown id.
+    // is Expert-only and goes after every listed tab (a mainline call); this
+    // input has Expert on, so it is here, just ahead of the unknown id.
     expect(result[0]).toBe('setup')
     expect(result[1]).toBe('amc-guided')
     expect(result[2]).toBe('sitl')
-    expect(result[3]).toBe('peripherals')
-    expect(result[4]).toBe('calibration')
+    expect(result).not.toContain('calibration')
+    expect(result.indexOf('modes')).toBeLessThan(result.indexOf('peripherals'))
     expect(result[result.length - 2]).toBe('guided-setup')
     expect(result.indexOf('modes')).toBeLessThan(result.indexOf('can'))
     expect(result[result.length - 1]).toBe('mystery-view')
@@ -141,11 +140,9 @@ describe('buildVisibleAppViews', () => {
   it('reflects connection state in the Files and Calibration badges', () => {
     const connected = buildVisibleAppViews(baseInputs({ connectionKind: 'connected' }))
     expect(byId(connected, 'files').badge).toBe('live')
-    expect(byId(connected, 'calibration').badge).toBe('ready')
 
     const disconnected = buildVisibleAppViews(baseInputs({ connectionKind: 'disconnected' }))
     expect(byId(disconnected, 'files').badge).toBe('idle')
-    expect(byId(disconnected, 'calibration').badge).toBe('idle')
   })
 })
 

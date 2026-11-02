@@ -64,7 +64,10 @@ const BATTERY_MONITOR_LABELS_4_7: Record<number, string> = {
  * detected — so 4.6 / pre-connect / Unknown keep the old values (byte-identical).
  */
 export const ARDUCOPTER_4_7_PARAMETER_OVERRIDES: Record<string, Partial<ParameterDefinition>> = {
-  VTX_POWER: { minimum: 1, maximum: 1000 },
+  // AP_VideoTX documents @Range 1 1000, but 0 is a real value: on a SmartAudio
+  // 2.1 VTX (TBS Unify Pro32) 0 mW puts it into pit mode. Keep 0 valid so the
+  // VTX tab's pit-mode button stages a value the draft checks accept.
+  VTX_POWER: { minimum: 0, maximum: 1000 },
   VTX_MAX_POWER: { minimum: 25, maximum: 1000 },
   FS_THR_ENABLE: { options: enumOptions(THROTTLE_FAILSAFE_LABELS_4_7) },
   FS_GCS_ENABLE: { options: enumOptions(FS_GCS_LABELS_4_7) },

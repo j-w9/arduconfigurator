@@ -18,17 +18,17 @@ export function useMotorVerificationDerivations(input: {
 
   const motorVerificationSummary = (() => {
     if (motorVerification.status === 'passed') {
-      return 'Every mapped motor output was stepped through and operator-confirmed.'
+      return 'Every motor spun and you confirmed its order and direction.'
     }
     if (motorVerification.status === 'failed') {
       return motorVerification.failureReason ?? 'Motor verification failed.'
     }
     if (motorVerification.status === 'running') {
       return motorVerification.currentOutputChannel === undefined
-        ? 'Motor verification is awaiting the next output.'
+        ? 'Pick the next output.'
         : `Spin OUT${motorVerification.currentOutputChannel}${motorVerification.currentMotorNumber !== undefined ? ` / M${motorVerification.currentMotorNumber}` : ''}, then confirm the correct motor and direction.`
     }
-    return 'Use guarded single-output motor tests to verify motor order and direction before the first props-on flight.'
+    return 'Spin each motor on its own to check order and direction. Props off.'
   })()
 
   return { motorVerificationSummary }

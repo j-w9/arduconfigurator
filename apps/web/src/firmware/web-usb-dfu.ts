@@ -15,6 +15,8 @@ import {
   type IntelHexSegment
 } from '@arduconfig/firmware-flash'
 
+import { createDfuClock } from './dfu-clock'
+
 // USB DFU interface descriptor (class 0xFE = application-specific, subclass 1 = DFU).
 const DFU_INTERFACE_CLASS = 0xfe
 const DFU_INTERFACE_SUBCLASS = 0x01
@@ -222,13 +224,24 @@ export async function flashSegmentsOverDfu(
      * armed long before anyone knew there was anything to force.
      */
     confirmProtectedSectors?: (protectedSectors: readonly DfuProtectedSector[]) => Promise<boolean> | boolean
+    /**
+     * Where the `[dfu]` field-report lines go. Defaults to console.info; the
+     * Flash card's debug log passes its own sink so a user can copy them.
+     */
+    log?: (line: string) => void
   }
-): Promise<{ deviceName: string }> {
+): Promise<{ deviceName: string; transferSize: number }> {
+  const log = options?.log ?? ((line: string) => console.info(line))
   const device = await requestDfuDevice()
   const open = await openDfuInterface(device)
+  // Waits run on a worker's clock so the flash keeps pace in a background tab.
+  const clock = createDfuClock()
   try {
     const memory = parseDfuSeMemoryLayout(open.memoryLayoutName)
-    const dfu = new DfuSeDevice(open.iface, memory, open.transferSize)
+    // What the board says about itself, for a field report: its block size and
+    // flash map vary by chip (the H743's block size is not documented).
+    log(`[dfu] ${device.productName ?? 'DFU device'}: ${open.transferSize}-byte blocks, layout "${open.memoryLayoutName}"`)
+    const dfu = new DfuSeDevice(open.iface, memory, open.transferSize, clock.sleep)
 
     // Check before erasing anything. A board with option-byte write protection
     // (nWRP) accepts the erase command and then fails partway, which is the
@@ -242,9 +255,26 @@ export async function flashSegmentsOverDfu(
       }
     }
 
-    await dfu.flash(segments, onProgress, { fullErase: options?.fullErase, allowProtectedSectors })
-    return { deviceName: device.productName ?? 'DFU device' }
+    // How long each phase really took on this board, for field reports (an
+    // erase that finishes suspiciously fast, a write that crawls).
+    let phase: DfuFlashProgress['phase'] | undefined
+    let phaseStarted = performance.now()
+    const logPhase = () => {
+      if (phase) log(`[dfu] ${phase}: ${((performance.now() - phaseStarted) / 1000).toFixed(1)} s`)
+    }
+    const timedProgress = (progress: DfuFlashProgress) => {
+      if (progress.phase !== phase) {
+        logPhase()
+        phase = progress.phase
+        phaseStarted = performance.now()
+      }
+      onProgress?.(progress)
+    }
+    await dfu.flash(segments, timedProgress, { fullErase: options?.fullErase, allowProtectedSectors })
+    logPhase()
+    return { deviceName: device.productName ?? 'DFU device', transferSize: open.transferSize }
   } finally {
+    clock.close()
     await open.close()
   }
 }

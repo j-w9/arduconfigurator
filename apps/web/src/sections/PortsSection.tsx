@@ -40,7 +40,6 @@ export interface PortsSectionProps {
   serialPortViewModels: readonly SerialPortViewModel[]
   visibleSerialPortViewModels: readonly SerialPortViewModel[]
   canNodePeripheralViewModels: readonly CanNodePeripheralViewModel[]
-  portVisibilitySummary: string
   // Drafts: this view's scope
   portsDraftEntries: readonly ParameterDraftEntry[]
   portsStagedDrafts: readonly ParameterDraftEntry[]
@@ -98,7 +97,9 @@ export interface PortsSectionProps {
     invalid: ParameterDraftEntry[],
     applyActionId: string,
     applyLabel: string,
-    discardScope: string
+    discardScope: string,
+    renderField?: undefined,
+    options?: { actions?: boolean }
   ) => ReactNode
   // The configurator runtime, for the self-contained MAVLink signing panel
   // (it owns its own state + reads the codec's rejection count directly).
@@ -116,7 +117,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     serialPortViewModels,
     visibleSerialPortViewModels,
     canNodePeripheralViewModels,
-    portVisibilitySummary,
     portsDraftEntries,
     portsStagedDrafts,
     portsInvalidDrafts,
@@ -163,6 +163,14 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
       setDraft(paired.paramId, String(paired.value))
     }
   }
+
+  // The page's one Apply bar: the port matrix plus the additional settings.
+  const portsPageDraftEntries = [
+    ...portsDraftEntries,
+    ...portsAdditionalDraftEntries.filter((entry) => !portsDraftEntries.some((seen) => seen.id === entry.id))
+  ]
+  const portsPageStagedCount = portsStagedDrafts.length + portsAdditionalStagedDrafts.filter((entry) => !portsStagedDrafts.some((seen) => seen.id === entry.id)).length
+  const portsPageInvalidCount = portsInvalidDrafts.length + portsAdditionalInvalidDrafts.filter((entry) => !portsInvalidDrafts.some((seen) => seen.id === entry.id)).length
 
   return (
 
@@ -213,10 +221,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 
                       {serialPortViewModels.length > 0 ? (
                         <>
-                          <div className="ports-surface__disclosure">
-                            <small>{portVisibilitySummary}</small>
-                          </div>
-
                           {/* Without @SYS/uarts.txt there are no activity dots
                               at all, which is indistinguishable from "every
                               port is idle". Bench report: a working drive
@@ -653,35 +657,40 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 
 	              {renderAdditionalSettingsCard(
 	                'Additional port settings',
-	                'These metadata-backed port and peripheral settings are kept local to the Ports view so common setup work does not spill into raw Parameters.',
+	                '',
                 portsAdditionalGroups,
                 portsAdditionalDraftEntries,
                 portsAdditionalStagedDrafts,
                 portsAdditionalInvalidDrafts,
                 'ports:additional',
 	                'Apply Additional Port Changes',
-	                'additional port settings'
+	                'additional port settings',
+	                undefined,
+	                { actions: false }
 	              )}
 		              </div>
 		            </div>
 
+		            {/* One bar for the page: the port matrix and the additional
+		                settings under it apply together, at the end, in the flow
+		                (the old sticky box floated over the matrix). */}
 		            <div className="switch-exercise-controls ports-toolbar">
 	              <button
 	                style={buttonStyle('primary')}
-	                onClick={() => void handleApplyScopedParameterDrafts(portsDraftEntries, 'ports:apply', 'Ports & peripherals')}
+	                onClick={() => void handleApplyScopedParameterDrafts(portsPageDraftEntries, 'ports:apply', 'Ports & peripherals')}
 	                disabled={
 	                  busyAction !== undefined ||
-	                  portsStagedDrafts.length === 0 ||
-	                  portsInvalidDrafts.length > 0 ||
+	                  portsPageStagedCount === 0 ||
+	                  portsPageInvalidCount > 0 ||
 	                  !canApplyDraftParameters
 	                }
 	              >
-	                {busyAction === 'ports:apply' ? 'Applying…' : `Apply Port Changes (${portsStagedDrafts.length})`}
+	                {busyAction === 'ports:apply' ? 'Applying…' : `Apply Port Changes (${portsPageStagedCount})`}
 	              </button>
 	              <button
 	                style={buttonStyle()}
-	                onClick={() => handleDiscardScopedParameterDrafts(portsDraftEntries.map((entry) => entry.id), 'ports')}
-	                disabled={busyAction !== undefined || portsDraftEntries.length === 0}
+	                onClick={() => handleDiscardScopedParameterDrafts(portsPageDraftEntries.map((entry) => entry.id), 'ports')}
+	                disabled={busyAction !== undefined || portsPageDraftEntries.length === 0}
 	              >
 	                Discard Port Changes
 	              </button>
@@ -708,9 +717,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 	              </div>
 	            ) : null}
 
-	            <p className="telemetry-note">
-	              Use the header session strip to reboot and refresh after changing serial roles, GPS drivers, or flow-control settings.
-	            </p>
 	          </div>
 	          </Panel>	          
 	          <MavlinkSigningPanel runtime={runtime} connected={snapshot.connection.kind === 'connected'} />

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Panel, StatusBadge } from '@arduconfig/ui-kit'
+import { Panel } from '@arduconfig/ui-kit'
 
 export type TuningStatusTone = 'neutral' | 'success' | 'warning' | 'danger'
 
@@ -11,11 +11,13 @@ export type TuningTaskId =
   // lives in Log Tuning.
   | 'notches'
   | 'filters'
+  // The hover throttle flights (learned, or measured from a log).
+  | 'hover'
+  // SmallFastDrone fork features, when the firmware has any.
+  | 'sfd'
   | 'autotune'
   | 'profiles'
-  | 'review'
   | 'log-tuning'
-  | 'initial-tune'
 
 export interface TuningTaskCard {
   id: TuningTaskId
@@ -56,14 +58,7 @@ export function TuningView(props: TuningViewProps) {
                     className={`tab-strip__tab${task.id === activeTaskId ? ' is-active' : ''}`}
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <span className="tab-strip__tab-title">
-                      {task.label}{' '}
-                      <span className="receiver-info-dot" aria-hidden="true">
-                        i
-                        <span className="receiver-info-tip" role="tooltip">{task.detail}</span>
-                      </span>
-                    </span>
-                    <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
+                    <span className="tab-strip__tab-title">{task.label}</span>
                   </button>
                 ))}
               </div>

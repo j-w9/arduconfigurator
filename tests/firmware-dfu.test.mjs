@@ -194,10 +194,20 @@ test('DfuSeDevice.flash: erases, sets address, streams blocks, then manifests', 
   // Set-address command present for the image start.
   assert.ok(dnloads.some((o) => o.value === 0 && o.data[0] === 0x21 && o.data[4] === 0x08))
 
-  // Data blocks use wBlockNum >= 2 and carry the whole payload.
+  // Each chunk goes to its own address as block 2 (so one can be resent on its
+  // own); the image's first 32-byte flash word goes last, and the tail is
+  // padded to a whole flash word with erased bytes.
   const dataBlocks = dnloads.filter((o) => o.value >= 2)
-  assert.deepEqual(dataBlocks.map((o) => o.value), [2, 3, 4]) // 2048 + 2048 + 904
-  assert.equal(dataBlocks.reduce((sum, o) => sum + o.data.length, 0), 5000)
+  assert.ok(dataBlocks.every((o) => o.value === 2))
+  assert.deepEqual(dataBlocks.map((o) => o.data.length), [2016, 2048, 928, 32]) // 5000 -> 5024
+  const writtenAt = []
+  let pointer = 0
+  for (const o of dnloads) {
+    if (o.value === 0 && o.data[0] === 0x21) pointer = (o.data[1] | (o.data[2] << 8) | (o.data[3] << 16) | (o.data[4] << 24)) >>> 0
+    else if (o.value >= 2) writtenAt.push(pointer)
+  }
+  assert.deepEqual(writtenAt, [0x08000020, 0x08000800, 0x08001000, 0x08000000])
+  assert.deepEqual([...mock.flash.entries()].filter(([a]) => a >= 0x08000000 + 5000).map(([, v]) => v), new Array(24).fill(0xff))
 
   // Manifest: a zero-length download terminates the sequence.
   assert.ok(dnloads.some((o) => o.value === 0 && o.data.length === 0))
@@ -276,4 +286,32 @@ test('DfuSeDevice.flash: refuses an image outside the device memory map', async 
     () => device.flash([{ address: 0x90000000, data: new Uint8Array(16) }]),
     /outside the device flash memory map/i
   )
+})
+
+test('DfuSeDevice.flash: waits out the poll timeout on the clock it is given, not a page timer', async () => {
+  const mock = mockDfu()
+  // After each download the board reports busy for one poll, asking for 25 ms.
+  const busyAfterDownload = mock.iface.controlOut
+  let busy = false
+  mock.iface.controlOut = async (request, value, data) => {
+    await busyAfterDownload(request, value, data)
+    if (request === 1) busy = true
+  }
+  const statusIn = mock.iface.controlIn
+  mock.iface.controlIn = async (request, value, length) => {
+    if (request === 3 && busy) {
+      busy = false
+      return new Uint8Array([0, 25, 0, 0, 4, 0]) // dfuDNBUSY, bwPollTimeout 25
+    }
+    return statusIn(request, value, length)
+  }
+  const waits = []
+  const memory = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/16*128Kg')
+  const device = new DfuSeDevice(mock.iface, memory, 2048, async (ms) => {
+    waits.push(ms)
+  })
+  await device.flash([{ address: 0x08000000, data: new Uint8Array(5000).fill(0xab) }])
+  // erase + set-address + 3 blocks (+ verify's set-address), each one wait of 25 ms.
+  assert.ok(waits.length >= 5)
+  assert.ok(waits.every((ms) => ms === 25))
 })
