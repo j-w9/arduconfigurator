@@ -594,7 +594,7 @@ describe('what the sequence says about a step', () => {
     const tools = summary.rows.filter((r) => r.tool)
     expect(tools.length).toBeGreaterThan(0)
     for (const row of tools) {
-      expect(['config', 'motors', 'servos', 'calibration', 'receiver', 'tuning', 'mavlink-inspector']).toContain(row.tool?.view)
+      expect(['config', 'motors', 'servos', 'peripherals', 'calibration', 'receiver', 'tuning', 'mavlink-inspector']).toContain(row.tool?.view)
     }
   })
 

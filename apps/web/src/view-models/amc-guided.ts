@@ -50,6 +50,7 @@ export type AppToolView =
   | 'config'
   | 'motors'
   | 'servos'
+  | 'peripherals'
   | 'calibration'
   | 'flash'
   | 'receiver'
@@ -74,7 +75,11 @@ export const STEP_TOOLS: Readonly<Record<string, { label: string; view: AppToolV
   accelerometer_calibration: { label: 'Accelerometer calibration', view: 'calibration' },
   level_calibration: { label: 'Level calibration', view: 'calibration' },
   compass_calibration: { label: 'Compass calibration', view: 'calibration' },
-  servo_out: { label: 'Servo outputs', view: 'servos' }
+  servo_out: { label: 'Servo outputs', view: 'servos' },
+  // AMC 5.0.2.
+  autotune_accel_backoff: { label: 'Tuning', view: 'tuning' },
+  esc_telemetry: { label: 'ESC telemetry', view: 'motors' },
+  gnss: { label: 'GPS', view: 'peripherals' }
 }
 
 /** The four sequences AMC ships. Sub is not among them. */
