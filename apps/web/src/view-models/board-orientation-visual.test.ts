@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { AHRS_ORIENTATION_OPTIONS } from '@arduconfig/param-metadata'
 
-import { deriveBoardOrientationVisual, describeBoardOrientation } from './board-orientation-visual'
+import { deriveBoardOrientationVisual, describeBoardOrientation, rotateBoardOrientation } from './board-orientation-visual'
 
 describe('deriveBoardOrientationVisual', () => {
   it('None (0) is an un-rotated board', () => {
@@ -117,5 +117,46 @@ describe('describeBoardOrientation', () => {
       expect(visual?.kind, label).toBe('depictable')
       expect(describeBoardOrientation(visual!), `${value} ${label}`).toEqual({ arrow, componentSide })
     }
+  })
+})
+
+describe('rotateBoardOrientation', () => {
+  const turn = (value: number, axis: 'roll' | 'pitch' | 'yaw', degrees: number) =>
+    rotateBoardOrientation(value, axis, degrees, AHRS_ORIENTATION_OPTIONS)
+  it('turns the board about the vehicle axes and lands on the matching setting', () => {
+    expect(turn(0, 'pitch', 180)).toBe(12) // Pitch 180
+    expect(turn(0, 'pitch', 90)).toBe(24) // nose up = Pitch 90
+    expect(turn(0, 'pitch', -90)).toBe(25) // Pitch 270
+    expect(turn(0, 'roll', 90)).toBe(16) // Roll 90
+    expect(turn(0, 'roll', 180)).toBe(8) // Roll 180
+    expect(turn(0, 'yaw', 90)).toBe(2) // Yaw 90
+    expect(turn(0, 'yaw', 45)).toBe(1) // Yaw 45
+    expect(turn(1, 'yaw', 45)).toBe(2) // 45° steps reach Yaw 90
+    expect(turn(8, 'yaw', 45)).toBe(9) // upside down: Roll 180 Yaw 45
+    expect(turn(16, 'yaw', 45)).toBeDefined() // on its edge: a Roll 90 Yaw setting
+    expect(turn(0, 'yaw', -90)).toBe(6) // Yaw 270
+    // Upside down, then nose right.
+    expect(turn(8, 'yaw', 90)).toBe(10) // Roll 180 Yaw 90
+    // A full turn comes back.
+    expect(turn(turn(turn(turn(0, 'pitch', 90)!, 'pitch', 90)!, 'pitch', 90)!, 'pitch', 90)).toBe(0)
+  })
+
+  it('every square-on pose is reachable from every other with 90° turns', () => {
+    for (const option of AHRS_ORIENTATION_OPTIONS) {
+      if (option.value >= 100) continue
+      const visual = deriveBoardOrientationVisual(option.value, option.label)!
+      const squareOn = [visual.roll, visual.pitch, visual.yaw].every((angle) => angle % 90 === 0)
+      if (!squareOn) continue
+      for (const axis of ['roll', 'pitch', 'yaw'] as const) {
+        for (const degrees of [90, -90]) {
+          expect(turn(option.value, axis, degrees), `${option.label} ${axis} ${degrees}`).toBeDefined()
+        }
+      }
+    }
+  })
+
+  it('says no when ArduPilot has no setting, or the value is Custom', () => {
+    expect(turn(24, 'yaw', 45)).toBeUndefined() // nose up, then 45° yaw
+    expect(turn(101, 'roll', 90)).toBeUndefined()
   })
 })

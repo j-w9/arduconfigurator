@@ -116,3 +116,45 @@ export function describeBoardOrientation(
     componentSide: describeDirection(rotate([0, 0, 1], visual))
   }
 }
+
+export type BoardRotationAxis = 'roll' | 'pitch' | 'yaw'
+
+// Turn a vector about one of the VEHICLE's axes, as the board would turn in
+// your hand: roll + = right side down, pitch + = nose up, yaw + = nose right.
+// Same CSS frame as rotate() above (x right, y back, z up).
+function turnAboutVehicleAxis(v: Vec3, axis: BoardRotationAxis, degrees: number): Vec3 {
+  const k: Vec3 = axis === 'yaw' ? [0, 0, 1] : axis === 'pitch' ? [-1, 0, 0] : [0, 1, 0]
+  const t = (degrees * Math.PI) / 180
+  const c = Math.cos(t)
+  const s = Math.sin(t)
+  const cross: Vec3 = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]]
+  const dot = k[0] * v[0] + k[1] * v[1] + k[2] * v[2]
+  return [0, 1, 2].map((i) => v[i] * c + cross[i] * s + k[i] * dot * (1 - c)) as Vec3
+}
+
+const close = (a: Vec3, b: Vec3) => Math.max(...a.map((value, i) => Math.abs(value - b[i]))) < 0.02
+
+/**
+ * The AHRS_ORIENTATION value the board ends up at after turning it about a
+ * vehicle axis, or undefined when ArduPilot has no setting for that pose (or
+ * the current value is a Custom one).
+ */
+export function rotateBoardOrientation(
+  value: number,
+  axis: BoardRotationAxis,
+  degrees: number,
+  options: ReadonlyArray<{ value: number; label: string }>
+): number | undefined {
+  const current = deriveBoardOrientationVisual(value, options.find((option) => option.value === value)?.label)
+  if (!current || current.kind !== 'depictable') return undefined
+  const arrow = turnAboutVehicleAxis(rotate([0, -1, 0], current), axis, degrees)
+  const top = turnAboutVehicleAxis(rotate([0, 0, 1], current), axis, degrees)
+  for (const option of options) {
+    const visual = deriveBoardOrientationVisual(option.value, option.label)
+    if (!visual || visual.kind !== 'depictable') continue
+    if (close(rotate([0, -1, 0], visual), arrow) && close(rotate([0, 0, 1], visual), top)) {
+      return option.value
+    }
+  }
+  return undefined
+}

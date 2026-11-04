@@ -164,7 +164,8 @@ import { buildCompassOrder, isCompassOrderParamId, removeCompassPriority, swapCo
 import { selectViewDrafts } from './selectors/view-drafts'
 import { actionLabels, type GuidedActionId } from './guided-action-labels'
 import {
-  canRunGuidedAction
+  canRunGuidedAction,
+  guidedActionBlockingReason
 } from './guided-action-helpers'
 import {
   toneForConnection,
@@ -2119,6 +2120,21 @@ export function App() {
       setSessionNotice({ tone: 'danger', text: describeConnectionError(connectionErrorMessage) })
     }
   }, [connectionErrorMessage])
+
+  // A tilt check that passed checked the orientation the board had then. When
+  // AHRS_ORIENTATION changes on the vehicle, that pass no longer says anything,
+  // so the check goes back to idle. Only a change between two read values
+  // counts: the value is briefly missing while parameters re-sync after the
+  // reboot the change needs, and that gap must not reset a pass.
+  const lastBoardOrientationRef = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (boardOrientation === undefined) return
+    const previous = lastBoardOrientationRef.current
+    lastBoardOrientationRef.current = boardOrientation
+    if (previous !== undefined && previous !== boardOrientation) {
+      setOrientationExercise(createIdleOrientationExerciseState())
+    }
+  }, [boardOrientation, setOrientationExercise])
 
   useEffect(() => {
     if (snapshot.connection.kind !== 'connected') {
@@ -7787,6 +7803,56 @@ export function App() {
   // (BLH_BDMASK=0b1111) AND turns on BLHeli auto (BLH_AUTO=1), since AP needs
   // both; gated on a DShot protocol with a note that most boards only do
   // bdshot on the first 4 outputs (some do 8).
+  // Status ▸ Craft View: a level calibration one click from the attitude it
+  // corrects, for a check before each flight (Betaflight has the same button).
+  // Same action and gate as Calibration ▸ Level: disarmed, synced, nothing
+  // else running. It writes AHRS_TRIM_X/Y; no reboot needed.
+  function renderStatusLevelButton(): ReactNode {
+    const state = snapshot.guidedActions['calibrate-level']
+    const running = state.status === 'requested' || state.status === 'running'
+    const blocked = guidedActionBlockingReason(snapshot, 'calibrate-level')
+    // The button always offers the action; the result sits beside it with the
+    // time and the stored trim, so every run reads as a new one -- a second
+    // level on a level copter used to change nothing on screen.
+    const trimDeg = (paramId: string) => {
+      const radians = readParameterValue(snapshot, paramId)
+      return radians === undefined ? undefined : (radians * 180) / Math.PI
+    }
+    const roll = trimDeg('AHRS_TRIM_X')
+    const pitch = trimDeg('AHRS_TRIM_Y')
+    const at = state.completedAtMs !== undefined ? new Date(state.completedAtMs).toLocaleTimeString() : undefined
+    const result =
+      running ? undefined
+        : state.status === 'succeeded'
+          ? `✓ ${at ?? 'Levelled'}${roll !== undefined && pitch !== undefined ? ` · trim roll ${roll.toFixed(1)}°, pitch ${pitch.toFixed(1)}°` : ''}`
+          : state.status === 'failed'
+            ? 'Level failed'
+            : undefined
+    return (
+      <>
+        {result ? (
+          <span
+            className={`flight-deck__level-result${state.status === 'failed' ? ' is-failed' : ''}`}
+            data-testid="status-calibrate-level-result"
+            title={state.status === 'failed' ? state.summary : undefined}
+          >
+            {result}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          className="flight-deck__heading-button"
+          data-testid="status-calibrate-level"
+          disabled={running || busyAction !== undefined || !canRunGuidedAction(snapshot, 'calibrate-level')}
+          title={blocked ?? 'Sit the copter on a level surface, then click. Sets AHRS_TRIM so it reads level.'}
+          onClick={() => void handleGuidedAction('calibrate-level')}
+        >
+          {running ? 'Levelling…' : 'Calibrate Level'}
+        </button>
+      </>
+    )
+  }
+
   function renderBoardOrientationFooter(): ReactNode {
     // Reflect the SELECTED orientation (staged draft if any, else live) so the
     // picture updates as the operator changes the dropdown, before Apply.
@@ -7800,7 +7866,17 @@ export function App() {
     if (!visual) {
       return null
     }
-    return <BoardOrientationDiagram visual={visual} testId="board-orientation-diagram" />
+    return (
+      <BoardOrientationDiagram
+        visual={visual}
+        testId="board-orientation-diagram"
+        rotate={{
+          value,
+          options: AHRS_ORIENTATION_OPTIONS,
+          onChange: (next) => setDraft('AHRS_ORIENTATION', String(next))
+        }}
+      />
+    )
   }
 
 
@@ -9643,6 +9719,7 @@ export function App() {
                           showHeadingReference={false}
                           frameClassLabel={airframe.frameClassLabel}
                           frameTypeLabel={airframe.frameTypeLabel}
+                          extraActions={renderStatusLevelButton()}
                         />
 
                         {/* Everything below the craft model is one 12-column
