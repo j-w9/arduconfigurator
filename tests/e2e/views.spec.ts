@@ -2617,6 +2617,14 @@ test.describe('Config view', () => {
     await expect(diagram).toContainText('Roll 90')
     await expect(board).toHaveAttribute('style', /rotateY\(90deg\)/)
 
+    // Pitch 180: the arrow is underneath now, so the readout says where it went.
+    await select.selectOption('12')
+    await expect(page.getByTestId('board-orientation-readout')).toHaveText('Arrow points back · components face down')
+    // Pitch 90 is nose up (ArduPilot's sign), drawn as rotateX(-90deg).
+    await select.selectOption('24')
+    await expect(board).toHaveAttribute('style', /rotateX\(-90deg\)/)
+    await expect(page.getByTestId('board-orientation-readout')).toHaveText('Arrow points up · components face back')
+
     // A Custom orientation can't be posed — shows a note instead of a board.
     await select.selectOption('101')
     await expect(page.getByTestId('board-orientation-note')).toBeVisible()
