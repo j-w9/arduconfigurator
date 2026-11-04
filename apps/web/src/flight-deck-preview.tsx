@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -45,6 +45,8 @@ interface FlightDeckPreviewProps {
    *  looks level, so a pitch reading is never mistaken for a bad level
    *  calibration. The stick preview keeps the raised view. */
   levelView?: boolean
+  /** Extra buttons placed before Set Bench Forward (e.g. Calibrate Level on Status). */
+  extraActions?: ReactNode
 }
 
 interface ModelSceneState {
@@ -714,7 +716,8 @@ export function FlightDeckPreview({
   testId,
   captionLabel,
   showHeadingReference = true,
-  levelView = false
+  levelView = false,
+  extraActions
 }: FlightDeckPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -1066,6 +1069,7 @@ export function FlightDeckPreview({
               <span className={`flight-deck__heading-reference${benchHeadingOffsetDeg !== null ? ' is-relative' : ''}`}>{headingStatusLabel}</span>
             ) : null}
             <div className="flight-deck__heading-actions">
+              {extraActions}
               <button
                 type="button"
                 className="flight-deck__heading-button"

@@ -15,13 +15,65 @@
 
 import {
   describeBoardOrientation,
-  type BoardOrientationVisual
+  rotateBoardOrientation,
+  type BoardOrientationVisual,
+  type BoardRotationAxis
 } from '../view-models/board-orientation-visual'
 import { FlightControllerBottom, FlightControllerTop } from './FlightControllerArt'
+
+export interface BoardOrientationRotateControls {
+  /** The AHRS_ORIENTATION value shown. */
+  value: number
+  options: ReadonlyArray<{ value: number; label: string }>
+  /** Stage the value the board was turned to. */
+  onChange: (value: number) => void
+  disabled?: boolean
+}
 
 export interface BoardOrientationDiagramProps {
   visual: BoardOrientationVisual
   testId?: string
+  /** When given, arrows on the picture turn the board and pick the matching setting. */
+  rotate?: BoardOrientationRotateControls
+}
+
+// The arrows on the picture: roll and pitch turn the board 90°, yaw 45°
+// (ArduPilot has the 45° yaw mounts). Left-hand buttons turn one way,
+// right-hand the other.
+const TURNS: Array<{ id: string; axis: BoardRotationAxis; degrees: number; text: string; title: string }> = [
+  { id: 'yaw-left', axis: 'yaw', degrees: -45, text: '↺ Yaw 45°', title: 'Turn the board 45°, nose to the left' },
+  { id: 'yaw-right', axis: 'yaw', degrees: 45, text: 'Yaw 45° ↻', title: 'Turn the board 45°, nose to the right' },
+  { id: 'roll-left', axis: 'roll', degrees: -90, text: '↺ Roll', title: 'Roll the board 90°, left side down' },
+  { id: 'roll-right', axis: 'roll', degrees: 90, text: 'Roll ↻', title: 'Roll the board 90°, right side down' },
+  { id: 'pitch-down', axis: 'pitch', degrees: -90, text: '▼ Nose', title: 'Pitch the board 90°, nose down' },
+  { id: 'pitch-up', axis: 'pitch', degrees: 90, text: 'Nose ▲', title: 'Pitch the board 90°, nose up' }
+]
+
+function RotateArrows({ rotate }: { rotate: BoardOrientationRotateControls }) {
+  return (
+    <>
+      {TURNS.map((turn) => {
+        const target = rotateBoardOrientation(rotate.value, turn.axis, turn.degrees, rotate.options)
+        const unavailable = target === undefined
+        return (
+          <button
+            key={turn.id}
+            type="button"
+            className={`board-orientation-diagram__turn board-orientation-diagram__turn--${turn.id}`}
+            data-testid={`board-orientation-turn-${turn.id}`}
+            title={unavailable ? 'ArduPilot has no setting for that mount. Pick one from the list.' : turn.title}
+            aria-label={turn.title}
+            disabled={rotate.disabled || unavailable}
+            onClick={() => {
+              if (target !== undefined) rotate.onChange(target)
+            }}
+          >
+            {turn.text}
+          </button>
+        )
+      })}
+    </>
+  )
 }
 
 function QuadFrame() {
@@ -59,7 +111,7 @@ function QuadFrame() {
   )
 }
 
-export function BoardOrientationDiagram({ visual, testId }: BoardOrientationDiagramProps) {
+export function BoardOrientationDiagram({ visual, testId, rotate }: BoardOrientationDiagramProps) {
   if (visual.kind === 'custom') {
     return (
       <div className="board-orientation-diagram" data-testid={testId}>
@@ -80,6 +132,7 @@ export function BoardOrientationDiagram({ visual, testId }: BoardOrientationDiag
   return (
     <div className="board-orientation-diagram" data-testid={testId}>
       <div className="board-orientation-diagram__stage board-orientation-diagram__stage--3d">
+        {rotate ? <RotateArrows rotate={rotate} /> : null}
         <div className="board-orientation-diagram__scene">
           <QuadFrame />
           <div

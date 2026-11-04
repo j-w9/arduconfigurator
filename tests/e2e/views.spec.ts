@@ -1548,6 +1548,28 @@ test.describe('Calibration tab', () => {
     await expect(card).toHaveAttribute('data-good', 'true')
   })
 
+  test('Status has Calibrate Level beside Set Bench Forward, for a check before each flight', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'setup')
+    const button = page.getByTestId('status-calibrate-level')
+    await expect(button).toHaveText('Calibrate Level')
+    await expect(page.getByTestId('flight-deck-zero-heading-button')).toBeVisible()
+    await expect(button).toBeEnabled({ timeout: COMMAND_ACK_TIMEOUT })
+    await button.click()
+    const result = page.getByTestId('status-calibrate-level-result')
+    await expect(result).toContainText('✓', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(result).toContainText(/trim roll -?\d+\.\d°, pitch -?\d+\.\d°/)
+    // As many times as you like: the button stays the action, not a done state.
+    await expect(button).toHaveText('Calibrate Level')
+    await expect(button).toBeEnabled()
+    await page.waitForTimeout(1100)
+    const first = await result.textContent()
+    await button.click()
+    await expect(result).not.toHaveText(first ?? '', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(button).toBeEnabled()
+  })
+
   test('a finished calibration offers a reboot, and only claims one is required when ArduPilot needs it', async ({ page }) => {
     // Accelerometer and compass calibration both leave ArduPilot refusing to arm
     // until the board reboots (AP_Arming "Accels/Compass calibrated requires
@@ -2624,6 +2646,26 @@ test.describe('Config view', () => {
     await select.selectOption('24')
     await expect(board).toHaveAttribute('style', /rotateX\(-90deg\)/)
     await expect(page.getByTestId('board-orientation-readout')).toHaveText('Arrow points up · components face back')
+
+    // The arrows on the picture turn the board and stage the matching setting.
+    await select.selectOption('0')
+    await page.getByTestId('board-orientation-turn-pitch-up').click()
+    await page.getByTestId('board-orientation-turn-pitch-up').click()
+    await expect(select).toHaveValue('12') // Pitch 180
+    await page.getByTestId('board-orientation-turn-roll-right').click()
+    await page.getByTestId('board-orientation-turn-roll-right').click()
+    await expect(select).toHaveValue('4') // flipped back over: Yaw 180
+    // Yaw turns in 45° steps: Yaw 225, then round to None.
+    await page.getByTestId('board-orientation-turn-yaw-right').click()
+    await expect(select).toHaveValue('5')
+    for (let i = 0; i < 3; i += 1) await page.getByTestId('board-orientation-turn-yaw-right').click()
+    await expect(select).toHaveValue('0')
+    // Nose up has no 45° yaw setting in ArduPilot, so the yaw arrows wait.
+    await page.getByTestId('board-orientation-turn-pitch-up').click()
+    await expect(select).toHaveValue('24')
+    await expect(page.getByTestId('board-orientation-turn-yaw-right')).toBeDisabled()
+    await page.getByTestId('board-orientation-turn-pitch-down').click()
+    await expect(select).toHaveValue('0')
 
     // A Custom orientation can't be posed — shows a note instead of a board.
     await select.selectOption('101')

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import type { ComponentProps, ReactElement } from 'react'
+import type { ComponentProps, ReactElement, ReactNode } from 'react'
 
 import type { ConfiguratorSnapshot, RcAxisObservation } from '@arduconfig/ardupilot-core'
 
@@ -36,7 +36,8 @@ export function AttitudePreview({
   frameClassLabel,
   frameTypeLabel,
   captionLabel,
-  showHeadingReference
+  showHeadingReference,
+  extraActions
 }: {
   snapshot: ConfiguratorSnapshot
   compact?: boolean
@@ -46,6 +47,8 @@ export function AttitudePreview({
   /** Empty string hides the caption's source line entirely. */
   captionLabel?: string
   showHeadingReference?: boolean
+  /** Extra buttons beside Set Bench Forward. */
+  extraActions?: ReactNode
 }) {
   return (
     <FlightDeckPreview
@@ -65,6 +68,7 @@ export function AttitudePreview({
       captionLabel={captionLabel}
       showHeadingReference={showHeadingReference}
       levelView
+      extraActions={extraActions}
       testId={compact ? undefined : 'setup-craft-preview'}
     />
   )

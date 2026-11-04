@@ -5990,6 +5990,16 @@ body.is-status-dash-dragging {
   gap: 6px;
 }
 
+.flight-deck__level-result {
+  align-self: center;
+  font-family: var(--font-data);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--success, #4ade80);
+  white-space: nowrap;
+}
+.flight-deck__level-result.is-failed {
+  color: var(--danger, #f87171);
+}
 .flight-deck__heading-button {
   min-height: 28px;
   padding: 0 10px;
@@ -10011,6 +10021,39 @@ details.metadata-settings-section:not([open]) > summary::after {
 .board-orientation-diagram__caption {
   font-size: var(--text-md);
 }
+/* The turn arrows on the picture: yaw at the top corners, roll at the sides,
+   pitch at the bottom corners. */
+.board-orientation-diagram__turn {
+  position: absolute;
+  z-index: 2;
+  padding: 4px 8px;
+  border: 1px solid rgba(var(--edge-rgb), 0.35);
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(var(--fill-rgb), 0.92);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.board-orientation-diagram__turn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.board-orientation-diagram__turn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.board-orientation-diagram__turn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.board-orientation-diagram__turn--yaw-left { top: 8px; left: 8px; }
+.board-orientation-diagram__turn--yaw-right { top: 8px; right: 8px; }
+.board-orientation-diagram__turn--roll-left { top: 50%; left: 8px; transform: translateY(-50%); }
+.board-orientation-diagram__turn--roll-right { top: 50%; right: 8px; transform: translateY(-50%); }
+.board-orientation-diagram__turn--pitch-down { bottom: 8px; left: 8px; }
+.board-orientation-diagram__turn--pitch-up { bottom: 8px; right: 8px; }
 .board-orientation-diagram__readout {
   max-width: 300px;
   text-align: center;
