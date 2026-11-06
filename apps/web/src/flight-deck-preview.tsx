@@ -731,6 +731,11 @@ export function FlightDeckPreview({
   const telemetryInitializedRef = useRef(false)
   const uiUpdateTimeRef = useRef(0)
   const [benchHeadingOffsetDeg, setBenchHeadingOffsetDeg] = useState<number | null>(null)
+  // WebGL can be off (Brave shields, hardware acceleration disabled, a
+  // blocklisted GPU). three.js then throws from its constructor, and uncaught
+  // that took the whole app to the crash screen (field report, prod). The
+  // view falls back to a note instead; the readouts keep working.
+  const [webglUnavailable, setWebglUnavailable] = useState(false)
   const [displayTelemetry, setDisplayTelemetry] = useState<DisplayTelemetryState>({
     pitchVisual: 0,
     rollVisual: 0,
@@ -759,11 +764,18 @@ export function FlightDeckPreview({
       return
     }
 
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      alpha: true,
-      antialias: true
-    })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        alpha: true,
+        antialias: true
+      })
+    } catch (error) {
+      console.warn('3D craft view unavailable: WebGL could not start in this browser.', error)
+      setWebglUnavailable(true)
+      return
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.outputColorSpace = THREE.SRGBColorSpace
 
@@ -1014,8 +1026,16 @@ export function FlightDeckPreview({
             // larger travel to match its size. Other non-mini previews
             // (AttitudePreview at Setup) never pass liftNorm, so it defaults to
             // 0.5 → translateY 0 → no movement, leaving them unchanged.
-            style={{ transform: `translateY(${(0.5 - Math.max(0, Math.min(1, liftNorm))) * (mini ? 64 : 96)}px)` }}
+            style={{
+              transform: `translateY(${(0.5 - Math.max(0, Math.min(1, liftNorm))) * (mini ? 64 : 96)}px)`,
+              ...(webglUnavailable ? { display: 'none' } : {})
+            }}
           />
+          {webglUnavailable ? (
+            <div className="flight-deck__webgl-off" data-testid="flight-deck-webgl-off" role="note">
+              {mini ? '3D view off' : '3D view unavailable: WebGL is turned off in this browser.'}
+            </div>
+          ) : null}
           {!mini ? (
           <div className="flight-deck__heading-tape" aria-hidden="true">
             <div className="flight-deck__heading-window">
