@@ -3201,6 +3201,19 @@ test.describe('Config view', () => {
     await expect(frame.locator('select')).toHaveCount(2)
   })
 
+  test('Active IMU says when an IMU was switched off with INS_USE, and turns it back on', async ({ page }) => {
+    await page.goto('/?demoParamOverrides=INS_USE2:0')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+    await openConfigSection(page, 'active-imu')
+    const off = page.getByTestId('active-imu-switched-off')
+    await expect(off).toContainText('IMU 2 is switched off (INS_USE2 = 0)')
+    await page.getByTestId('active-imu-turn-on-2').click()
+    // Written to the vehicle, so the note goes once INS_USE2 reads back 1.
+    await expect(off).toHaveCount(0, { timeout: 20_000 })
+  })
+
   test('exposes system-rates, active-IMU, and expanded GPS sections', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -3272,10 +3285,12 @@ test.describe('Config view', () => {
     await expect(fast.getByTestId('imu-mask-value-INS_FAST_SAMPLE')).toHaveText(/Value 5 \(was 1\)/)
     await expect(fast).toHaveClass(/scoped-editor-field--staged/)
 
-    // Active IMU: one box each, captioned by IMU.
+    // Active IMU edits EK3_IMU_MASK, one box per IMU; INS_USE is not offered
+    // (IMUs stay switched on, checked and logged).
     const imus = page.getByTestId('config-section-active-imu')
-    await expect(imus.getByTestId('config-checkbox-INS_USE')).toContainText('IMU 1')
-    await expect(imus.getByTestId('config-checkbox-INS_USE3')).toContainText('IMU 3')
+    await expect(imus.getByTestId('imu-mask-EK3_IMU_MASK')).toBeVisible()
+    await expect(imus.getByTestId('config-checkbox-INS_USE')).toHaveCount(0)
+    await expect(page.getByTestId('active-imu-switched-off')).toHaveCount(0)
 
     // Logging has one home now, the Logs tab: no Logging card on System.
     await expect(page.getByTestId('config-section-logging')).toHaveCount(0)
@@ -4995,17 +5010,20 @@ test.describe('ArduPlane demo', () => {
     // out of view; the state pills stay visible, the setup is one click away.
     await expect(page.getByTestId('tcal-start')).toHaveCount(0)
     await page.getByTestId('tcal-expand').click()
-    // What the operator does, in order: start cold, pick a target, start.
-    await expect(page.getByTestId('tcal-steps')).toContainText('Start cold')
+    // What the operator does, in order: pick a target, arm, then start it cold
+    // (learning starts again from the boot temperature every power-up).
     await expect(page.getByTestId('tcal-steps')).toContainText('Pick a target')
+    await expect(page.getByTestId('tcal-start')).toHaveText('Arm learning')
+    await expect(page.getByTestId('tcal-cool-step')).toContainText('unplug it once armed, let it cool to room temperature')
 
     // Thermal cal off hides TMAX on a real board (and now in the demo), so the
     // target is a suggestion, not the 70 °C firmware default.
     await expect(page.getByTestId('tcal-tmax')).toHaveValue('45')
-    // The demo board sits at ~35.6 °C: 45 is under 10 °C of rise, which the
-    // learn needs before it can finish — so Start says why it cannot go.
-    await expect(page.getByTestId('tcal-temp-problem')).toContainText('at least 10 °C of rise')
-    await expect(page.getByTestId('tcal-start')).toBeDisabled()
+    // The demo board sits at ~35.6 °C: 45 is under 10 °C of rise from here.
+    // That is a note, not a block: armed warm, the board is cooled before it
+    // learns.
+    await expect(page.getByTestId('tcal-temp-note')).toContainText('at least 10 °C of rise')
+    await expect(page.getByTestId('tcal-start')).toBeEnabled()
 
     // A target out of reach is a note, not a block: it ends when warming stalls.
     await page.getByTestId('tcal-tmax').fill('70')
@@ -5018,6 +5036,9 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('tcal-start').click()
     await expect(tcal).toContainText('IMU1 TCAL: learning')
     await expect(page.getByTestId('tcal-learning')).toContainText('target 60 °C')
+    // It started warm (the demo sits near 36 °C), and the card says what to do.
+    await expect(page.getByTestId('tcal-learn-start')).toContainText('Started at')
+    await expect(page.getByTestId('tcal-warm-start')).toContainText('let it cool to room temperature')
     await expect(page.locator('body')).not.toContainText('staged change')
     // The baro learn went with it (the box is on by default).
     await expect(page.getByTestId('tcal-baro')).toContainText('Baro TCAL: learning')

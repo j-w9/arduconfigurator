@@ -64,9 +64,12 @@ export function tcalTargetCheck(targetC: number, boardTempC: number | undefined)
   if (!Number.isFinite(targetC) || targetC < TCAL_TEMP_LIMIT_LOW_C || targetC > TCAL_TEMP_LIMIT_HIGH_C) {
     return { problem: `Set a target between ${TCAL_TEMP_LIMIT_LOW_C} and ${TCAL_TEMP_LIMIT_HIGH_C} °C.` }
   }
+  // A note, not a block: arming on a warm board and then letting it cool is
+  // the intended flow (the learn starts again from the boot temperature), so
+  // the board's temperature NOW is not where it will learn from.
   if (boardTempC !== undefined && targetC - boardTempC < TCAL_MIN_RISE_C) {
     return {
-      problem: `The board is at ${boardTempC.toFixed(0)} °C. The learn needs at least ${TCAL_MIN_RISE_C} °C of rise, so let it cool below ${(targetC - TCAL_MIN_RISE_C).toFixed(0)} °C or raise the target.`
+      note: `The board is at ${boardTempC.toFixed(0)} °C now. The learn needs at least ${TCAL_MIN_RISE_C} °C of rise, so it has to start below ${(targetC - TCAL_MIN_RISE_C).toFixed(0)} °C: let it cool before it learns, or raise the target.`
     }
   }
   if (targetC >= TCAL_TMAX_FIRMWARE_DEFAULT_C) {
@@ -96,5 +99,26 @@ export function tcalOutcome(
   const text = latestTcalMessage(statusTexts)?.text ?? ''
   if (/: completed calibration/.test(text)) return 'finished'
   if (/: failed fit/.test(text)) return 'failed'
+  return undefined
+}
+
+/**
+ * Above this a learn's starting temperature reads as "already warm". A board
+ * on USB heat-soaks to the mid 30s; one that has cooled sits near room
+ * temperature, well under it.
+ */
+export const TCAL_WARM_START_C = 30
+
+/**
+ * The temperature the current learn started from, from the vehicle's own
+ * "TCAL[n]: started calibration t=37.5C tmax=45.0C" (newest-first list). The
+ * message is sent as the learn starts, which after a reboot is during boot and
+ * can be before the app connects; then this is undefined.
+ */
+export function tcalStartTemp(statusTexts: readonly StatusTextEntry[]): number | undefined {
+  for (const entry of statusTexts) {
+    const match = /^TCAL\[\d+\]: started calibration t=(-?\d+(?:\.\d+)?)C/.exec(entry.text)
+    if (match) return Number(match[1])
+  }
   return undefined
 }
