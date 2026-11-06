@@ -24972,3 +24972,23 @@ button.plot-side-list__name {
 .setup-gui-box__body > .status-dash-toolbar > button {
   flex: 1 1 0;
 }
+
+/* Active IMU: an IMU switched off with INS_USE, and the way back. */
+.active-imu-off p {
+  margin: 4px 0 0;
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+.active-imu-off button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.active-imu-off button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

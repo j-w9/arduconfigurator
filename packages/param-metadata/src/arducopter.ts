@@ -1307,6 +1307,25 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'After changing orientation, re-level the vehicle and repeat accelerometer calibration before flight.'
       ]
     },
+    // NavEKF3 IMU_MASK (AP_NavEKF3.cpp): one EKF3 core per ticked IMU,
+    // HAL_EKF_IMU_MASK_DEFAULT 3 (first two IMUs), reboot required.
+    EK3_IMU_MASK: {
+      id: 'EK3_IMU_MASK',
+      label: 'EKF IMUs',
+      description:
+        'Which IMUs the EKF uses: one EKF3 core per ticked IMU. Set to 1 for the first IMU only, 3 for the first two (the default). More cores need more memory and CPU; if there is not enough, EKF3 fails to start.',
+      category: 'sensors',
+      options: [
+        { value: 0, label: 'First IMU' },
+        { value: 1, label: 'Second IMU' },
+        { value: 2, label: 'Third IMU' },
+        { value: 3, label: 'Fourth IMU' },
+        { value: 4, label: 'Fifth IMU' },
+        { value: 5, label: 'Sixth IMU' }
+      ],
+      bitmask: true,
+      rebootRequired: true
+    },
     COMPASS_USE: {
       id: 'COMPASS_USE',
       label: 'Compass Enabled',

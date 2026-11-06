@@ -3826,7 +3826,11 @@ export function App() {
   // the target before the enable (see view-models/tcal-plan.ts). A draft could
   // not do it: the target is hidden until the enable is on, and the learn
   // captures it the moment the enable goes to 2.
-  async function handleTcalWrite(writes: TcalWrite[], description: string): Promise<void> {
+  async function handleTcalWrite(
+    writes: TcalWrite[],
+    description: string,
+    failurePrefix = 'Thermal calibration write failed'
+  ): Promise<void> {
     if (!runtime || writes.length === 0) {
       return
     }
@@ -3837,7 +3841,7 @@ export function App() {
     } catch (error) {
       setSessionNotice({
         tone: 'danger',
-        text: `Thermal calibration write failed: ${error instanceof Error ? error.message : 'unknown error'}`
+        text: `${failurePrefix}: ${error instanceof Error ? error.message : 'unknown error'}`
       })
     } finally {
       setBusyAction((current) => (current === 'tcal:write' ? undefined : current))
@@ -7853,6 +7857,36 @@ export function App() {
     )
   }
 
+  // The Active IMU card edits EK3_IMU_MASK and no longer offers INS_USE. A
+  // board where an IMU was switched off with INS_USEn = 0 still says so here,
+  // with the way back, as long as that IMU is fitted (its INS_ACCn_ID is not
+  // 0; a board that does not report the id is assumed fitted). The button
+  // writes INS_USEn = 1 straight away: it is no field on the card, so a
+  // staged draft would sit outside the card's Apply.
+  function renderSwitchedOffImus(): ReactNode {
+    const off = [
+      { use: 'INS_USE', id: 'INS_ACC_ID', imu: 1 },
+      { use: 'INS_USE2', id: 'INS_ACC2_ID', imu: 2 },
+      { use: 'INS_USE3', id: 'INS_ACC3_ID', imu: 3 }
+    ].filter(({ use, id }) => {
+      const value = editedValues[use] ?? readRoundedParameter(snapshot, use)
+      return Number(value) === 0 && readRoundedParameter(snapshot, id) !== 0
+    })
+    if (off.length === 0) return null
+    return (
+      <div className="active-imu-off" data-testid="active-imu-switched-off">
+        {off.map(({ use, imu }) => (
+          <p key={use}>
+            IMU {imu} is switched off ({use} = 0), so it is not checked or logged.{' '}
+            <button type="button" className="setup-wizard__link" data-testid={`active-imu-turn-on-${imu}`} disabled={busyAction !== undefined || !canApplyDraftParameters} title={canApplyDraftParameters ? undefined : 'Finish parameter sync and disarm first.'} onClick={() => void handleTcalWrite([{ paramId: use, paramValue: 1 }], `IMU ${imu} switched back on`, `Could not switch IMU ${imu} back on`)}>
+              Turn it back on
+            </button>
+          </p>
+        ))}
+      </div>
+    )
+  }
+
   function renderBoardOrientationFooter(): ReactNode {
     // Reflect the SELECTED orientation (staged draft if any, else live) so the
     // picture updates as the operator changes the dropdown, before Apply.
@@ -11624,6 +11658,9 @@ export function App() {
             }
             if (section.id === 'board-orientation') {
               return { ...section, footer: renderBoardOrientationFooter() }
+            }
+            if (section.id === 'active-imu') {
+              return { ...section, footer: renderSwitchedOffImus() }
             }
             if (section.id === 'receiver-signal') {
               return { ...section, footer: renderReceiverSignalFooter() }

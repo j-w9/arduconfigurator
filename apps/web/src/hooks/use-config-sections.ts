@@ -235,14 +235,14 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     {
       id: 'active-imu',
       title: 'Active IMU',
-      description: 'Which onboard IMUs the EKF/AHRS uses. Disable a noisy or failed IMU here; reboot required. At least one IMU must stay enabled.',
-      fields: [
-        // One box per IMU, three to a line, instead of three stacked chip pairs;
-        // the card title says what the box means.
-        { paramId: 'INS_USE', label: 'IMU 1', digits: 0, editor: 'checkbox' },
-        { paramId: 'INS_USE2', label: 'IMU 2', digits: 0, editor: 'checkbox' },
-        { paramId: 'INS_USE3', label: 'IMU 3', digits: 0, editor: 'checkbox' }
-      ]
+      // EK3_IMU_MASK, not INS_USE (field call, Tae): the mask picks which
+      // IMUs the EKF runs a core on, while every IMU stays switched on, health
+      // checked and logged. INS_USE does not renumber the IMUs (ArduPilot
+      // indexes them by detection order either way), but it takes an IMU out
+      // of the consistency checks and the logs, which is rarely what's wanted.
+      description:
+        'Which IMUs the EKF uses. Each ticked IMU runs its own EKF3 core; most boards run two. Takes effect after a reboot. To keep a noisy IMU out of flight, untick it here and leave it switched on, so it is still checked and logged.',
+      fields: [{ paramId: 'EK3_IMU_MASK', label: 'EKF IMUs', digits: 0, editor: 'imu-mask' }]
     },
     {
       id: 'gps',
