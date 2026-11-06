@@ -5850,6 +5850,17 @@ body.is-status-dash-dragging {
   height: 286px;
 }
 
+.flight-deck__webgl-off {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  pointer-events: none;
+}
 .flight-deck__canvas {
   position: absolute;
   inset: 0;

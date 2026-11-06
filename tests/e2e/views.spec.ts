@@ -1512,6 +1512,30 @@ test.describe('Calibration tab — battery voltage', () => {
   })
 })
 
+test.describe('No WebGL', () => {
+  test('a browser with WebGL off still runs: the craft view says so and the rest works', async ({ page }) => {
+    // Field report (prod, Brave): WebGL disabled made three.js throw and the
+    // whole app went to the crash screen. Refuse WebGL the same way here.
+    await page.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+        if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null
+        return (original as (...args: unknown[]) => unknown).call(this, type, ...rest)
+      } as typeof HTMLCanvasElement.prototype.getContext
+    })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'setup')
+    await expect(page.getByTestId('flight-deck-webgl-off').first()).toContainText('WebGL is turned off')
+    // The page around it is alive: Set Bench Forward and the readouts render.
+    await expect(page.getByTestId('flight-deck-zero-heading-button')).toBeVisible()
+    await expect(page.getByText(/crashed/i)).toHaveCount(0)
+    // Another craft view (Receiver) degrades the same way.
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('flight-deck-webgl-off').first()).toBeVisible()
+  })
+})
+
 test.describe('Calibration tab', () => {
   test('gathers accelerometer / level / compass calibration in one tab', async ({ page }) => {
     await page.goto('/')
