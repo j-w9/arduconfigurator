@@ -84,7 +84,11 @@ jobs:
   # middle ones, which is where a test that depended on a parameter an earlier
   # test wrote would break.
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04 (2026-11-06), where this Playwright
+    # cannot install chromium ("does not support chromium on ubuntu26.04-x64").
+    # Move back to ubuntu-latest once Playwright is upgraded to a release that
+    # supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       # One shard failing must not cancel the others: which tests fail in the
