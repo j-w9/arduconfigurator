@@ -15781,6 +15781,12 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
 
+.bootloader-identity__confirm {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
 /* The FILTn filter bank on the Filters tab. Slots reuse the axis-card shape so
    they read as siblings of the rate groups above them; an empty slot is dimmed
    rather than hidden, because filling one in is how a bank gets built. */

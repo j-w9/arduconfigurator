@@ -1461,43 +1461,16 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             )
           ) : null}
           {onFlashBootloader ? (
-            bootloaderConfirmArmed ? (
-              <span
-                className="firmware-wizard__dfu-confirm"
-                data-testid="firmware-flash-bootloader-confirm-row"
-              >
-                <button
-                  type="button"
-                  className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
-                  data-testid="firmware-flash-bootloader-confirm"
-                  disabled={bootloaderBusy || Boolean(flashBootloaderDisabledReason)}
-                  title={flashBootloaderDisabledReason}
-                  onClick={() => void handleFlashBootloader()}
-                >
-                  {bootloaderBusy ? 'Updating…' : 'Confirm: update bootloader'}
-                </button>
-                <button
-                  type="button"
-                  className="firmware-wizard__dfu-cancel"
-                  data-testid="firmware-flash-bootloader-cancel"
-                  disabled={bootloaderBusy}
-                  onClick={() => setBootloaderConfirmArmed(false)}
-                >
-                  Cancel
-                </button>
-              </span>
-            ) : (
               <button
                 type="button"
                 className="firmware-wizard__dfu-button"
                 data-testid="firmware-flash-bootloader"
-                disabled={bootloaderBusy || Boolean(flashBootloaderDisabledReason)}
-                title={flashBootloaderDisabledReason}
+                disabled={bootloaderBusy || bootloaderConfirmArmed || Boolean(flashBootloaderDisabledReason)}
+                title={bootloaderConfirmArmed ? 'Confirm below, next to the comparison' : flashBootloaderDisabledReason}
                 onClick={() => setBootloaderConfirmArmed(true)}
               >
                 Update Bootloader
               </button>
-            )
           ) : null}
           {/* The comparison used to appear only after arming, which meant
             * deciding whether to update and then being told whether it would
@@ -1552,6 +1525,11 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             a flash (re-read, because ArduPilot's ACCEPTED covers both "written"
             and "skipped"). Rendered after the button row so it sits directly
             above the notice line the flash itself writes into. */}
+        {bootloaderConfirmArmed && !bootloaderIdentity ? (
+          <div className="bootloader-identity" data-testid="firmware-bootloader-identity-loading">
+            <p className="bootloader-identity__headline">Reading bootloader images…</p>
+          </div>
+        ) : null}
         {bootloaderIdentity ? (
           <div className="bootloader-identity" data-testid="firmware-bootloader-identity">
             <p
@@ -1583,6 +1561,32 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
               ))}
             </dl>
             <p className="bootloader-identity__detail">{bootloaderIdentity.detail}</p>
+            {bootloaderConfirmArmed && bootloaderIdentity.verdict !== 'same' ? (
+              <span
+                className="bootloader-identity__confirm"
+                data-testid="firmware-flash-bootloader-confirm-row"
+              >
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
+                  data-testid="firmware-flash-bootloader-confirm"
+                  disabled={bootloaderBusy || Boolean(flashBootloaderDisabledReason)}
+                  title={flashBootloaderDisabledReason}
+                  onClick={() => void handleFlashBootloader()}
+                >
+                  {bootloaderBusy ? 'Updating…' : 'Confirm: update bootloader'}
+                </button>
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-cancel"
+                  data-testid="firmware-flash-bootloader-cancel"
+                  disabled={bootloaderBusy}
+                  onClick={() => setBootloaderConfirmArmed(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : null}
             {bootloaderIdentity.verdict === 'same' ? (
               <p className="bootloader-identity__forced" data-testid="firmware-bootloader-no-force">
                 There is no way to force this from here: the firmware compares the two images itself
