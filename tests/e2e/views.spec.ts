@@ -5047,9 +5047,8 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('tcal-stop-keep').click()
     await expect(tcal).toContainText('IMU1 TCAL: on')
     await expect(page.getByTestId('tcal-steps')).toBeVisible()
-    // And thermal cal can be turned off altogether.
-    await page.getByTestId('tcal-turn-off').click()
-    await expect(tcal).toContainText('IMU1 TCAL: off')
+    // Once all IMUs are calibrated the "turn off" button is hidden — it was a
+    // footgun that nuked a just-completed calibration.
     await expect(page.getByTestId('tcal-turn-off')).toHaveCount(0)
 
     // A learn can also be stopped straight to off.

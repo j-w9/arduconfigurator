@@ -273,7 +273,8 @@ export function TcalCalibrationCard({
           the result is visible without opening the card. */}
       {outcome === 'finished' ? (
         <p className="success-copy" data-testid="tcal-finished">
-          Finished. Thermal cal is on and in use.
+          Finished. Thermal cal is on and in use. Unplug the board, let it cool to room temperature, then plug it back
+          in and leave it still — learning restarts automatically every power-up, covering more of the range each time.
         </p>
       ) : outcome === 'failed' ? (
         <p className="switch-exercise-warning" data-testid="tcal-failed">
@@ -397,7 +398,7 @@ export function TcalCalibrationCard({
                   >
                     {allCalibrated ? 'Arm learning again' : 'Arm learning'}
                   </button>
-                  {onImuIds.length > 0 ? (
+                  {onImuIds.length > 0 && !allCalibrated ? (
                     <button
                       type="button"
                       style={buttonStyle()}
