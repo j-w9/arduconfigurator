@@ -12,9 +12,10 @@ import { DownloadProgressBar } from './DownloadProgressBar'
 // lives in App.tsx because MAVFTP is request/response, not snapshot-streamed.
 
 // Common starting points on an ArduPilot filesystem. @SYS is the virtual
-// status tree (always present); /APM and /APM/scripts exist on SD-card
+// status tree (always present); @ROMFS holds firmware-baked read-only files
+// (hwdef.dat, scripts, bootloader); /APM and /APM/scripts exist on SD-card
 // builds. Operators can also type an arbitrary path.
-export const MAVFTP_QUICK_PATHS = ['@SYS', '/APM', '/APM/scripts', '/APM/LOGS'] as const
+export const MAVFTP_QUICK_PATHS = ['@SYS', '@ROMFS', '/APM', '/APM/scripts', '/APM/LOGS'] as const
 
 /**
  * ArduPilot's virtual filesystems (@SYS, @ROMFS) are read-only: their files
@@ -85,12 +86,13 @@ function formatSize(sizeBytes: number | undefined): string {
 // absolute paths both collapse on '/'; a path with no separator goes to its
 // own root marker.
 function parentPath(path: string): string | undefined {
-  if (path === '@SYS' || path === '/' || path === '') return undefined
+  if (path === '@SYS' || path === '@ROMFS' || path === '/' || path === '') return undefined
   const trimmed = path.replace(/\/+$/, '')
   const idx = trimmed.lastIndexOf('/')
   if (idx <= 0) {
-    // e.g. "/APM" -> "/", "@SYS/foo" handled above; "@SYS" returned undefined
-    return trimmed.startsWith('@SYS') ? '@SYS' : '/'
+    if (trimmed.startsWith('@SYS')) return '@SYS'
+    if (trimmed.startsWith('@ROMFS')) return '@ROMFS'
+    return '/'
   }
   return trimmed.slice(0, idx)
 }
