@@ -24,7 +24,7 @@
 //     rise of at least 7 °C before it fits and saves
 //   the correction is applied to the FIRST baro only
 
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
@@ -37,8 +37,10 @@ import {
   TCAL_SUGGESTED_TARGET_C,
   TCAL_TEMP_LIMIT_HIGH_C,
   TCAL_TEMP_LIMIT_LOW_C,
+  TCAL_WARM_START_C,
   latestTcalMessage,
   tcalOutcome,
+  tcalStartTemp,
   tcalStopWrites,
   tcalStartWrites,
   tcalTargetCheck,
@@ -120,6 +122,15 @@ export function TcalCalibrationCard({
   const [targetText, setTargetText] = useState('')
   const [touched, setTouched] = useState(false)
   const [includeBaro, setIncludeBaro] = useState(true)
+  // Where the current learn started. The vehicle says so as it starts, but
+  // after a reboot that is during boot and often before the app connects;
+  // then the first temperature seen while learning stands in for it.
+  const firstLearningTempRef = useRef<number | undefined>(undefined)
+  if (!anyLearning) firstLearningTempRef.current = undefined
+  else if (firstLearningTempRef.current === undefined && imuTempC !== undefined) firstLearningTempRef.current = imuTempC
+  const reportedStart = tcalStartTemp(snapshot.statusTexts)
+  const learnStartC = reportedStart ?? firstLearningTempRef.current
+  const learnStartIsEstimate = reportedStart === undefined
   useEffect(() => {
     if (touched) return
     setTargetText(String(Math.round(learningTarget ?? TCAL_SUGGESTED_TARGET_C)))
@@ -281,11 +292,28 @@ export function TcalCalibrationCard({
                 {imuTempC !== undefined ? `Board ${imuTempC.toFixed(1)} °C` : 'Board temperature unknown'}
                 {learningTarget !== undefined ? ` → target ${learningTarget.toFixed(0)} °C.` : '.'}
               </p>
+              {learnStartC !== undefined ? (
+                <p data-testid="tcal-learn-start">
+                  Started at {learnStartC.toFixed(1)}&thinsp;°C{learnStartIsEstimate ? ' (when this page connected)' : ''}
+                  {imuTempC !== undefined
+                    ? `, risen ${Math.max(0, imuTempC - learnStartC).toFixed(1)} °C of the ${TCAL_MIN_RISE_C} °C it needs.`
+                    : '.'}
+                </p>
+              ) : null}
+              {learnStartC !== undefined && learnStartC > TCAL_WARM_START_C ? (
+                <p className="switch-exercise-warning" data-testid="tcal-warm-start">
+                  It started warm, so it learns a small part of the range. Unplug the board, let it cool to room
+                  temperature, then plug it in and leave it still: learning starts again from the temperature it boots
+                  at. Reconnect here to watch it.
+                </p>
+              ) : null}
+              {learnStartC !== undefined && learnStartC > TCAL_WARM_START_C ? null : (
               <p>
-                Leave it powered, on the bench and still — nothing to press. It saves itself at the target, or{' '}
-                {TCAL_STALL_MINUTES} minutes after it stops warming (once it has risen {TCAL_MIN_RISE_C}&thinsp;°C). The
-                state then reads <em>on</em>.
-              </p>
+                  Leave it powered, on the bench and still — nothing to press. It saves itself at the target, or{' '}
+                  {TCAL_STALL_MINUTES} minutes after it stops warming (once it has risen {TCAL_MIN_RISE_C}&thinsp;°C). The
+                  state then reads <em>on</em>.
+                </p>
+              )}
               <div className="button-row">
                 <button
                   type="button"
@@ -315,11 +343,6 @@ export function TcalCalibrationCard({
             </section>
           ) : (
             <ol className="tcal-steps" data-testid="tcal-steps">
-              <li>
-                <strong>Start cold.</strong> Let the board cool to room temperature, then power it up, props off, and
-                start straight away — it learns from wherever it is when you press Start
-                {imuTempC !== undefined ? <> (now <strong>{imuTempC.toFixed(1)}&thinsp;°C</strong>)</> : null}.
-              </li>
               <li>
                 <strong>Pick a target</strong> this board reaches on the bench, at least {TCAL_MIN_RISE_C}&thinsp;°C
                 above where it starts.
@@ -352,7 +375,7 @@ export function TcalCalibrationCard({
                 ) : null}
               </li>
               <li>
-                <strong>Start</strong>, then leave it powered and still while it warms.
+                <strong>Arm learning.</strong> It starts at once, from the temperature the board is at.
                 {hasBaroTcal && !baroLearning ? (
                   <label className="tcal-include-baro">
                     <input
@@ -372,7 +395,7 @@ export function TcalCalibrationCard({
                     data-testid="tcal-start"
                     onClick={start}
                   >
-                    {allCalibrated ? 'Learn again' : 'Start learning'}
+                    {allCalibrated ? 'Arm learning again' : 'Arm learning'}
                   </button>
                   {onImuIds.length > 0 ? (
                     <button
@@ -387,6 +410,13 @@ export function TcalCalibrationCard({
                   ) : null}
                 </div>
                 <small>{writeBlockedReason ?? check.problem ?? 'Bench only, props off, disarmed.'}</small>
+              </li>
+              <li data-testid="tcal-cool-step">
+                <strong>Then start it cold.</strong> Learning also starts again every time the board powers up, from its
+                temperature then. So if it is warm
+                {imuTempC !== undefined ? <> (now <strong>{imuTempC.toFixed(1)}&thinsp;°C</strong>)</> : null}, unplug it
+                once armed, let it cool to room temperature, then plug it in, props off, and leave it still. Reconnect
+                here to watch the progress.
               </li>
             </ol>
           )}

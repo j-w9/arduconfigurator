@@ -48,6 +48,113 @@ export function deriveBoardOrientationVisual(
     return { kind: 'depictable', roll: 0, pitch: 0, yaw: 0, label }
   }
 
+  // ArduPilot's label for 38 ("Yaw293Pitch68Roll180") does not match its own
+  // rotation code, which rotations.h describes as "actually, roll 90, pitch
+  // 68.8, yaw 293.3". The picture follows the code.
+  if (value === 38) {
+    return { kind: 'depictable', roll: 90, pitch: 68.8, yaw: 293.3, label }
+  }
+
   const { yaw, roll, pitch } = parseAngles(label)
   return { kind: 'depictable', roll, pitch, yaw, label }
+}
+
+export interface BoardOrientationReadout {
+  /** Where the board's arrow (its forward edge) points on the vehicle. */
+  arrow: string
+  /** Which way the component side (the top face) faces. */
+  componentSide: string
+}
+
+type Vec3 = [number, number, number]
+
+// The same rotation the 3D view draws (CSS rotateZ(yaw) rotateX(-pitch)
+// rotateY(roll), applied to a column vector), so the words always match the
+// picture. CSS axes: x = vehicle right, y = vehicle back (screen down),
+// z = up (towards the camera looking down on the vehicle). Pitch is negated:
+// CSS rotateX tips the top edge AWAY from the camera, and ArduPilot's
+// positive pitch is nose up. Checked against AP_Math rotate() for every
+// orientation in the test.
+function rotate(v: Vec3, visual: Pick<BoardOrientationVisual, 'roll' | 'pitch' | 'yaw'>): Vec3 {
+  const rad = (deg: number) => (deg * Math.PI) / 180
+  const [x0, y0, z0] = v
+  // rotateY(roll)
+  const r = rad(visual.roll)
+  const x1 = Math.cos(r) * x0 + Math.sin(r) * z0
+  const y1 = y0
+  const z1 = -Math.sin(r) * x0 + Math.cos(r) * z0
+  // rotateX(pitch)
+  const p = rad(-visual.pitch)
+  const x2 = x1
+  const y2 = Math.cos(p) * y1 - Math.sin(p) * z1
+  const z2 = Math.sin(p) * y1 + Math.cos(p) * z1
+  // rotateZ(yaw)
+  const w = rad(visual.yaw)
+  const x3 = Math.cos(w) * x2 - Math.sin(w) * y2
+  const y3 = Math.sin(w) * x2 + Math.cos(w) * y2
+  return [x3, y3, z2]
+}
+
+// Name a direction by its main components: "back", "forward and right", "down".
+function describeDirection([x, y, z]: Vec3): string {
+  const parts: string[] = []
+  const threshold = 0.38
+  if (y < -threshold) parts.push('forward')
+  if (y > threshold) parts.push('back')
+  if (x > threshold) parts.push('right')
+  if (x < -threshold) parts.push('left')
+  if (z > threshold) parts.push('up')
+  if (z < -threshold) parts.push('down')
+  return parts.join(' and ')
+}
+
+export function describeBoardOrientation(
+  visual: Pick<BoardOrientationVisual, 'roll' | 'pitch' | 'yaw'>
+): BoardOrientationReadout {
+  return {
+    arrow: describeDirection(rotate([0, -1, 0], visual)),
+    componentSide: describeDirection(rotate([0, 0, 1], visual))
+  }
+}
+
+export type BoardRotationAxis = 'roll' | 'pitch' | 'yaw'
+
+// Turn a vector about one of the VEHICLE's axes, as the board would turn in
+// your hand: roll + = right side down, pitch + = nose up, yaw + = nose right.
+// Same CSS frame as rotate() above (x right, y back, z up).
+function turnAboutVehicleAxis(v: Vec3, axis: BoardRotationAxis, degrees: number): Vec3 {
+  const k: Vec3 = axis === 'yaw' ? [0, 0, 1] : axis === 'pitch' ? [-1, 0, 0] : [0, 1, 0]
+  const t = (degrees * Math.PI) / 180
+  const c = Math.cos(t)
+  const s = Math.sin(t)
+  const cross: Vec3 = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]]
+  const dot = k[0] * v[0] + k[1] * v[1] + k[2] * v[2]
+  return [0, 1, 2].map((i) => v[i] * c + cross[i] * s + k[i] * dot * (1 - c)) as Vec3
+}
+
+const close = (a: Vec3, b: Vec3) => Math.max(...a.map((value, i) => Math.abs(value - b[i]))) < 0.02
+
+/**
+ * The AHRS_ORIENTATION value the board ends up at after turning it about a
+ * vehicle axis, or undefined when ArduPilot has no setting for that pose (or
+ * the current value is a Custom one).
+ */
+export function rotateBoardOrientation(
+  value: number,
+  axis: BoardRotationAxis,
+  degrees: number,
+  options: ReadonlyArray<{ value: number; label: string }>
+): number | undefined {
+  const current = deriveBoardOrientationVisual(value, options.find((option) => option.value === value)?.label)
+  if (!current || current.kind !== 'depictable') return undefined
+  const arrow = turnAboutVehicleAxis(rotate([0, -1, 0], current), axis, degrees)
+  const top = turnAboutVehicleAxis(rotate([0, 0, 1], current), axis, degrees)
+  for (const option of options) {
+    const visual = deriveBoardOrientationVisual(option.value, option.label)
+    if (!visual || visual.kind !== 'depictable') continue
+    if (close(rotate([0, -1, 0], visual), arrow) && close(rotate([0, 0, 1], visual), top)) {
+      return option.value
+    }
+  }
+  return undefined
 }

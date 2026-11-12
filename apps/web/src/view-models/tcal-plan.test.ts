@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { latestTcalMessage, tcalOutcome, tcalStopWrites, tcalStartWrites, tcalTargetCheck } from './tcal-plan'
+import { latestTcalMessage, tcalOutcome, tcalStartTemp, tcalStopWrites, tcalStartWrites, tcalTargetCheck } from './tcal-plan'
 
 describe('tcalStartWrites', () => {
   it('writes every target before any enable, and the baro enable last', () => {
@@ -27,8 +27,10 @@ describe('tcalStartWrites', () => {
 })
 
 describe('tcalTargetCheck', () => {
-  it('blocks a target less than 10 °C above the board', () => {
-    expect(tcalTargetCheck(40, 33).problem).toContain('at least 10 °C of rise')
+  it('notes a target less than 10 °C above the board now, without blocking it', () => {
+    // Not a block: the board may be armed warm and cooled before it learns.
+    expect(tcalTargetCheck(40, 33).problem).toBeUndefined()
+    expect(tcalTargetCheck(40, 33).note).toContain('at least 10 °C of rise')
     expect(tcalTargetCheck(45, 33).problem).toBeUndefined()
   })
 
@@ -69,5 +71,15 @@ describe('tcalOutcome', () => {
   it('says nothing for a start message or no message', () => {
     expect(tcalOutcome([entry('TCAL[1]: started calibration t=30.0C tmax=75.0C')], false)).toBeUndefined()
     expect(tcalOutcome([], false)).toBeUndefined()
+  })
+})
+
+describe('tcalStartTemp', () => {
+  const text = (t: string) => ({ text: t, severity: 'warning', receivedAtMs: 0 }) as never
+  it('reads the newest learn start from the vehicle', () => {
+    expect(
+      tcalStartTemp([text('TCAL[1]: started calibration t=22.4C tmax=45.0C'), text('TCAL[1]: started calibration t=37.5C tmax=45.0C')])
+    ).toBe(22.4)
+    expect(tcalStartTemp([text('PreArm: Gyros inconsistent')])).toBeUndefined()
   })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -45,6 +45,8 @@ interface FlightDeckPreviewProps {
    *  looks level, so a pitch reading is never mistaken for a bad level
    *  calibration. The stick preview keeps the raised view. */
   levelView?: boolean
+  /** Extra buttons placed before Set Bench Forward (e.g. Calibrate Level on Status). */
+  extraActions?: ReactNode
 }
 
 interface ModelSceneState {
@@ -714,7 +716,8 @@ export function FlightDeckPreview({
   testId,
   captionLabel,
   showHeadingReference = true,
-  levelView = false
+  levelView = false,
+  extraActions
 }: FlightDeckPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -728,6 +731,11 @@ export function FlightDeckPreview({
   const telemetryInitializedRef = useRef(false)
   const uiUpdateTimeRef = useRef(0)
   const [benchHeadingOffsetDeg, setBenchHeadingOffsetDeg] = useState<number | null>(null)
+  // WebGL can be off (Brave shields, hardware acceleration disabled, a
+  // blocklisted GPU). three.js then throws from its constructor, and uncaught
+  // that took the whole app to the crash screen (field report, prod). The
+  // view falls back to a note instead; the readouts keep working.
+  const [webglUnavailable, setWebglUnavailable] = useState(false)
   const [displayTelemetry, setDisplayTelemetry] = useState<DisplayTelemetryState>({
     pitchVisual: 0,
     rollVisual: 0,
@@ -756,11 +764,18 @@ export function FlightDeckPreview({
       return
     }
 
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      alpha: true,
-      antialias: true
-    })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        alpha: true,
+        antialias: true
+      })
+    } catch (error) {
+      console.warn('3D craft view unavailable: WebGL could not start in this browser.', error)
+      setWebglUnavailable(true)
+      return
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.outputColorSpace = THREE.SRGBColorSpace
 
@@ -1011,8 +1026,16 @@ export function FlightDeckPreview({
             // larger travel to match its size. Other non-mini previews
             // (AttitudePreview at Setup) never pass liftNorm, so it defaults to
             // 0.5 → translateY 0 → no movement, leaving them unchanged.
-            style={{ transform: `translateY(${(0.5 - Math.max(0, Math.min(1, liftNorm))) * (mini ? 64 : 96)}px)` }}
+            style={{
+              transform: `translateY(${(0.5 - Math.max(0, Math.min(1, liftNorm))) * (mini ? 64 : 96)}px)`,
+              ...(webglUnavailable ? { display: 'none' } : {})
+            }}
           />
+          {webglUnavailable ? (
+            <div className="flight-deck__webgl-off" data-testid="flight-deck-webgl-off" role="note">
+              {mini ? '3D view off' : '3D view unavailable: WebGL is turned off in this browser.'}
+            </div>
+          ) : null}
           {!mini ? (
           <div className="flight-deck__heading-tape" aria-hidden="true">
             <div className="flight-deck__heading-window">
@@ -1066,6 +1089,7 @@ export function FlightDeckPreview({
               <span className={`flight-deck__heading-reference${benchHeadingOffsetDeg !== null ? ' is-relative' : ''}`}>{headingStatusLabel}</span>
             ) : null}
             <div className="flight-deck__heading-actions">
+              {extraActions}
               <button
                 type="button"
                 className="flight-deck__heading-button"

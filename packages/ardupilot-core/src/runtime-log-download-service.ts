@@ -314,7 +314,10 @@ export class LogDownloadService {
 
   private finishList(op: ListOperation): void {
     this.clearActive(op)
-    this.sendRequestEnd()
+    // No LOG_REQUEST_END here. The FC ends a listing on its own once the
+    // last LOG_ENTRY is sent (handle_log_send_listing sets idle). Sending
+    // END after a list is harmless on 4.5.x, but on 4.6.0–4.7.2 it hits
+    // an unguarded path that crashes the FC when no log backend exists.
     const logs = [...op.entries.values()].sort((left, right) => left.id - right.id)
     op.resolve(logs)
   }
@@ -331,7 +334,14 @@ export class LogDownloadService {
       return
     }
     this.clearActive(op)
-    this.sendRequestEnd()
+    // Only send END for a download failure — a download requires a valid
+    // log id (from a successful list with num_logs ≥ 1) so a backend must
+    // exist and END is safe. For a list failure, the FC is already idle
+    // or never started streaming, and END would crash 4.6.0–4.7.2 when
+    // no log backend is present.
+    if (op.kind === 'data') {
+      this.sendRequestEnd()
+    }
     op.reject(error)
   }
 
@@ -354,8 +364,8 @@ export class LogDownloadService {
     // window hard-failed with no retry, and 0% is exactly where the
     // field failure lives: ArduPilot SILENTLY drops LOG_REQUEST_DATA
     // while it still considers a log transfer active on some link
-    // (AP_Logger_MAVLinkLogTransfer holds _log_sending_link from the
-    // LIST until a LOG_REQUEST_END arrives — lose that one packet, or
+    // (AP_Logger_MAVLinkLogTransfer holds _log_sending_link from a
+    // prior DOWNLOAD until a LOG_REQUEST_END arrives — lose that END, or
     // leave another GCS attached, and every data request is ignored).
     // Each 0% retry therefore sends LOG_REQUEST_END first to clear any
     // stuck FC-side transfer state before re-requesting.

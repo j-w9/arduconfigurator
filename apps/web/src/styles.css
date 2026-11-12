@@ -5850,6 +5850,17 @@ body.is-status-dash-dragging {
   height: 286px;
 }
 
+.flight-deck__webgl-off {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  pointer-events: none;
+}
 .flight-deck__canvas {
   position: absolute;
   inset: 0;
@@ -5990,6 +6001,16 @@ body.is-status-dash-dragging {
   gap: 6px;
 }
 
+.flight-deck__level-result {
+  align-self: center;
+  font-family: var(--font-data);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--success, #4ade80);
+  white-space: nowrap;
+}
+.flight-deck__level-result.is-failed {
+  color: var(--danger, #f87171);
+}
 .flight-deck__heading-button {
   min-height: 28px;
   padding: 0 10px;
@@ -9829,131 +9850,168 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: rgba(var(--fill-rgb), 0.4);
 }
 .board-orientation-diagram__stage--3d {
-  perspective: 480px;
+  width: 320px;
+  height: 260px;
+  perspective: 820px;
+  overflow: hidden;
 }
-.board-orientation-diagram__front {
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--font-data);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.16em;
-  color: var(--text-dim, var(--text-muted));
-  z-index: 1;
-}
-/* Gentle top-down-ish camera: a flat ("None") board reads as lying flat, with
-   just enough tilt + a small yaw that an on-its-side (Roll/Pitch 90) mount is
-   never perfectly edge-on and still shows. */
+/* A three-quarter camera, low enough that a board standing on its edge looks
+   upright, and turned so no mount is seen exactly edge-on. */
 .board-orientation-diagram__scene {
-  transform-style: preserve-3d;
-  transform: rotateX(32deg) rotateY(-14deg);
-}
-.board-orientation-diagram__board3d {
+  /* Board size and thickness; every board/edge rule derives from these. */
+  --fc-size: 104px;
+  --fc-thick: 10px;
   position: relative;
-  width: 80px;
-  height: 104px;
+  width: 300px;
+  height: 300px;
+  flex: none;
   transform-style: preserve-3d;
-  transition: transform 0.3s ease;
+  transform: translateY(6px) rotateX(54deg) rotateZ(-24deg) scale(0.8);
+}
+
+/* The sample quad, fixed: it is the vehicle the board is mounted on. */
+.board-orientation-diagram__frame {
+  position: absolute;
+  inset: 0;
+  width: 300px;
+  height: 300px;
+  overflow: visible;
+  transform: translateZ(-40px);
+}
+.board-orientation-diagram__frame-arm {
+  stroke: rgba(var(--edge-rgb), 0.55);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+.board-orientation-diagram__frame-body {
+  fill: rgba(var(--edge-rgb), 0.22);
+  stroke: rgba(var(--edge-rgb), 0.5);
+  stroke-width: 1.5;
+}
+.board-orientation-diagram__frame-camera {
+  fill: rgba(var(--edge-rgb), 0.6);
+}
+.board-orientation-diagram__frame-prop {
+  fill: rgba(var(--edge-rgb), 0.06);
+  stroke: rgba(var(--edge-rgb), 0.3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.board-orientation-diagram__frame-prop--front {
+  fill: color-mix(in srgb, var(--accent) 12%, transparent);
+  stroke: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.board-orientation-diagram__frame-motor {
+  fill: rgba(var(--edge-rgb), 0.55);
+}
+.board-orientation-diagram__frame-nose {
+  fill: var(--accent);
+}
+.board-orientation-diagram__frame-label {
+  fill: var(--accent);
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+/* The board: a square slab posed by the orientation, centred on the frame. */
+.board-orientation-diagram__board3d {
+  position: absolute;
+  left: calc(50% - var(--fc-size) / 2);
+  top: calc(50% - var(--fc-size) / 2);
+  width: var(--fc-size);
+  height: var(--fc-size);
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .board-orientation-diagram__face {
   position: absolute;
   inset: 0;
-  border-radius: var(--radius-md);
   backface-visibility: hidden;
-  border: 1.5px solid rgba(var(--edge-rgb), 0.5);
 }
 .board-orientation-diagram__face--top {
-  background: linear-gradient(160deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 0.86));
-  transform: translateZ(3px);
+  transform: translateZ(calc(var(--fc-thick) / 2));
 }
 .board-orientation-diagram__face--bottom {
-  /* A warm underside so an upside-down mount is unmistakable. */
-  background: color-mix(in srgb, var(--warning) 40%, rgba(var(--fill-rgb), 0.9));
-  transform: rotateY(180deg) translateZ(3px);
-  /* Dashed edge marks this as the face you should NOT be looking at when the
-     board is mounted the usual way up. */
-  border: 1px dashed color-mix(in srgb, var(--warning) 70%, transparent);
-  display: grid;
-  place-items: center;
+  transform: rotateY(180deg) translateZ(calc(var(--fc-thick) / 2));
+}
+.board-orientation-diagram__edge {
+  position: absolute;
+  background: #123524;
+}
+/* Edges stop short of the rounded corners. */
+.board-orientation-diagram__edge--front,
+.board-orientation-diagram__edge--back {
+  left: 5%;
+  width: 90%;
+  height: var(--fc-thick);
+  transform: rotateX(90deg);
+}
+.board-orientation-diagram__edge--front {
+  top: calc(var(--fc-thick) / -2);
+  /* The nose edge: green on every side, so it shows when the arrow cannot. */
+  background: var(--success, #4ade80);
+}
+.board-orientation-diagram__edge--back {
+  top: calc(100% - var(--fc-thick) / 2);
+}
+.board-orientation-diagram__edge--left,
+.board-orientation-diagram__edge--right {
+  top: 5%;
+  width: var(--fc-thick);
+  height: 90%;
+  transform: rotateY(90deg);
+}
+.board-orientation-diagram__edge--left {
+  left: calc(var(--fc-thick) / -2);
+}
+.board-orientation-diagram__edge--right {
+  left: calc(100% - var(--fc-thick) / 2);
 }
 
-/* Explicit "BOTTOM" so the underside is named, not just tinted — colour alone
-   reads as a shading artifact in a screenshot. */
-.board-orientation-diagram__bottom-label {
+/* The drawn flight controller (FlightControllerArt). */
+.fc-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.fc-art__silk {
+  fill: #e8f1ea;
   font-family: var(--font-data);
-  font-size: var(--text-sm);
-  letter-spacing: 0.18em;
+  font-size: 15px;
   font-weight: 700;
-  color: color-mix(in srgb, var(--warning) 35%, #1b1205);
-  opacity: 0.85;
 }
-
-/* Forward arrow on the top face (points to the board's nose / +X). Deliberately
-   NOT the accent colour: the accent is used all over this view, so the arrow
-   blended into the board. A dedicated success-green keeps "this edge faces
-   forward" readable at a glance against the slab. */
-.board-orientation-diagram__arrow {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  width: 0;
-  height: 0;
-  transform: translateX(-50%);
-  border-left: 9px solid transparent;
-  border-right: 9px solid transparent;
-  border-bottom: 16px solid var(--success, #4ade80);
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--success, #4ade80) 55%, transparent));
+.fc-art__silk--axis {
+  font-size: 22px;
 }
-
-/* Body axes on the top face: +X out the nose (arrow direction), +Y out the
-   right edge — the frame ArduPilot's roll/pitch are defined about. */
-.board-orientation-diagram__axes {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+.fc-art__silk--brand {
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  opacity: 0.8;
 }
-
-.board-orientation-diagram__axis {
-  position: absolute;
-  font-family: var(--font-data);
-  font-size: var(--text-2xs);
-  font-weight: 700;
-  color: color-mix(in srgb, var(--success, #4ade80) 80%, var(--ink, #fff));
-  opacity: 0.75;
+.fc-art__silk--dark {
+  fill: #3a4044;
 }
-
-.board-orientation-diagram__axis--x {
-  top: 26px;
-  left: 50%;
-  transform: translateX(-50%);
+.fc-art__silk--bottom {
+  font-size: 30px;
+  letter-spacing: 0.2em;
+  fill: #fff3d6;
 }
-
-.board-orientation-diagram__axis--y {
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
+.fc-art__arrow {
+  fill: var(--success, #4ade80);
+  stroke: #0e3523;
+  stroke-width: 2;
 }
-.board-orientation-diagram__imu {
-  position: absolute;
-  top: 40px;
-  left: 50%;
-  width: 26px;
-  height: 26px;
-  transform: translateX(-50%);
-  border-radius: 3px;
-  background: rgba(var(--edge-rgb), 0.28);
-  border: 1px solid rgba(var(--edge-rgb), 0.45);
+.fc-art__arrow--outline {
+  fill: color-mix(in srgb, var(--success, #4ade80) 25%, transparent);
+  stroke: #0f6b37;
+  stroke-width: 8;
+  stroke-dasharray: 14 7;
 }
-.board-orientation-diagram__usb {
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  width: 22px;
-  height: 8px;
-  transform: translateX(-50%);
-  border-radius: 2px;
-  background: rgba(var(--edge-rgb), 0.55);
+.fc-art__underside {
+  fill: color-mix(in srgb, var(--warning) 55%, transparent);
 }
 .board-orientation-diagram__note {
   max-width: 22ch;
@@ -9973,6 +10031,49 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .board-orientation-diagram__caption {
   font-size: var(--text-md);
+}
+/* The turn arrows on the picture: yaw at the top corners, roll at the sides,
+   pitch at the bottom corners. */
+.board-orientation-diagram__turn {
+  position: absolute;
+  z-index: 2;
+  padding: 4px 8px;
+  border: 1px solid rgba(var(--edge-rgb), 0.35);
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(var(--fill-rgb), 0.92);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.board-orientation-diagram__turn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.board-orientation-diagram__turn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.board-orientation-diagram__turn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.board-orientation-diagram__turn--yaw-left { top: 8px; left: 8px; }
+.board-orientation-diagram__turn--yaw-right { top: 8px; right: 8px; }
+.board-orientation-diagram__turn--roll-left { top: 50%; left: 8px; transform: translateY(-50%); }
+.board-orientation-diagram__turn--roll-right { top: 50%; right: 8px; transform: translateY(-50%); }
+.board-orientation-diagram__turn--pitch-down { bottom: 8px; left: 8px; }
+.board-orientation-diagram__turn--pitch-up { bottom: 8px; right: 8px; }
+.board-orientation-diagram__readout {
+  max-width: 300px;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.board-orientation-diagram__readout strong {
+  color: var(--text);
+  font-weight: 600;
 }
 @media (prefers-reduced-motion: reduce) {
   .board-orientation-diagram__board3d {
@@ -15680,6 +15781,12 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
 
+.bootloader-identity__confirm {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
 /* The FILTn filter bank on the Filters tab. Slots reuse the axis-card shape so
    they read as siblings of the rate groups above them; an empty slot is dimmed
    rather than hidden, because filling one in is how a bank gets built. */
@@ -16130,15 +16237,25 @@ details.bf-gui-box:not([open]) > summary::after {
 /* Board orientation: the picture sits beside the dropdown, not under it, so the
    card is as tall as Frame next to it. */
 .config-section--id-board-orientation {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  /* A wrapping row, sized by the card itself rather than the window: the
+     field and the picture sit side by side when there is room and the
+     picture drops under the field when there is not (narrow columns, phones). */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
 }
 .config-section--id-board-orientation > .config-section__header {
-  grid-column: 1 / -1;
+  flex: 1 1 100%;
+}
+.config-section--id-board-orientation > .config-section__editors,
+.config-section--id-board-orientation > .config-section__values {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 .config-section--id-board-orientation > .config-section__footer {
-  grid-column: 2;
-  grid-row: 2;
+  flex: 1 0 auto;
+  display: flex;
+  justify-content: center;
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
@@ -16148,7 +16265,7 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 2px;
 }
 .config-section--id-board-orientation .board-orientation-diagram__stage {
-  zoom: 0.75;
+  zoom: 0.85;
 }
 
 /* A per-output mask: one line of fixed 40px cells, the checkbox over the
@@ -24861,6 +24978,27 @@ button.plot-side-list__name {
 .setup-gui-box__body > .status-dash-toolbar > button {
   flex: 1 1 0;
 }
+
+/* Active IMU: an IMU switched off with INS_USE, and the way back. */
+.active-imu-off p {
+  margin: 4px 0 0;
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+.active-imu-off button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.active-imu-off button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 
 
 /* AMC guided mode — the experimental tab that evaluates ArduPilot Methodic

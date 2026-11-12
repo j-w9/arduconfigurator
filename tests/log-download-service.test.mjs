@@ -47,7 +47,7 @@ function logData(id, ofs, bytes) {
   return { type: 'LOG_DATA', id, ofs, count: bytes.length, data }
 }
 
-test('listLogs requests the list and resolves sorted entries, then ends the session', async () => {
+test('listLogs requests the list and resolves sorted entries without sending END', async () => {
   const { service, sent } = createService()
   const promise = service.listLogs()
 
@@ -61,7 +61,12 @@ test('listLogs requests the list and resolves sorted entries, then ends the sess
   )
   assert.equal(logs[1].sizeBytes, 4096)
   assert.equal(sent[0].type, 'LOG_REQUEST_LIST')
-  assert.equal(sent.at(-1).type, 'LOG_REQUEST_END')
+  // No LOG_REQUEST_END after a list — the FC ends the listing on its own,
+  // and sending END crashes 4.6.0–4.7.2 when no log backend exists.
+  assert.ok(
+    sent.every((m) => m.type !== 'LOG_REQUEST_END'),
+    'must not send LOG_REQUEST_END after a list'
+  )
 })
 
 test('listLogs resolves [] when the FC reports no logs', async () => {
@@ -224,7 +229,7 @@ test('downloadLog accepts a realistic in-range size', async () => {
 test('a 0% stall retries: LOG_REQUEST_END (clear stuck FC transfer state) then a fresh data request', async () => {
   // Field failure: ArduPilot silently drops LOG_REQUEST_DATA while it
   // still considers a log transfer active on some link (it holds
-  // _log_sending_link from the LIST until a LOG_REQUEST_END arrives).
+  // _log_sending_link from a prior DOWNLOAD until a LOG_REQUEST_END arrives).
   // A download then sits at 0% — and the old retry only fired when
   // received > 0, so 0% hard-failed with no recovery attempt.
   const { service, sent } = createService()

@@ -164,7 +164,8 @@ import { buildCompassOrder, isCompassOrderParamId, removeCompassPriority, swapCo
 import { selectViewDrafts } from './selectors/view-drafts'
 import { actionLabels, type GuidedActionId } from './guided-action-labels'
 import {
-  canRunGuidedAction
+  canRunGuidedAction,
+  guidedActionBlockingReason
 } from './guided-action-helpers'
 import {
   toneForConnection,
@@ -2271,6 +2272,21 @@ export function App() {
     }
   }, [connectionErrorMessage])
 
+  // A tilt check that passed checked the orientation the board had then. When
+  // AHRS_ORIENTATION changes on the vehicle, that pass no longer says anything,
+  // so the check goes back to idle. Only a change between two read values
+  // counts: the value is briefly missing while parameters re-sync after the
+  // reboot the change needs, and that gap must not reset a pass.
+  const lastBoardOrientationRef = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (boardOrientation === undefined) return
+    const previous = lastBoardOrientationRef.current
+    lastBoardOrientationRef.current = boardOrientation
+    if (previous !== undefined && previous !== boardOrientation) {
+      setOrientationExercise(createIdleOrientationExerciseState())
+    }
+  }, [boardOrientation, setOrientationExercise])
+
   useEffect(() => {
     if (snapshot.connection.kind !== 'connected') {
       previousModeSwitchRef.current = {}
@@ -3972,7 +3988,11 @@ export function App() {
   // the target before the enable (see view-models/tcal-plan.ts). A draft could
   // not do it: the target is hidden until the enable is on, and the learn
   // captures it the moment the enable goes to 2.
-  async function handleTcalWrite(writes: TcalWrite[], description: string): Promise<void> {
+  async function handleTcalWrite(
+    writes: TcalWrite[],
+    description: string,
+    failurePrefix = 'Thermal calibration write failed'
+  ): Promise<void> {
     if (!runtime || writes.length === 0) {
       return
     }
@@ -3983,7 +4003,7 @@ export function App() {
     } catch (error) {
       setSessionNotice({
         tone: 'danger',
-        text: `Thermal calibration write failed: ${error instanceof Error ? error.message : 'unknown error'}`
+        text: `${failurePrefix}: ${error instanceof Error ? error.message : 'unknown error'}`
       })
     } finally {
       setBusyAction((current) => (current === 'tcal:write' ? undefined : current))
@@ -7964,6 +7984,86 @@ export function App() {
   // (BLH_BDMASK=0b1111) AND turns on BLHeli auto (BLH_AUTO=1), since AP needs
   // both; gated on a DShot protocol with a note that most boards only do
   // bdshot on the first 4 outputs (some do 8).
+  // Status ▸ Craft View: a level calibration one click from the attitude it
+  // corrects, for a check before each flight (Betaflight has the same button).
+  // Same action and gate as Calibration ▸ Level: disarmed, synced, nothing
+  // else running. It writes AHRS_TRIM_X/Y; no reboot needed.
+  function renderStatusLevelButton(): ReactNode {
+    const state = snapshot.guidedActions['calibrate-level']
+    const running = state.status === 'requested' || state.status === 'running'
+    const blocked = guidedActionBlockingReason(snapshot, 'calibrate-level')
+    // The button always offers the action; the result sits beside it with the
+    // time and the stored trim, so every run reads as a new one -- a second
+    // level on a level copter used to change nothing on screen.
+    const trimDeg = (paramId: string) => {
+      const radians = readParameterValue(snapshot, paramId)
+      return radians === undefined ? undefined : (radians * 180) / Math.PI
+    }
+    const roll = trimDeg('AHRS_TRIM_X')
+    const pitch = trimDeg('AHRS_TRIM_Y')
+    const at = state.completedAtMs !== undefined ? new Date(state.completedAtMs).toLocaleTimeString() : undefined
+    const result =
+      running ? undefined
+        : state.status === 'succeeded'
+          ? `✓ ${at ?? 'Levelled'}${roll !== undefined && pitch !== undefined ? ` · trim roll ${roll.toFixed(1)}°, pitch ${pitch.toFixed(1)}°` : ''}`
+          : state.status === 'failed'
+            ? 'Level failed'
+            : undefined
+    return (
+      <>
+        {result ? (
+          <span
+            className={`flight-deck__level-result${state.status === 'failed' ? ' is-failed' : ''}`}
+            data-testid="status-calibrate-level-result"
+            title={state.status === 'failed' ? state.summary : undefined}
+          >
+            {result}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          className="flight-deck__heading-button"
+          data-testid="status-calibrate-level"
+          disabled={running || busyAction !== undefined || !canRunGuidedAction(snapshot, 'calibrate-level')}
+          title={blocked ?? 'Sit the copter on a level surface, then click. Sets AHRS_TRIM so it reads level.'}
+          onClick={() => void handleGuidedAction('calibrate-level')}
+        >
+          {running ? 'Levelling…' : 'Calibrate Level'}
+        </button>
+      </>
+    )
+  }
+
+  // The Active IMU card edits EK3_IMU_MASK and no longer offers INS_USE. A
+  // board where an IMU was switched off with INS_USEn = 0 still says so here,
+  // with the way back, as long as that IMU is fitted (its INS_ACCn_ID is not
+  // 0; a board that does not report the id is assumed fitted). The button
+  // writes INS_USEn = 1 straight away: it is no field on the card, so a
+  // staged draft would sit outside the card's Apply.
+  function renderSwitchedOffImus(): ReactNode {
+    const off = [
+      { use: 'INS_USE', id: 'INS_ACC_ID', imu: 1 },
+      { use: 'INS_USE2', id: 'INS_ACC2_ID', imu: 2 },
+      { use: 'INS_USE3', id: 'INS_ACC3_ID', imu: 3 }
+    ].filter(({ use, id }) => {
+      const value = editedValues[use] ?? readRoundedParameter(snapshot, use)
+      return Number(value) === 0 && readRoundedParameter(snapshot, id) !== 0
+    })
+    if (off.length === 0) return null
+    return (
+      <div className="active-imu-off" data-testid="active-imu-switched-off">
+        {off.map(({ use, imu }) => (
+          <p key={use}>
+            IMU {imu} is switched off ({use} = 0), so it is not checked or logged.{' '}
+            <button type="button" className="setup-wizard__link" data-testid={`active-imu-turn-on-${imu}`} disabled={busyAction !== undefined || !canApplyDraftParameters} title={canApplyDraftParameters ? undefined : 'Finish parameter sync and disarm first.'} onClick={() => void handleTcalWrite([{ paramId: use, paramValue: 1 }], `IMU ${imu} switched back on`, `Could not switch IMU ${imu} back on`)}>
+              Turn it back on
+            </button>
+          </p>
+        ))}
+      </div>
+    )
+  }
+
   function renderBoardOrientationFooter(): ReactNode {
     // Reflect the SELECTED orientation (staged draft if any, else live) so the
     // picture updates as the operator changes the dropdown, before Apply.
@@ -7977,7 +8077,17 @@ export function App() {
     if (!visual) {
       return null
     }
-    return <BoardOrientationDiagram visual={visual} testId="board-orientation-diagram" />
+    return (
+      <BoardOrientationDiagram
+        visual={visual}
+        testId="board-orientation-diagram"
+        rotate={{
+          value,
+          options: AHRS_ORIENTATION_OPTIONS,
+          onChange: (next) => setDraft('AHRS_ORIENTATION', String(next))
+        }}
+      />
+    )
   }
 
 
@@ -9826,6 +9936,7 @@ export function App() {
                           showHeadingReference={false}
                           frameClassLabel={airframe.frameClassLabel}
                           frameTypeLabel={airframe.frameTypeLabel}
+                          extraActions={renderStatusLevelButton()}
                         />
 
                         {/* Everything below the craft model is one 12-column
@@ -11836,6 +11947,9 @@ export function App() {
             }
             if (section.id === 'board-orientation') {
               return { ...section, footer: renderBoardOrientationFooter() }
+            }
+            if (section.id === 'active-imu') {
+              return { ...section, footer: renderSwitchedOffImus() }
             }
             if (section.id === 'receiver-signal') {
               return { ...section, footer: renderReceiverSignalFooter() }
