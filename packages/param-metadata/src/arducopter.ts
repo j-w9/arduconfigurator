@@ -1307,6 +1307,69 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'After changing orientation, re-level the vehicle and repeat accelerometer calibration before flight.'
       ]
     },
+    // Custom rotations (AP_CustomRotations): board-level euler angles for the
+    // two general-purpose custom orientations used by both AHRS_ORIENTATION and
+    // COMPASS_ORIENT. Reboot required. Range -180..180 deg, from AP source.
+    CUST_ROT1_ROLL: {
+      id: 'CUST_ROT1_ROLL',
+      label: 'Custom 1 roll',
+      description: 'Roll angle for the Custom 1 orientation (euler 321 order: yaw, pitch, roll).',
+      category: 'sensors',
+      minimum: -180,
+      maximum: 180,
+      unit: 'deg',
+      rebootRequired: true
+    },
+    CUST_ROT1_PITCH: {
+      id: 'CUST_ROT1_PITCH',
+      label: 'Custom 1 pitch',
+      description: 'Pitch angle for the Custom 1 orientation (euler 321 order: yaw, pitch, roll).',
+      category: 'sensors',
+      minimum: -180,
+      maximum: 180,
+      unit: 'deg',
+      rebootRequired: true
+    },
+    CUST_ROT1_YAW: {
+      id: 'CUST_ROT1_YAW',
+      label: 'Custom 1 yaw',
+      description: 'Yaw angle for the Custom 1 orientation (euler 321 order: yaw, pitch, roll).',
+      category: 'sensors',
+      minimum: -180,
+      maximum: 180,
+      unit: 'deg',
+      rebootRequired: true
+    },
+    CUST_ROT2_ROLL: {
+      id: 'CUST_ROT2_ROLL',
+      label: 'Custom 2 roll',
+      description: 'Roll angle for the Custom 2 orientation (euler 321 order: yaw, pitch, roll).',
+      category: 'sensors',
+      minimum: -180,
+      maximum: 180,
+      unit: 'deg',
+      rebootRequired: true
+    },
+    CUST_ROT2_PITCH: {
+      id: 'CUST_ROT2_PITCH',
+      label: 'Custom 2 pitch',
+      description: 'Pitch angle for the Custom 2 orientation (euler 321 order: yaw, pitch, roll).',
+      category: 'sensors',
+      minimum: -180,
+      maximum: 180,
+      unit: 'deg',
+      rebootRequired: true
+    },
+    CUST_ROT2_YAW: {
+      id: 'CUST_ROT2_YAW',
+      label: 'Custom 2 yaw',
+      description: 'Yaw angle for the Custom 2 orientation (euler 321 order: yaw, pitch, roll).',
+      category: 'sensors',
+      minimum: -180,
+      maximum: 180,
+      unit: 'deg',
+      rebootRequired: true
+    },
     // NavEKF3 IMU_MASK (AP_NavEKF3.cpp): one EKF3 core per ticked IMU,
     // HAL_EKF_IMU_MASK_DEFAULT 3 (first two IMUs), reboot required.
     EK3_IMU_MASK: {

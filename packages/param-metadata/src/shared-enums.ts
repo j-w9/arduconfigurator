@@ -54,6 +54,7 @@ export const AHRS_ORIENTATION_OPTIONS: ParameterValueOption[] = [
   { value: 38, label: 'Yaw 293 Pitch 68 Roll 180' },
   { value: 39, label: 'Pitch 315' },
   { value: 40, label: 'Pitch 315 Roll 90' },
+  { value: 41, label: 'Pitch 7' },
   { value: 42, label: 'Roll 45' },
   { value: 43, label: 'Roll 315' },
   { value: 100, label: 'Custom (4.1 and older)' },

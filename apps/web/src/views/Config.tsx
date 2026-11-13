@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
@@ -63,6 +63,9 @@ export interface ConfigSectionField {
    * editor also takes `label` as its caption.
    */
   options?: ReadonlyArray<{ value: number; label: string; description?: string }>
+  /** Hide this field unless the predicate returns true. Receives a lookup that
+   *  returns the EFFECTIVE value of any param (draft if staged, else synced). */
+  showWhen?: (effectiveValue: (paramId: string) => number | undefined) => boolean
 }
 
 /** Config category ids — the top tab groups. */
@@ -310,8 +313,18 @@ export function ConfigView(props: ConfigViewProps) {
   // sub-tab, which holds exactly one card by construction.
   const spreadWide = visibleSections.length === 1
 
+  const effectiveValue = useCallback(
+    (paramId: string): number | undefined => {
+      const draft = editedValues[paramId]
+      if (draft !== undefined) return Number(draft)
+      return parametersById.get(paramId)?.value
+    },
+    [editedValues, parametersById]
+  )
+
   // One editable field row (or the "(not reported)" placeholder).
   function renderField(field: ConfigSectionField, fieldEditors?: Readonly<Record<string, ReactNode>>): ReactNode {
+    if (field.showWhen && !field.showWhen(effectiveValue)) return null
     const reported = parametersById.get(field.paramId)
     // A parameter the catalog has no entry for (BRD_BOOT_DELAY) titled itself
     // with its raw id and had no "i". The section's own label and unit stand

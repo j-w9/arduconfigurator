@@ -9,7 +9,7 @@ import { useCallback, useMemo } from 'react'
 
 import { firmwareVersionAtLeast, type ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
-import type { ConfigCategoryId, ConfigSection } from '../views/Config'
+import type { ConfigCategoryId, ConfigSection, ConfigSectionField } from '../views/Config'
 import { fastRatePidOptions } from '../view-models/fast-rate-pid-options'
 
 // Categories that render on the PERIPHERALS tab instead of Config. Both tabs
@@ -67,6 +67,21 @@ function categorize(section: ConfigSection): ConfigSection {
     ...section,
     category: CATEGORY_BY_SECTION[section.id] ?? 'system'
   }
+}
+
+type EffectiveValue = (paramId: string) => number | undefined
+
+function customRotationFields(orientParamId: string): ConfigSectionField[] {
+  const show1 = (v: EffectiveValue): boolean => v(orientParamId) === 101
+  const show2 = (v: EffectiveValue): boolean => v(orientParamId) === 102
+  return [
+    { paramId: 'CUST_ROT1_ROLL', label: 'Custom 1 roll', unit: 'deg', group: `cust-rot-1-${orientParamId}`, showWhen: show1 },
+    { paramId: 'CUST_ROT1_PITCH', label: 'Custom 1 pitch', unit: 'deg', group: `cust-rot-1-${orientParamId}`, showWhen: show1 },
+    { paramId: 'CUST_ROT1_YAW', label: 'Custom 1 yaw', unit: 'deg', group: `cust-rot-1-${orientParamId}`, showWhen: show1 },
+    { paramId: 'CUST_ROT2_ROLL', label: 'Custom 2 roll', unit: 'deg', group: `cust-rot-2-${orientParamId}`, showWhen: show2 },
+    { paramId: 'CUST_ROT2_PITCH', label: 'Custom 2 pitch', unit: 'deg', group: `cust-rot-2-${orientParamId}`, showWhen: show2 },
+    { paramId: 'CUST_ROT2_YAW', label: 'Custom 2 yaw', unit: 'deg', group: `cust-rot-2-${orientParamId}`, showWhen: show2 }
+  ]
 }
 
 export function useConfigSections(snapshot: ConfiguratorSnapshot) {
@@ -136,7 +151,10 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       // which is how a vehicle ends up flying with a trim nobody can explain.
       // They remain reachable in the raw Parameters tab for anyone who needs
       // them.
-      fields: [{ paramId: 'AHRS_ORIENTATION', label: 'Orientation', digits: 0 }]
+      fields: [
+        { paramId: 'AHRS_ORIENTATION', label: 'Orientation', digits: 0 },
+        ...customRotationFields('AHRS_ORIENTATION')
+      ]
     },
     ...(hasCompass
       ? [
@@ -156,6 +174,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
               { paramId: 'COMPASS_AUTODEC', label: 'Auto declination', digits: 0 },
               { paramId: 'COMPASS_EXTERNAL', label: 'Compass 1 mounting', digits: 0 },
               { paramId: 'COMPASS_ORIENT', label: 'Compass 1 orientation', digits: 0 },
+              ...customRotationFields('COMPASS_ORIENT'),
               { paramId: 'COMPASS_AUTO_ROT', label: 'Auto-check orientation', digits: 0 },
               ...(configParametersById.has('COMPASS_DISBLMSK')
                 ? [{ paramId: 'COMPASS_DISBLMSK', label: 'Disabled compass drivers', digits: 0 }]
