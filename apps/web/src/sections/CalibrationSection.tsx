@@ -120,7 +120,7 @@ const CALIBRATION_REBOOT_ADVICE: Partial<
     required: false,
     promptOn: ['succeeded'],
     reason:
-      'Not required: the level trim is saved to AHRS_TRIM_X / AHRS_TRIM_Y and takes effect immediately. Reboot only if you want to confirm it from a cold start.'
+      'The level trim is saved to AHRS_TRIM_X / AHRS_TRIM_Y and takes effect immediately. A reboot is not required.'
   }
 }
 
@@ -151,7 +151,7 @@ function CalibrationRebootPrompt(props: {
       data-required={advice.required ? 'true' : 'false'}
     >
       <p>
-        <strong>{advice.required ? 'Reboot the autopilot' : 'Reboot the autopilot?'}</strong> {advice.reason}
+        <strong>{advice.required ? 'Reboot the autopilot.' : 'Reboot?'}</strong> {advice.reason}
       </p>
       {error ? <p className="calibration-card__blocked">{error}</p> : null}
       <div className="calibration-card__reboot-actions">
