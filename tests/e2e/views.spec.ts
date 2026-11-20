@@ -1607,7 +1607,7 @@ test.describe('Calibration tab', () => {
     const prompt = page.getByTestId('calibration-reboot-calibrate-level')
     await expect(prompt).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
     await expect(prompt).toHaveAttribute('data-required', 'false')
-    await expect(prompt).toContainText('Not required')
+    await expect(prompt).toContainText('not required')
 
     // Dismissing answers this run only.
     await page.getByTestId('calibration-reboot-dismiss-calibrate-level').click()
