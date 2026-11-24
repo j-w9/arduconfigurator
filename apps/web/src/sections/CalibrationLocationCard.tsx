@@ -17,6 +17,31 @@ export interface CalibrationLocationButtonProps {
   runtime: ArduPilotConfiguratorRuntime
 }
 
+const FAKE_GPS_STORAGE_PREFIX = 'fakeGpsRestore:'
+
+export function persistFakeGpsRestore(uid: string, originalGpsType: number): void {
+  try {
+    localStorage.setItem(FAKE_GPS_STORAGE_PREFIX + uid, JSON.stringify({ originalGpsType }))
+  } catch { /* storage full or blocked */ }
+}
+
+export function clearFakeGpsRestore(uid: string): void {
+  try {
+    localStorage.removeItem(FAKE_GPS_STORAGE_PREFIX + uid)
+  } catch { /* blocked */ }
+}
+
+export function loadFakeGpsRestore(uid: string): number | undefined {
+  try {
+    const raw = localStorage.getItem(FAKE_GPS_STORAGE_PREFIX + uid)
+    if (!raw) return undefined
+    const parsed = JSON.parse(raw)
+    return typeof parsed?.originalGpsType === 'number' ? parsed.originalGpsType : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export function CalibrationLocationButton({ snapshot, runtime }: CalibrationLocationButtonProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -56,9 +81,15 @@ export function CalibrationLocationButton({ snapshot, runtime }: CalibrationLoca
     }
     setBusy(true)
     setNotice(undefined)
+    const uid = snapshot.hardware.board?.uid
+    const originalGpsType = snapshot.parameters.find((p) => p.id === 'GPS1_TYPE')?.value
+      ?? snapshot.parameters.find((p) => p.id === 'GPS_TYPE')?.value
     void (async () => {
       try {
         await runtime.startFakeGps(latitude, longitude)
+        if (uid && originalGpsType !== undefined) {
+          persistFakeGpsRestore(uid, originalGpsType)
+        }
         setModalOpen(false)
         setNotice({
           tone: 'success',
@@ -74,9 +105,11 @@ export function CalibrationLocationButton({ snapshot, runtime }: CalibrationLoca
 
   function handleStop(): void {
     setBusy(true)
+    const uid = snapshot.hardware.board?.uid
     void (async () => {
       try {
         await runtime.stopFakeGps()
+        if (uid) clearFakeGpsRestore(uid)
         setNotice({ tone: 'neutral', text: 'Fake GPS stopped; GPS backend restored.' })
       } catch (error) {
         setNotice({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to stop fake GPS.' })

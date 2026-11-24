@@ -424,7 +424,7 @@ import {
 import { useStatusDashboardLayout } from './hooks/use-status-dashboard-layout'
 import type { StatusDashboardCardSpec } from './view-models/status-dashboard-layout'
 import { ResetToDefaultsButton } from './views/ResetToDefaultsButton'
-import { CalibrationLocationButton } from './sections/CalibrationLocationCard'
+import { CalibrationLocationButton, loadFakeGpsRestore, clearFakeGpsRestore } from './sections/CalibrationLocationCard'
 import { resolveSetupConfirmationRecord } from './view-models/setup-confirmation-resolve'
 import { buildSetupConfirmationSignatures } from './view-models/setup-confirmation-signatures'
 import { buildTuningTaskCards } from './view-models/tuning-task-cards'
@@ -3288,6 +3288,30 @@ export function App() {
       clearDrafts(matchingLive)
     }
   }, [snapshot.parameterStats.status, snapshot.parameterStats.requestedAtMs, parameterDraftEntries, clearDrafts])
+
+  // Fake-GPS safety net: if the previous session set GPS1_TYPE to 14 (MAV)
+  // and the user disconnected without stopping fake GPS, restore the original
+  // type now that parameters have synced.
+  const fakeGpsRestoredRef = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (snapshot.parameterStats.status !== 'complete') return
+    const uid = snapshot.hardware.board?.uid
+    if (!uid) return
+    const requestedAtMs = snapshot.parameterStats.requestedAtMs
+    if (requestedAtMs === fakeGpsRestoredRef.current) return
+    const originalType = loadFakeGpsRestore(uid)
+    if (originalType === undefined) return
+    const gpsType = snapshot.parameters.find((p) => p.id === 'GPS1_TYPE')?.value
+      ?? snapshot.parameters.find((p) => p.id === 'GPS_TYPE')?.value
+    if (gpsType !== 14) {
+      clearFakeGpsRestore(uid)
+      return
+    }
+    fakeGpsRestoredRef.current = requestedAtMs
+    clearFakeGpsRestore(uid)
+    void runtime.setParameter('GPS1_TYPE', originalType).catch(() => {})
+    console.warn(`[fake-gps] GPS1_TYPE was stuck at 14 (MAV) from a previous session — restored to ${originalType}`)
+  }, [snapshot.parameterStats.status, snapshot.parameterStats.requestedAtMs, snapshot.hardware.board?.uid, snapshot.parameters, runtime])
 
   const canApplyAllDraftParameters =
     canApplyDraftParameters && stagedParameterDrafts.length > 0 && invalidParameterDrafts.length === 0
