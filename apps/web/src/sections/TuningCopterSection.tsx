@@ -71,6 +71,7 @@ export interface TuningCopterSectionProps {
   /** SmallFastDrone fork features (Z-bias, VALT, fork failsafe options). */
   sfdSlot?: ReactNode
   logTuningSlot?: ReactNode
+  filterReviewSlot?: ReactNode
   /** Notch suggestions and warnings, rendered under the Filters grid. */
   filterNotchSlot?: ReactNode
   /** The FILTn bank, when the firmware has one. Expert-only: raw per-slot
@@ -95,6 +96,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     hoverSlot,
     sfdSlot,
     logTuningSlot,
+    filterReviewSlot,
     filterNotchSlot,
     pilotFeelSlot,
     pidGainsSlot,
@@ -504,6 +506,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                 {activeTuningTaskId === 'log-tuning' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-log-tuning-panel">
                     {logTuningSlot}
+                  </div>
+                ) : null}
+
+                {activeTuningTaskId === 'filter-review' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-filter-review-panel">
+                    {filterReviewSlot}
                   </div>
                 ) : null}
 

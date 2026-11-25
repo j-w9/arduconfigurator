@@ -56,3 +56,24 @@ export {
 } from './maiden-flight-analysis.js'
 
 export { planNotchFromLog, planNotchFromBuffer, type NotchPlanFromLog } from './notch-plan.js'
+
+export {
+  type NotchParams,
+  type LowPassParams,
+  type FilterChainParams,
+  filterChainMagnitude,
+  filterChainResponse,
+  estimatePostFilterPsd,
+  notchMagnitude,
+  lowPassMagnitude
+} from './filter-model.js'
+
+export {
+  analyzeFilterReview,
+  analyzeFilterReviewBuffer,
+  readFilterParamsFromLog,
+  reEstimateAxis,
+  type FilterAxis,
+  type FilterReviewAxisResult,
+  type FilterReviewResult
+} from './filter-review.js'

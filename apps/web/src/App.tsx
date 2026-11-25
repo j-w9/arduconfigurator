@@ -437,6 +437,7 @@ import { CONFIG_CATEGORIES, ConfigView, type ConfigCategoryId } from './views/Co
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
 import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
+import { FilterReviewView } from './views/FilterReview'
 import { LogTuningView } from './views/LogTuning'
 import type { TuningTaskCard } from './views/Tuning'
 import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
@@ -6091,7 +6092,8 @@ export function App() {
         profileInvalidCount: selectedTuningProfileInvalidEntries.length,
         profileChangedCount: selectedTuningProfileChangedEntries.length,
         savedProfileCount: savedTuningProfiles.length,
-        sfdAvailable: detectSfdFeatures(snapshot.parameters.map((parameter) => parameter.id))
+        sfdAvailable: detectSfdFeatures(snapshot.parameters.map((parameter) => parameter.id)),
+        isExpert: productMode === 'expert'
       }),
     [
       tuningFilterInvalidDrafts.length,
@@ -6107,7 +6109,8 @@ export function App() {
       savedTuningProfiles.length,
       selectedTuningProfileChangedEntries.length,
       selectedTuningProfileInvalidEntries.length,
-      snapshot.parameters
+      snapshot.parameters,
+      productMode
     ]
   )
   // Leaving Expert mode while a gated task is open would otherwise leave the
@@ -10886,6 +10889,13 @@ export function App() {
               stagedParams={new Set(parameterDraftById.keys())}
               onboardLogs={onboardLogs}
               onOpenLogSetup={() => setActiveViewId('logs')}
+            />
+          }
+          filterReviewSlot={
+            <FilterReviewView
+              onStageParam={handleStageLogTuningParam}
+              stagedParams={new Set(parameterDraftById.keys())}
+              onboardLogs={onboardLogs}
             />
           }
           autotuneSlot={

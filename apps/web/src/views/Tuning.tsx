@@ -18,6 +18,7 @@ export type TuningTaskId =
   | 'autotune'
   | 'profiles'
   | 'log-tuning'
+  | 'filter-review'
 
 export interface TuningTaskCard {
   id: TuningTaskId

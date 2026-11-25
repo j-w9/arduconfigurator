@@ -30,6 +30,8 @@ export interface TuningTaskCardCounts {
   savedProfileCount: number
   /** The firmware reports a SmallFastDrone fork feature: show the SFD task. */
   sfdAvailable: boolean
+  /** Expert mode: show the Filter Review task. */
+  isExpert?: boolean
 }
 
 /**
@@ -187,6 +189,16 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
       tone: 'warning'
     }
   ]
+
+  if (counts.isExpert) {
+    cards.push({
+      id: 'filter-review',
+      label: 'Filter Review',
+      value: 'expert',
+      detail: 'Pre-filter and post-filter gyro spectrum overlays, with interactive notch and low-pass parameter editing. Adjust filter settings and see the estimated effect before writing to the aircraft.',
+      tone: 'neutral'
+    })
+  }
 
   // Every task for everyone. The strip used to hide PID Gains, Notches,
   // Profiles and Log tuning outside Expert mode; roles pick tabs, not
