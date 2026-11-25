@@ -18463,9 +18463,25 @@ button.mavlink-inspector__sent-row {
   opacity: 0.6;
 }
 
-.log-tuning__advisories {
+.log-tuning__advisories,
+.log-tuning__notes {
   display: grid;
   gap: var(--space-2);
+}
+
+.log-tuning__dismiss {
+  margin-top: var(--space-1);
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.log-tuning__dismiss:hover {
+  color: var(--text);
+  border-color: var(--text-secondary);
 }
 
 /* Stale-link banner: the values on screen came from a link that has dropped

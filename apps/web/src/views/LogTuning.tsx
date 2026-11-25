@@ -177,6 +177,11 @@ function LogTuningResults({
   onStageParam: (param: string, value: number) => void
   stagedParams?: ReadonlySet<string>
 }): ReactElement {
+  const [dismissedAdvisories, setDismissedAdvisories] = useState<ReadonlySet<string>>(new Set())
+  const [dismissedNotes, setDismissedNotes] = useState<ReadonlySet<string>>(new Set())
+  const activeAdvisories = result.advisories.filter((a) => !dismissedAdvisories.has(a))
+  const activeNotes = result.notes.filter((n) => !dismissedNotes.has(n))
+
   return (
     <div className="log-tuning__results" data-testid="log-tuning-results">
       {!result.usable ? (
@@ -236,23 +241,39 @@ function LogTuningResults({
         ) : null}
       </div>
 
-      {result.advisories.length > 0 ? (
+      {activeAdvisories.length > 0 ? (
         <div className="log-tuning__advisories" data-testid="log-tuning-advisories">
-          {result.advisories.map((advisory) => (
+          {activeAdvisories.map((advisory) => (
             <div key={advisory} className="parameter-follow-up parameter-follow-up--warning">
               <StatusBadge tone="warning">action needed</StatusBadge>
               <p>{advisory}</p>
+              <button
+                type="button"
+                className="log-tuning__dismiss"
+                data-testid="log-tuning-dismiss-advisory"
+                onClick={() => setDismissedAdvisories((prev) => new Set([...prev, advisory]))}
+              >
+                Dismiss — expected from flying style
+              </button>
             </div>
           ))}
         </div>
       ) : null}
 
-      {result.notes.length > 0 ? (
+      {activeNotes.length > 0 ? (
         <div className="log-tuning__notes" data-testid="log-tuning-notes">
-          {result.notes.map((note) => (
+          {activeNotes.map((note) => (
             <div key={note} className="parameter-follow-up parameter-follow-up--neutral">
               <StatusBadge tone="neutral">note</StatusBadge>
               <p>{note}</p>
+              <button
+                type="button"
+                className="log-tuning__dismiss"
+                data-testid="log-tuning-dismiss-note"
+                onClick={() => setDismissedNotes((prev) => new Set([...prev, note]))}
+              >
+                Dismiss — confirmed impact
+              </button>
             </div>
           ))}
         </div>
@@ -311,7 +332,7 @@ function LogTuningResults({
         </div>
       ) : result.usable ? (
         <p className="bf-note" data-testid="log-tuning-no-recs">
-          {result.advisories.length > 0
+          {activeAdvisories.length > 0
             ? 'No parameter changes to stage — address the finding above first.'
             : 'No parameter changes recommended — the tune looks clean.'}
         </p>
