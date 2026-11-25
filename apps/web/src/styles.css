@@ -18578,11 +18578,11 @@ button.mavlink-inspector__sent-row {
   stroke-width: 0.5;
 }
 .filter-review__tick {
-  fill: var(--text-secondary);
+  fill: var(--text);
   font-size: 8px;
 }
 .filter-review__axis-label {
-  fill: var(--text-secondary);
+  fill: var(--text);
   font-size: 9px;
 }
 .filter-review__line {
