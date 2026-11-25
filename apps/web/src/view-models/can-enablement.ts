@@ -19,14 +19,15 @@ const DRONECAN_DRIVER_TRIGGERS: ReadonlyArray<{ paramId: string; values: readonl
   { paramId: 'GPS_TYPE2', values: [9, 22, 23], label: 'GPS 2 is set to DroneCAN' },
   { paramId: 'BATT_MONITOR', values: [8], label: 'Battery monitor is set to DroneCAN' },
   { paramId: 'BATT2_MONITOR', values: [8], label: 'Battery monitor 2 is set to DroneCAN' },
-  // FLOW_TYPE 6 = DroneCAN (HereFlow and friends). Verified against
-  // libraries/AP_OpticalFlow/AP_OpticalFlow.cpp @Values `6:DroneCAN` and
-  // AP_OpticalFlow.h `Type::UAVCAN = 6` (branch origin/ArduPilot-4.7; the
-  // 4.6.3 tag carries the identical value). Added because a CAN flow sensor is
-  // exactly as dead-on-a-disabled-bus as a CAN GPS, and the operator report
-  // that drove the flow config section was a DroneCAN sensor that reported
-  // nothing.
-  { paramId: 'FLOW_TYPE', values: [6], label: 'Optical flow is set to DroneCAN' }
+  { paramId: 'FLOW_TYPE', values: [6], label: 'Optical flow is set to DroneCAN' },
+  // RNGFND_TYPE 24 = DroneCAN. Verified against
+  // libraries/AP_RangeFinder/AP_RangeFinder.h `UAVCAN = 24`.
+  { paramId: 'RNGFND1_TYPE', values: [24], label: 'Rangefinder 1 is set to DroneCAN' },
+  { paramId: 'RNGFND2_TYPE', values: [24], label: 'Rangefinder 2 is set to DroneCAN' },
+  // ARSPD_TYPE 8 = DroneCAN. Verified against
+  // libraries/AP_Airspeed/AP_Airspeed.h `TYPE_UAVCAN = 8`.
+  { paramId: 'ARSPD_TYPE', values: [8], label: 'Airspeed is set to DroneCAN' },
+  { paramId: 'ARSPD2_TYPE', values: [8], label: 'Airspeed 2 is set to DroneCAN' }
 ]
 
 export interface CanEnablementState {
@@ -47,19 +48,23 @@ export interface CanEnablementState {
 
 const EMPTY: CanEnablementState = { needsEnable: false, triggerLabels: [], triggerParamIds: [], writes: [] }
 
-function value(snapshot: ConfiguratorSnapshot, paramId: string): number | undefined {
+function value(snapshot: ConfiguratorSnapshot, paramId: string, drafts?: Readonly<Record<string, string>>): number | undefined {
+  if (drafts && paramId in drafts) return Number(drafts[paramId])
   return snapshot.parameters.find((p) => p.id === paramId)?.value
 }
 
-export function deriveCanEnablement(snapshot: ConfiguratorSnapshot): CanEnablementState {
+export function deriveCanEnablement(
+  snapshot: ConfiguratorSnapshot,
+  drafts?: Readonly<Record<string, string>>
+): CanEnablementState {
   // No CAN params reported → the board has no CAN bus; nothing to enable.
-  const p1 = value(snapshot, 'CAN_P1_DRIVER')
+  const p1 = value(snapshot, 'CAN_P1_DRIVER', drafts)
   if (p1 === undefined) {
     return EMPTY
   }
 
   const firedTriggers = DRONECAN_DRIVER_TRIGGERS.filter((trigger) => {
-    const current = value(snapshot, trigger.paramId)
+    const current = value(snapshot, trigger.paramId, drafts)
     return current !== undefined && trigger.values.includes(Math.round(current))
   })
   const triggerLabels = firedTriggers.map((trigger) => trigger.label)
@@ -69,7 +74,7 @@ export function deriveCanEnablement(snapshot: ConfiguratorSnapshot): CanEnableme
     return EMPTY
   }
 
-  const d1 = value(snapshot, 'CAN_D1_PROTOCOL')
+  const d1 = value(snapshot, 'CAN_D1_PROTOCOL', drafts)
   const busEnabled = p1 >= 1 && d1 === CAN_D_PROTOCOL_DRONECAN
   if (busEnabled) {
     return EMPTY
@@ -79,8 +84,7 @@ export function deriveCanEnablement(snapshot: ConfiguratorSnapshot): CanEnableme
   if (!(p1 >= 1)) {
     writes.push({ paramId: 'CAN_P1_DRIVER', paramValue: 1 })
   }
-  // Only stage the protocol write when the param exists and isn't already DroneCAN.
-  if (value(snapshot, 'CAN_D1_PROTOCOL') !== undefined && d1 !== CAN_D_PROTOCOL_DRONECAN) {
+  if (value(snapshot, 'CAN_D1_PROTOCOL', drafts) !== undefined && d1 !== CAN_D_PROTOCOL_DRONECAN) {
     writes.push({ paramId: 'CAN_D1_PROTOCOL', paramValue: CAN_D_PROTOCOL_DRONECAN })
   }
 

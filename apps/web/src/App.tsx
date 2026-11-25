@@ -1297,8 +1297,10 @@ export function App() {
   const boardCatalogEntry = useMemo(() => findBoardCatalogEntry(snapshot.hardware.board?.boardType), [snapshot.hardware.board?.boardType])
   const rcChannelDisplays = buildRcChannelDisplays(snapshot)
   const airframe = deriveAirframe(snapshot, snapshot.vehicle?.vehicle)
-  // "DroneCAN peripheral selected but CAN bus off" detector for the CAN tab.
-  const canEnablement = useMemo(() => deriveCanEnablement(snapshot), [snapshot])
+  // "DroneCAN peripheral selected but CAN bus off" detector — fires on both
+  // synced values AND staged drafts so the prompt appears the moment a user
+  // stages a DroneCAN peripheral, not only after the write lands.
+  const canEnablement = useMemo(() => deriveCanEnablement(snapshot, editedValues), [snapshot, editedValues])
   // Copter (and the pre-connect / Unknown default) keeps motor-matrix
   // framing; Plane/Rover/Sub are not a quad, so vehicle-specific surfaces
   // branch off this instead of showing Copter motor logic.

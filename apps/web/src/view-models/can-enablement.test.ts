@@ -82,4 +82,37 @@ describe('deriveCanEnablement', () => {
     const r = deriveCanEnablement(snap({ GPS_TYPE: 9, CAN_P1_DRIVER: 0 }))
     expect(r.writes).toEqual([{ paramId: 'CAN_P1_DRIVER', paramValue: 1 }])
   })
+
+  it('triggers on a DroneCAN rangefinder', () => {
+    const r = deriveCanEnablement(snap({ RNGFND1_TYPE: 24, CAN_P1_DRIVER: 0, CAN_D1_PROTOCOL: 0 }))
+    expect(r.needsEnable).toBe(true)
+    expect(r.triggerLabels).toEqual(['Rangefinder 1 is set to DroneCAN'])
+  })
+
+  it('triggers on a DroneCAN airspeed sensor', () => {
+    const r = deriveCanEnablement(snap({ ARSPD_TYPE: 8, CAN_P1_DRIVER: 0, CAN_D1_PROTOCOL: 0 }))
+    expect(r.needsEnable).toBe(true)
+    expect(r.triggerLabels).toEqual(['Airspeed is set to DroneCAN'])
+  })
+
+  it('fires on a staged draft before the value is written to the FC', () => {
+    const base = snap({ GPS_TYPE: 1, CAN_P1_DRIVER: 0, CAN_D1_PROTOCOL: 0 })
+    expect(deriveCanEnablement(base).needsEnable).toBe(false)
+    const r = deriveCanEnablement(base, { GPS_TYPE: '9' })
+    expect(r.needsEnable).toBe(true)
+    expect(r.triggerLabels).toEqual(['GPS is set to DroneCAN'])
+  })
+
+  it('does not fire when the draft stages a non-DroneCAN value', () => {
+    const base = snap({ GPS_TYPE: 9, CAN_P1_DRIVER: 0, CAN_D1_PROTOCOL: 0 })
+    expect(deriveCanEnablement(base).needsEnable).toBe(true)
+    const r = deriveCanEnablement(base, { GPS_TYPE: '1' })
+    expect(r.needsEnable).toBe(false)
+  })
+
+  it('considers CAN bus already enabled via draft', () => {
+    const base = snap({ GPS_TYPE: 9, CAN_P1_DRIVER: 0, CAN_D1_PROTOCOL: 0 })
+    const r = deriveCanEnablement(base, { CAN_P1_DRIVER: '1', CAN_D1_PROTOCOL: '1' })
+    expect(r.needsEnable).toBe(false)
+  })
 })
