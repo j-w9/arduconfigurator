@@ -5293,14 +5293,10 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('hover-learn-flight-1-no')).toBeVisible()
     await expect(card).toContainText('0.420')
 
-    // Accepting flight 1 stages THREE things, not one:
-    //   ACC_ZBIAS_LEARN = 3  arm the bias flight (learn AND apply)
-    //   INS*_ACC_VRFB_Z = 0  start it from zero rather than refining whatever a
-    //                        previous calibration left behind
-    //   MOT_HOVER_LEARN = 0  freeze the hover throttle just signed off, so the
-    //                        bias flight cannot overwrite it
-    // (The demo's second and third IMU biases are already 0, so they stage as
-    // "matches current" and do not count as changes.)
+    // Accepting flight 1 stages three things:
+    //   MOT_HOVER_LEARN = 0  freeze the hover throttle just signed off
+    //   PSC_D_ACC_P          altitude accel P scaled to the learned hover
+    //   PSC_D_ACC_I          altitude accel I scaled to the learned hover
     await page.getByTestId('hover-learn-flight-1-yes').click()
     await expect(page.locator('body')).toContainText('3 staged changes')
     // The click shows: the stage only moves once the drafts are applied, so
@@ -5387,21 +5383,15 @@ test.describe('ArduPlane demo', () => {
     await expect(page.locator('body')).toContainText('1 staged change')
     await expect(page.getByTestId('hover-learn-rearm-hint')).toHaveCount(0)
 
-    // One value per flight (field report): re-learning the hover throttle
-    // while ACC_ZBIAS_LEARN still had SAVE set staged MOT_HOVER_LEARN alone,
-    // so the next hover learned both at once. With a bias learned, the
-    // re-learn also stages 3 -> 2: the bias stays applied, learning stops.
+    // Re-learn now only stages MOT_HOVER_LEARN — zbias is the SFD tab's job.
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08,MOT_HOVER_LEARN:0')
-    await expect(page.getByTestId('hover-learn-rearm-hint')).toContainText('ACC_ZBIAS_LEARN = 2')
+    await expect(page.getByTestId('hover-learn-rearm-hint')).toHaveCount(0)
     await page.getByTestId('hover-learn-rearm').click()
-    await expect(page.locator('body')).toContainText('2 staged changes')
-    // Before the bias flight there is no bias to keep, so learning goes off
-    // (0) rather than USE over a zero -- which would read as a finished
-    // calibration on the Z-bias card.
+    await expect(page.locator('body')).toContainText('1 staged change')
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,MOT_HOVER_LEARN:0')
-    await expect(page.getByTestId('hover-learn-rearm-hint')).toContainText('ACC_ZBIAS_LEARN = 0')
+    await expect(page.getByTestId('hover-learn-rearm-hint')).toHaveCount(0)
     await page.getByTestId('hover-learn-rearm').click()
-    await expect(page.locator('body')).toContainText('2 staged changes')
+    await expect(page.locator('body')).toContainText('1 staged change')
 
     // EKF3 only — the correction is applied inside EKF3, so anything else
     // learns nothing and the card says so rather than wasting a flight.
