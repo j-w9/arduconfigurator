@@ -191,10 +191,11 @@ export function buildInitialTuneParameters(inputs: InitialTuneInputs): InitialTu
     add(`${atc}_ACCEL_R_MAX`, atcAccelRMax, `Roll acceleration limit for a ${prep(prop)} prop`)
     add(`${atc}_ACCEL_Y_MAX`, atcAccelYMax, `Yaw acceleration limit for a ${prep(prop)} prop`)
   } else {
-    // Renamed AND rescaled by 100 on newer firmware (:170-174).
-    add(`${atc}_ACC_P_MAX`, atcAccelPMax / 100, `Pitch acceleration limit for a ${prep(prop)} prop`)
-    add(`${atc}_ACC_R_MAX`, atcAccelRMax / 100, `Roll acceleration limit for a ${prep(prop)} prop`)
-    add(`${atc}_ACC_Y_MAX`, atcAccelYMax / 100, `Yaw acceleration limit for a ${prep(prop)} prop`)
+    // Renamed AND rescaled by 100 on newer firmware. Clamped to the
+    // firmware's @Range ceiling (1800 for roll/pitch, 720 for yaw).
+    add(`${atc}_ACC_P_MAX`, Math.min(atcAccelPMax / 100, 1800), `Pitch acceleration limit for a ${prep(prop)} prop`)
+    add(`${atc}_ACC_R_MAX`, Math.min(atcAccelRMax / 100, 1800), `Roll acceleration limit for a ${prep(prop)} prop`)
+    add(`${atc}_ACC_Y_MAX`, Math.min(atcAccelYMax / 100, 720), `Yaw acceleration limit for a ${prep(prop)} prop`)
   }
 
   if (firmwareMajor >= 4) {

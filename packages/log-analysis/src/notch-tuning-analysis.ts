@@ -87,6 +87,8 @@ export interface LogTuningResult {
    *  mechanical fix, not a PID change) — surfaced even when there are no param
    *  recommendations so a bad log is never called "clean". */
   advisories: string[]
+  /** Informational observations that do not require action. */
+  notes: string[]
   summary: string
 }
 
@@ -456,6 +458,7 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
   // Non-parameter findings the operator should act on (mechanical/coupling), built
   // alongside the recommendations so the rate-loop block can add coupling notes.
   const advisories: string[] = []
+  const notes: string[] = []
 
   // Harmonic notch, driven by motor RPM (ESC telemetry present).
   if (esc && motorFundamentalHz) {
@@ -542,7 +545,7 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
   }
 
   if (vibe && vibe.groundClip > 0 && vibe.window) {
-    advisories.push(
+    notes.push(
       `${vibe.groundClip} clip event${vibe.groundClip === 1 ? '' : 's'} at takeoff or landing only — a knock or a firm touchdown does that, and it is not counted against the vibration verdict.`
     )
   }
@@ -582,6 +585,7 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
     limitCycle,
     recommendations,
     advisories,
+    notes,
     summary: summaryParts.join(' ')
   }
 }

@@ -247,6 +247,17 @@ function LogTuningResults({
         </div>
       ) : null}
 
+      {result.notes.length > 0 ? (
+        <div className="log-tuning__notes" data-testid="log-tuning-notes">
+          {result.notes.map((note) => (
+            <div key={note} className="parameter-follow-up parameter-follow-up--neutral">
+              <StatusBadge tone="neutral">note</StatusBadge>
+              <p>{note}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {result.axisSpectra.some((axis) => axis.chart) ? (
         <div className="log-tuning__spectra" data-testid="log-tuning-spectra">
           <strong>Gyro spectrum</strong>

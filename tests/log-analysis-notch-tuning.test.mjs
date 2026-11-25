@@ -197,7 +197,7 @@ test('clips at takeoff and landing do not condemn a calm flight', () => {
   assert.deepEqual(r.vibe.clip, [0, 0, 0])
   assert.equal(r.vibe.groundClip, 15)
   assert.ok(r.vibe.max[0] < 10, 'the ground spikes are outside the window')
-  assert.ok(r.advisories.some((text) => /15 clip events at takeoff or landing only/.test(text)))
+  assert.ok(r.notes.some((text) => /15 clip events at takeoff or landing only/.test(text)))
   assert.ok(!r.advisories.some((text) => /clipping in the air/i.test(text)))
 })
 
