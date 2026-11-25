@@ -23,11 +23,11 @@ export interface FilterReviewViewProps {
 type ActiveAxis = 'roll' | 'pitch' | 'yaw'
 
 const SPECTRUM_WIDTH = 600
-const SPECTRUM_HEIGHT = 200
-const PADDING_LEFT = 48
+const SPECTRUM_HEIGHT = 220
+const PADDING_LEFT = 56
 const PADDING_RIGHT = 12
 const PADDING_TOP = 8
-const PADDING_BOTTOM = 28
+const PADDING_BOTTOM = 40
 
 function dbScale(power: number, refPower: number): number {
   if (power <= 0 || refPower <= 0) return -80
@@ -109,16 +109,18 @@ function SpectrumOverlay({
       {estPath ? <path className="filter-review__line filter-review__line--estimated" d={estPath} /> : null}
 
       {/* Axis labels */}
-      <text className="filter-review__axis-label" x={SPECTRUM_WIDTH / 2} y={SPECTRUM_HEIGHT - 1} textAnchor="middle">Hz</text>
-      <text className="filter-review__axis-label" x={4} y={SPECTRUM_HEIGHT / 2} textAnchor="middle" transform={`rotate(-90 4 ${SPECTRUM_HEIGHT / 2})`}>dB</text>
+      <text className="filter-review__axis-label" x={PADDING_LEFT + (SPECTRUM_WIDTH - PADDING_LEFT - PADDING_RIGHT) / 2} y={SPECTRUM_HEIGHT - 6} textAnchor="middle">Hz</text>
+      <text className="filter-review__axis-label" x={14} y={(PADDING_TOP + SPECTRUM_HEIGHT - PADDING_BOTTOM) / 2} textAnchor="middle" transform={`rotate(-90 14 ${(PADDING_TOP + SPECTRUM_HEIGHT - PADDING_BOTTOM) / 2})`}>dB</text>
     </svg>
   )
 }
 
+const RESPONSE_HEIGHT = 100
+
 function FrequencyResponse({ filterParams }: { filterParams: FilterChainParams }): ReactElement {
   const maxFreq = Math.min(filterParams.sampleRateHz / 2, 500)
   const plotW = SPECTRUM_WIDTH - PADDING_LEFT - PADDING_RIGHT
-  const plotH = 100 - PADDING_TOP - PADDING_BOTTOM
+  const plotH = RESPONSE_HEIGHT - PADDING_TOP - 16
 
   function toX(freqHz: number): number {
     return PADDING_LEFT + (freqHz / maxFreq) * plotW
@@ -139,7 +141,7 @@ function FrequencyResponse({ filterParams }: { filterParams: FilterChainParams }
   return (
     <svg
       className="filter-review__response-svg"
-      viewBox={`0 0 ${SPECTRUM_WIDTH} 100`}
+      viewBox={`0 0 ${SPECTRUM_WIDTH} ${RESPONSE_HEIGHT}`}
       preserveAspectRatio="xMidYMid meet"
     >
       <line className="filter-review__grid" x1={PADDING_LEFT} y1={toY(0)} x2={PADDING_LEFT + plotW} y2={toY(0)} />
