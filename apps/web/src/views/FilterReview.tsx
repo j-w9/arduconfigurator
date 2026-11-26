@@ -34,6 +34,42 @@ function dbScale(power: number, refPower: number): number {
   return Math.max(-80, 10 * Math.log10(power / refPower))
 }
 
+const MAX_DISPLAY_FREQ = 500
+const MAX_DISPLAY_BINS = 1000
+
+function downsampleSpectrum(
+  freqs: Float64Array,
+  power: Float64Array | ArrayLike<number>,
+  maxFreq: number,
+  maxBins: number
+): { freqs: number[]; power: number[] } {
+  let end = freqs.length
+  for (let i = 0; i < freqs.length; i++) {
+    if (freqs[i] > maxFreq) { end = i; break }
+  }
+  if (end <= maxBins) {
+    const f: number[] = new Array(end)
+    const p: number[] = new Array(end)
+    for (let i = 0; i < end; i++) { f[i] = freqs[i]; p[i] = power[i] }
+    return { freqs: f, power: p }
+  }
+  const step = end / maxBins
+  const f: number[] = new Array(maxBins)
+  const p: number[] = new Array(maxBins)
+  for (let b = 0; b < maxBins; b++) {
+    const lo = Math.floor(b * step)
+    const hi = Math.min(Math.floor((b + 1) * step), end)
+    let peak = power[lo]
+    let peakIdx = lo
+    for (let i = lo + 1; i < hi; i++) {
+      if (power[i] > peak) { peak = power[i]; peakIdx = i }
+    }
+    f[b] = freqs[peakIdx]
+    p[b] = peak
+  }
+  return { freqs: f, power: p }
+}
+
 function SpectrumOverlay({
   axisResult,
   filterParams
@@ -47,9 +83,10 @@ function SpectrumOverlay({
     [preFilter, filterParams]
   )
 
-  const maxFreq = preFilter.freqHz[preFilter.freqHz.length - 1] ?? 500
+  const maxFreq = Math.min(preFilter.freqHz[preFilter.freqHz.length - 1] ?? 500, MAX_DISPLAY_FREQ)
   let refPower = 0
   for (let i = 0; i < preFilter.power.length; i++) {
+    if (preFilter.freqHz[i] > maxFreq) break
     if (preFilter.power[i] > refPower) refPower = preFilter.power[i]
   }
 
@@ -69,11 +106,13 @@ function SpectrumOverlay({
     const src = power ?? spectrum?.power
     const freqs = spectrum?.freqHz
     if (!src || !freqs || freqs.length < 2) return ''
-    const points: string[] = []
-    for (let i = 1; i < freqs.length; i++) {
-      const db = dbScale(src[i], refPower)
-      points.push(`${toX(freqs[i]).toFixed(1)},${toY(db).toFixed(1)}`)
+    const ds = downsampleSpectrum(freqs, src, maxFreq, MAX_DISPLAY_BINS)
+    const points: string[] = new Array(ds.freqs.length)
+    for (let i = 0; i < ds.freqs.length; i++) {
+      const db = dbScale(ds.power[i], refPower)
+      points[i] = `${toX(ds.freqs[i]).toFixed(1)},${toY(db).toFixed(1)}`
     }
+    if (points.length === 0) return ''
     return `M${points[0]} ${points.slice(1).map((p) => `L${p}`).join(' ')}`
   }
 
