@@ -48,7 +48,10 @@ function SpectrumOverlay({
   )
 
   const maxFreq = preFilter.freqHz[preFilter.freqHz.length - 1] ?? 500
-  const refPower = Math.max(...Array.from(preFilter.power))
+  let refPower = 0
+  for (let i = 0; i < preFilter.power.length; i++) {
+    if (preFilter.power[i] > refPower) refPower = preFilter.power[i]
+  }
 
   const plotW = SPECTRUM_WIDTH - PADDING_LEFT - PADDING_RIGHT
   const plotH = SPECTRUM_HEIGHT - PADDING_TOP - PADDING_BOTTOM
