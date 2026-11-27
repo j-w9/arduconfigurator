@@ -96,3 +96,12 @@ export {
   type WelchResult,
   type Severity
 } from './pid-analysis.js'
+
+export {
+  buildTuningPlan,
+  buildTuningPlanBuffer,
+  type TuningPlanResult,
+  type TuningStep,
+  type StepStatus,
+  type ParamChange
+} from './tuning-plan.js'

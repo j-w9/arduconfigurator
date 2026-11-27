@@ -439,6 +439,7 @@ import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
 import { FilterReviewView } from './views/FilterReview'
 import { PidReviewView } from './views/PidReview'
+import { TuningPlanView } from './views/TuningPlan'
 import { LogTuningView } from './views/LogTuning'
 import type { TuningTaskCard } from './views/Tuning'
 import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
@@ -10903,6 +10904,13 @@ export function App() {
           }
           pidReviewSlot={
             <PidReviewView
+              onboardLogs={onboardLogs}
+            />
+          }
+          tuningPlanSlot={
+            <TuningPlanView
+              onStageParam={handleStageLogTuningParam}
+              stagedParams={new Set(parameterDraftById.keys())}
               onboardLogs={onboardLogs}
             />
           }

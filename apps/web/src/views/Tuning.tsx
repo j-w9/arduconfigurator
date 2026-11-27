@@ -20,6 +20,7 @@ export type TuningTaskId =
   | 'log-tuning'
   | 'filter-review'
   | 'pid-review'
+  | 'tuning-plan'
 
 export interface TuningTaskCard {
   id: TuningTaskId
