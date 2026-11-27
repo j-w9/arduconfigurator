@@ -72,6 +72,7 @@ export interface TuningCopterSectionProps {
   sfdSlot?: ReactNode
   logTuningSlot?: ReactNode
   filterReviewSlot?: ReactNode
+  pidReviewSlot?: ReactNode
   /** Notch suggestions and warnings, rendered under the Filters grid. */
   filterNotchSlot?: ReactNode
   /** The FILTn bank, when the firmware has one. Expert-only: raw per-slot
@@ -97,6 +98,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     sfdSlot,
     logTuningSlot,
     filterReviewSlot,
+    pidReviewSlot,
     filterNotchSlot,
     pilotFeelSlot,
     pidGainsSlot,
@@ -512,6 +514,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                 {activeTuningTaskId === 'filter-review' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-filter-review-panel">
                     {filterReviewSlot}
+                  </div>
+                ) : null}
+
+                {activeTuningTaskId === 'pid-review' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-pid-review-panel">
+                    {pidReviewSlot}
                   </div>
                 ) : null}
 

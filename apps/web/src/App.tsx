@@ -438,6 +438,7 @@ import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
 import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
 import { FilterReviewView } from './views/FilterReview'
+import { PidReviewView } from './views/PidReview'
 import { LogTuningView } from './views/LogTuning'
 import type { TuningTaskCard } from './views/Tuning'
 import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
@@ -10897,6 +10898,11 @@ export function App() {
             <FilterReviewView
               onStageParam={handleStageLogTuningParam}
               stagedParams={new Set(parameterDraftById.keys())}
+              onboardLogs={onboardLogs}
+            />
+          }
+          pidReviewSlot={
+            <PidReviewView
               onboardLogs={onboardLogs}
             />
           }

@@ -198,6 +198,13 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
       detail: 'Pre-filter and post-filter gyro spectrum overlays, with interactive notch and low-pass parameter editing. Adjust filter settings and see the estimated effect before writing to the aircraft.',
       tone: 'neutral'
     })
+    cards.push({
+      id: 'pid-review',
+      label: 'PID Review',
+      value: 'expert',
+      detail: 'D-term noise, rate tracking, overtune detection, P vs D balance, and spectral peak classification from a flight log.',
+      tone: 'neutral'
+    })
   }
 
   // Every task for everyone. The strip used to hide PID Gains, Notches,

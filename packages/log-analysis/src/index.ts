@@ -77,3 +77,22 @@ export {
   type FilterReviewAxisResult,
   type FilterReviewResult
 } from './filter-review.js'
+
+export {
+  analyzePid,
+  analyzePidBuffer,
+  computeSpectrogram,
+  type PidAxis,
+  type PidAnalysisResult,
+  type PidAxisAnalysis,
+  type PidFinding,
+  type DTermNoiseResult,
+  type RateTrackingResult,
+  type OvertuneResult,
+  type PvsDResult,
+  type ActivityWindow,
+  type PeakClassification,
+  type SpectrogramResult,
+  type WelchResult,
+  type Severity
+} from './pid-analysis.js'

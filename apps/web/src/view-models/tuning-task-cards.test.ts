@@ -88,6 +88,18 @@ describe('the Filter Review task', () => {
   })
 })
 
+describe('the PID Review task', () => {
+  it('is absent outside expert mode', () => {
+    expect(buildTuningTaskCards(counts()).map((c) => c.id)).not.toContain('pid-review')
+    expect(buildTuningTaskCards(counts({ isExpert: false })).map((c) => c.id)).not.toContain('pid-review')
+  })
+  it('appears in expert mode, after filter-review', () => {
+    const ids = buildTuningTaskCards(counts({ isExpert: true })).map((c) => c.id)
+    expect(ids).toContain('pid-review')
+    expect(ids.indexOf('pid-review')).toBeGreaterThan(ids.indexOf('filter-review'))
+  })
+})
+
 describe('the SFD task', () => {
   const ids = (sfdAvailable: boolean) =>
     buildTuningTaskCards(counts({ sfdAvailable })).map((card) => card.id)
