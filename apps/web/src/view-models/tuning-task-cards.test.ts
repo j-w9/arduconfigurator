@@ -88,27 +88,15 @@ describe('the Filter Review task', () => {
   })
 })
 
-describe('the PID Review task', () => {
-  it('is absent outside expert mode', () => {
-    expect(buildTuningTaskCards(counts()).map((c) => c.id)).not.toContain('pid-review')
-    expect(buildTuningTaskCards(counts({ isExpert: false })).map((c) => c.id)).not.toContain('pid-review')
-  })
-  it('appears in expert mode, after filter-review', () => {
-    const ids = buildTuningTaskCards(counts({ isExpert: true })).map((c) => c.id)
-    expect(ids).toContain('pid-review')
-    expect(ids.indexOf('pid-review')).toBeGreaterThan(ids.indexOf('filter-review'))
-  })
-})
-
 describe('the Tuning Plan task', () => {
   it('is absent outside expert mode', () => {
     expect(buildTuningTaskCards(counts()).map((c) => c.id)).not.toContain('tuning-plan')
     expect(buildTuningTaskCards(counts({ isExpert: false })).map((c) => c.id)).not.toContain('tuning-plan')
   })
-  it('appears in expert mode, after pid-review', () => {
+  it('appears in expert mode, after filter-review', () => {
     const ids = buildTuningTaskCards(counts({ isExpert: true })).map((c) => c.id)
     expect(ids).toContain('tuning-plan')
-    expect(ids.indexOf('tuning-plan')).toBeGreaterThan(ids.indexOf('pid-review'))
+    expect(ids.indexOf('tuning-plan')).toBeGreaterThan(ids.indexOf('filter-review'))
   })
 })
 

@@ -199,17 +199,10 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
       tone: 'neutral'
     })
     cards.push({
-      id: 'pid-review',
-      label: 'PID Review',
-      value: 'expert',
-      detail: 'D-term noise, rate tracking, overtune detection, P vs D balance, and spectral peak classification from a flight log.',
-      tone: 'neutral'
-    })
-    cards.push({
       id: 'tuning-plan',
       label: 'Tuning Plan',
       value: 'expert',
-      detail: 'Upload a log and get an ordered step-by-step tuning plan: logging, vibration, notch, D-noise, gains, yaw, and finishing — each step gates on the previous one.',
+      detail: 'Ordered tuning steps from a flight log: logging, vibration, notch, D-noise, gains, yaw — with PID analysis inline on each step.',
       tone: 'neutral'
     })
   }

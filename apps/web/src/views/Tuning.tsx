@@ -19,7 +19,6 @@ export type TuningTaskId =
   | 'profiles'
   | 'log-tuning'
   | 'filter-review'
-  | 'pid-review'
   | 'tuning-plan'
 
 export interface TuningTaskCard {

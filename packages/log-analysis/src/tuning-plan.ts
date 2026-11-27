@@ -109,31 +109,31 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
   // -----------------------------------------------------------------------
   // 1. Logging
   // -----------------------------------------------------------------------
-  const lg = makeStep('logging', 'Log the data this analysis needs', false)
+  const lg = makeStep('logging', 'Logging', false)
   if (!fast || !pidLogged) {
     lg.status = 'now'
-    if (!fast) lg.why.push(`RATE/PID/ANG are logged at ${rateHz.toFixed(0)} Hz. Oscillation, D-term noise and lag need loop-rate logging (ATTITUDE_FAST).`)
-    if (!pidLogged) lg.why.push('PID messages (PIDR/PIDP/PIDY) are not logged.')
-    chg(lg, params, 'LOG_BITMASK', logBitmask | 1 | (1 << 12), 'adds ATTITUDE_FAST (bit 0) and PID (bit 12)')
+    if (!fast) lg.why.push(`RATE logged at ${rateHz.toFixed(0)} Hz — need loop rate (ATTITUDE_FAST).`)
+    if (!pidLogged) lg.why.push('PID messages (PIDR/PIDP/PIDY) not logged.')
+    chg(lg, params, 'LOG_BITMASK', logBitmask | 1 | (1 << 12), 'ATTITUDE_FAST (bit 0) + PID (bit 12)')
   }
   const hasBatchData = (log.messagesByType.get('ISBH')?.length ?? 0) > 0
   if (!hasBatchData) {
     if (lg.status === 'done') lg.status = 'now'
-    lg.why.push('No pre/post-filter gyro data, so noise sources and notch effectiveness cannot be measured.')
-    if (!(p(params, 'INS_LOG_BAT_MASK') | 0)) chg(lg, params, 'INS_LOG_BAT_MASK', 1, 'batch-sample the first IMU')
-    chg(lg, params, 'INS_LOG_BAT_OPT', 4, 'pre- and post-filter samples')
+    lg.why.push('No pre/post-filter gyro data for noise measurement.')
+    if (!(p(params, 'INS_LOG_BAT_MASK') | 0)) chg(lg, params, 'INS_LOG_BAT_MASK', 1, 'batch-sample IMU 1')
+    chg(lg, params, 'INS_LOG_BAT_OPT', 4, 'pre- and post-filter')
   }
   lg.summary = lg.status === 'done'
-    ? 'Loop-rate PID logging and pre/post-filter gyro samples are both present.'
-    : 'Turn on the logging below. It does not change how the copter flies.'
-  lg.verify = 'The next report shows RATE/PID/ANG at 400 Hz or more.'
-  lg.fly = 'No flight change needed — the new bitmask only records more data.'
+    ? 'Loop-rate PID + gyro batch samples present.'
+    : 'Enable the logging below. No flight change.'
+  lg.verify = 'RATE/PID/ANG at 400 Hz+.'
+  lg.fly = 'No flight change — only records more data.'
   steps.push(lg)
 
   // -----------------------------------------------------------------------
   // 2. Power and hover basics
   // -----------------------------------------------------------------------
-  const pw = makeStep('power', 'Battery compensation and hover throttle', false)
+  const pw = makeStep('power', 'Battery compensation', false)
   const vmax = p(params, 'MOT_BAT_VOLT_MAX')
   const vmin = p(params, 'MOT_BAT_VOLT_MIN')
   if (!vmax || !vmin) {
@@ -149,7 +149,7 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
       cells = Math.round(maxV / 4.15)
     }
     pw.status = 'now'
-    pw.why.push('MOT_BAT_VOLT_MAX/MIN are not set, so gains effectively drop as the battery sags.')
+    pw.why.push('MOT_BAT_VOLT_MAX/MIN not set — gains drop as battery sags.')
     if (cells >= 1) {
       chg(pw, params, 'MOT_BAT_VOLT_MAX', sig(4.2 * cells, 4), `${cells}S at 4.2 V/cell`)
       chg(pw, params, 'MOT_BAT_VOLT_MIN', sig(3.3 * cells, 4), `${cells}S at 3.3 V/cell`)
@@ -168,18 +168,18 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
     if (thhs.length > 10) {
       thhs.sort((a, b) => a - b)
       hoverThrottle = thhs[Math.floor(thhs.length / 2)]
-      if (hoverThrottle < 0.15) pw.why.push(`Hover throttle is only ${hoverThrottle.toFixed(2)}. Lots of spare thrust; gains will be low.`)
+      if (hoverThrottle < 0.15) pw.why.push(`Hover throttle ${hoverThrottle.toFixed(2)} — lots of spare thrust, gains will be low.`)
       if (hoverThrottle > 0.6) {
         pw.status = 'now'
-        pw.why.push(`Hover throttle is ${hoverThrottle.toFixed(2)}, leaving little headroom. Reduce weight or increase thrust before tuning.`)
+        pw.why.push(`Hover throttle ${hoverThrottle.toFixed(2)} — little headroom. Reduce weight or add thrust.`)
       }
     }
   }
   pw.summary = pw.status === 'done'
-    ? 'Voltage compensation is set.'
-    : 'Settings that change how every gain behaves.'
-  pw.verify = 'MOT_THST_HOVER matches the hover throttle within 10%.'
-  pw.fly = 'Hover for 60 s.'
+    ? 'Voltage compensation set.'
+    : 'Set voltage compensation before tuning gains.'
+  pw.verify = 'MOT_THST_HOVER within 10% of hover throttle.'
+  pw.fly = 'Hover 60 s.'
   steps.push(pw)
 
   // -----------------------------------------------------------------------
@@ -200,59 +200,58 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
     const p95 = maxVibe * 0.95 // approximate
     if (p95 > 30) {
       vb.status = 'now'
-      vb.why.push(`VIBE 95th percentile is ${p95.toFixed(1)} m/s² on ${worstAxis}. Under 30 is the target.`)
-      vb.summary = 'Fix the mechanical cause before tuning. Gains tuned on a vibrating frame will not hold.'
-      vb.fly = 'Check prop balance, motor bearings, FC mount, loose wires. Then hover for 60 s.'
+      vb.why.push(`VIBE p95 ${p95.toFixed(1)} m/s² on ${worstAxis}. Target: under 30.`)
+      vb.summary = 'Fix mechanical cause before tuning.'
+      vb.fly = 'Check props, bearings, FC mount. Hover 60 s.'
     } else if (clipCount > 0) {
       vb.status = 'now'
       vb.blocking = false
-      vb.why.push(`Vibration levels are fine (${p95.toFixed(1)} m/s²) but ${clipCount} clip events.`)
-      vb.summary = 'Look at what happened at the clip times. Not a reason to stop tuning.'
+      vb.why.push(`Vibration OK (${p95.toFixed(1)} m/s²) but ${clipCount} clip events.`)
+      vb.summary = 'Check clip times. Not blocking.'
     } else {
-      vb.summary = `VIBE ${p95.toFixed(1)} m/s² with no clipping.`
+      vb.summary = `VIBE ${p95.toFixed(1)} m/s², no clipping.`
     }
   } else {
     vb.status = 'blocked'
     vb.summary = 'No VIBE data in this log.'
   }
-  vb.verify = 'VIBE 95th percentile under 30 m/s² and no mid-flight clipping.'
-  vb.fly = 'Check props, motors, FC mount. Hover for 60 s.'
+  vb.verify = 'VIBE p95 under 30 m/s², no clipping.'
+  vb.fly = 'Check props, bearings, FC mount. Hover 60 s.'
   steps.push(vb)
 
   // -----------------------------------------------------------------------
   // 4. Harmonic notch
   // -----------------------------------------------------------------------
-  const nt = makeStep('notch', 'Harmonic notch filter', true)
+  const nt = makeStep('notch', 'Harmonic notch', true)
   const hntchEnable = !!p(params, 'INS_HNTCH_ENABLE')
   if (!hasBatchData) {
     nt.status = 'blocked'
-    nt.summary = 'Needs pre-filter gyro data to see the noise (see step 1).'
+    nt.summary = 'Needs pre-filter gyro data (see Logging).'
   } else if (!hntchEnable) {
     nt.status = 'now'
-    nt.why.push('No harmonic notch is enabled. Almost every multirotor needs one on the motor rotation frequency.')
-    chg(nt, params, 'INS_HNTCH_ENABLE', 1, 'reboot, then set the other INS_HNTCH_ parameters')
-    // Check for ESC telemetry
+    nt.why.push('No harmonic notch enabled.')
+    chg(nt, params, 'INS_HNTCH_ENABLE', 1, 'enable, then reboot')
     const esc = log.messagesByType.get('ESC')
     if (esc && esc.length > 50) {
-      chg(nt, params, 'INS_HNTCH_MODE', 3, 'track each motor from ESC telemetry')
-      chg(nt, params, 'INS_HNTCH_OPTS', (p(params, 'INS_HNTCH_OPTS') | 0) | 2, 'multi-source: one notch per motor')
-      chg(nt, params, 'INS_HNTCH_HMNCS', 3, 'first and second harmonics')
+      chg(nt, params, 'INS_HNTCH_MODE', 3, 'ESC telemetry tracking')
+      chg(nt, params, 'INS_HNTCH_OPTS', (p(params, 'INS_HNTCH_OPTS') | 0) | 2, 'multi-source')
+      chg(nt, params, 'INS_HNTCH_HMNCS', 3, '1st + 2nd harmonics')
     } else {
       chg(nt, params, 'INS_HNTCH_MODE', 1, 'throttle-based')
       if (hoverThrottle) chg(nt, params, 'INS_HNTCH_REF', sig(hoverThrottle, 3), 'hover throttle')
     }
-    nt.summary = 'Enable the harmonic notch and measure the noise again.'
+    nt.summary = 'Enable the notch, then re-fly and re-analyze.'
   } else {
-    nt.summary = 'The harmonic notch is enabled.'
+    nt.summary = 'Harmonic notch enabled.'
   }
-  nt.fly = 'Hover for 60 s with a few gentle stick movements.'
-  nt.verify = 'At least 20 dB broadband reduction in Filter Review.'
+  nt.fly = 'Hover 60 s with gentle stick movements.'
+  nt.verify = '20+ dB broadband reduction in Filter Review.'
   steps.push(nt)
 
   // -----------------------------------------------------------------------
   // 5. D-term noise and rate filters
   // -----------------------------------------------------------------------
-  const dn = makeStep('dnoise', 'D-term noise and rate filters', true)
+  const dn = makeStep('dnoise', 'D-term noise', true)
   const gyroFilter = p(params, 'INS_GYRO_FILTER')
   let dnChecked = false
   let dnBlocking = false
@@ -265,7 +264,7 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
 
     if (gyroFilter > 0 && fltd > gyroFilter) {
       dn.status = 'now'
-      dn.why.push(`${name}: FLTD (${fltd} Hz) is above INS_GYRO_FILTER (${gyroFilter} Hz), so it filters nothing.`)
+      dn.why.push(`${name}: FLTD ${fltd} Hz above gyro filter ${gyroFilter} Hz — no effect.`)
       chg(dn, params, `${prefix}FLTD`, Math.round(gyroFilter / 2), 'half of INS_GYRO_FILTER')
     }
 
@@ -278,9 +277,9 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
         dn.status = 'now'
         if (dNoise.noiseFraction >= 0.008) dnBlocking = true
         const where = dNoise.narrowPeak
-          ? `concentrated at ${dNoise.noiseFreqHz.toFixed(0)} Hz`
-          : `broadband, strongest near ${dNoise.noiseFreqHz.toFixed(0)} Hz`
-        dn.why.push(`${name}: D-term noise in hover is ${dNoise.noisePercent.toFixed(2)}% of motor command (${where}). Target: under 0.3%.`)
+          ? `peak ${dNoise.noiseFreqHz.toFixed(0)} Hz`
+          : `broadband, peak ${dNoise.noiseFreqHz.toFixed(0)} Hz`
+        dn.why.push(`${name}: D noise ${dNoise.noisePercent.toFixed(2)}% (${where}). Target: under 0.3%.`)
 
         // Suggest lowering FLTD
         if (fltd > 0) {
@@ -297,24 +296,24 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
 
   if (!dnChecked && !fast) {
     if (dn.status === 'done') dn.status = 'blocked'
-    dn.summary = 'Needs loop-rate PID logging to measure D-term noise (see step 1).'
+    dn.summary = 'Needs loop-rate PID logging (see Logging).'
   } else if (dn.status === 'done') {
-    dn.summary = 'D-term noise in hover is under 0.3% of motor command on roll and pitch.'
+    dn.summary = 'D noise under 0.3% on roll and pitch.'
   } else {
-    dn.summary = 'Reduce D-term noise before judging gains.'
+    dn.summary = 'Reduce D noise before tuning gains.'
   }
   dn.blocking = dnBlocking
-  dn.fly = 'Hover for 60 s. Then feel the motors: they should be no more than warm.'
-  dn.verify = 'D noise under 0.3% in hover.'
+  dn.fly = 'Hover 60 s. Motors should be warm, not hot.'
+  dn.verify = 'D noise under 0.3%.'
   steps.push(dn)
 
   // -----------------------------------------------------------------------
   // 6. Roll and pitch rate gains
   // -----------------------------------------------------------------------
-  const rp = makeStep('rp', 'Roll and pitch rate gains', true)
+  const rp = makeStep('rp', 'Roll and pitch gains', true)
   if (!fast) {
     rp.status = 'blocked'
-    rp.summary = 'Needs loop-rate RATE and PID logging (see step 1).'
+    rp.summary = 'Needs loop-rate logging (see Logging).'
   } else {
     let needsInput = false
     for (const name of ['Roll', 'Pitch'] as const) {
@@ -336,16 +335,16 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
         if (ot.medianRatio > 1.3) {
           rp.status = 'now'
           if (ot.oscillationFreqHz !== null && ot.oscillationFreqHz >= 10) {
-            rp.why.push(`${name}: overshoot ratio ${ot.medianRatio.toFixed(2)} with oscillation at ${ot.oscillationFreqHz.toFixed(0)} Hz. Fast oscillation points at D.`)
+            rp.why.push(`${name}: ratio ${ot.medianRatio.toFixed(2)}, osc ${ot.oscillationFreqHz.toFixed(0)} Hz — reduce D.`)
             chg(rp, params, `${prefix}D`, sig(dGain * 0.75, 3), '-25%')
           } else {
-            rp.why.push(`${name}: overshoot ratio ${ot.medianRatio.toFixed(2)}. Slow oscillation points at P.`)
+            rp.why.push(`${name}: ratio ${ot.medianRatio.toFixed(2)}, slow oscillation — reduce P.`)
             chg(rp, params, `${prefix}P`, sig(pGain * 0.75, 3), '-25%')
             chg(rp, params, `${prefix}I`, sig(pGain * 0.75, 3), 'keep I = P')
           }
         } else if (ot.medianRatio > 1.15) {
           rp.status = 'now'
-          rp.why.push(`${name}: mild overshoot (median ${ot.medianRatio.toFixed(2)}, 90th pct ${ot.p90Ratio.toFixed(2)}).`)
+          rp.why.push(`${name}: mild overshoot (${ot.medianRatio.toFixed(2)}, p90 ${ot.p90Ratio.toFixed(2)}).`)
           const pvsD = axisAnalysis?.pvsD
           if (pvsD && pvsD.dpRatio < 0.3 && axisAnalysis?.dTermNoise?.noiseFraction !== undefined && axisAnalysis.dTermNoise.noiseFraction < 0.003) {
             chg(rp, params, `${prefix}D`, sig(dGain * 1.15, 3), '+15%: D is low and noise allows it')
@@ -355,27 +354,27 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
           }
         } else if (ot.medianRatio < 0.8) {
           rp.status = 'now'
-          rp.why.push(`${name}: under-tuned (ratio ${ot.medianRatio.toFixed(2)}).`)
+          rp.why.push(`${name}: under-tuned (${ot.medianRatio.toFixed(2)}).`)
           chg(rp, params, `${prefix}P`, sig(pGain * 1.15, 3), '+15%')
           chg(rp, params, `${prefix}I`, sig(pGain * 1.15, 3), 'keep I = P')
         } else {
-          rp.why.push(`${name}: response ratio ${ot.medianRatio.toFixed(2)} is in the good range.`)
+          rp.why.push(`${name}: ratio ${ot.medianRatio.toFixed(2)} — good.`)
         }
       }
     }
 
     if (needsInput && rp.status === 'done') {
       rp.status = 'now'
-      rp.summary = 'Not enough stick inputs to judge gains. Run AUTOTUNE or fly sharp roll/pitch inputs.'
-      rp.why.push('At least 5 manoeuvre windows per axis are needed.')
+      rp.summary = 'Not enough stick inputs. Fly sharp roll/pitch or run AUTOTUNE.'
+      rp.why.push('Need 5+ manoeuvre windows per axis.')
     } else {
       rp.summary = rp.status === 'done'
-        ? 'Roll and pitch follow their targets without overshoot.'
-        : 'Make the gain change below, fly the same inputs again and compare.'
+        ? 'Roll and pitch track targets without overshoot.'
+        : 'Apply the changes, re-fly the same inputs, compare.'
     }
   }
-  rp.fly = 'In AltHold at 5 m+, give 6 sharp roll inputs (full stick ~0.3 s, then centre, 2 s apart), then pitch.'
-  rp.verify = 'Overtune ratio between 0.9 and 1.15 on roll and pitch.'
+  rp.fly = 'AltHold 5 m+. 6 sharp rolls (full stick 0.3 s, centre, 2 s apart), then pitch.'
+  rp.verify = 'Overtune ratio 0.9–1.15 on both axes.'
   steps.push(rp)
 
   // -----------------------------------------------------------------------
@@ -389,17 +388,17 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
     yw.summary = 'Needs loop-rate logging.'
   } else if (!yawOt || yawOt.windowRatios.length < 5) {
     yw.status = 'next'
-    yw.summary = 'Not enough yaw input to judge. AUTOTUNE covers yaw, or add sharp yaw inputs.'
+    yw.summary = 'Not enough yaw input. AUTOTUNE covers yaw, or fly sharp yaw inputs.'
   } else {
     const yP = p(params, 'ATC_RAT_YAW_P')
     if (yawOt.medianRatio < 0.7) {
       yw.status = 'now'
-      yw.why.push(`Yaw only reaches ${(yawOt.medianRatio * 100).toFixed(0)}% of target.`)
+      yw.why.push(`Yaw reaches ${(yawOt.medianRatio * 100).toFixed(0)}% of target.`)
       chg(yw, params, 'ATC_RAT_YAW_P', sig(yP * 1.2, 3), '+20%')
       chg(yw, params, 'ATC_RAT_YAW_I', sig(yP * 0.12, 3), 'I = P/10')
     } else if (yawOt.medianRatio > 1.3) {
       yw.status = 'now'
-      yw.why.push(`Yaw overshoots (ratio ${yawOt.medianRatio.toFixed(2)}).`)
+      yw.why.push(`Yaw overshoot ratio ${yawOt.medianRatio.toFixed(2)}.`)
       chg(yw, params, 'ATC_RAT_YAW_P', sig(yP * 0.8, 3), '-20%')
       chg(yw, params, 'ATC_RAT_YAW_I', sig(yP * 0.08, 3), 'I = P/10')
     }
@@ -407,24 +406,24 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
       ? `Yaw response ratio ${yawOt.medianRatio.toFixed(2)}.`
       : 'Adjust yaw as below.'
   }
-  yw.verify = 'Yaw ratio between 0.8 and 1.2.'
+  yw.verify = 'Yaw ratio 0.8–1.2.'
   yw.fly = 'Sharp yaw inputs in AltHold.'
   steps.push(yw)
 
   // -----------------------------------------------------------------------
   // 8. Finishing: slew limiter and feel
   // -----------------------------------------------------------------------
-  const fin = makeStep('finish', 'Finish: safety net and feel', false)
+  const fin = makeStep('finish', 'Slew limiter and feel', false)
   fin.status = 'next'
   for (const c of ['RLL', 'PIT']) {
     if (!p(params, `ATC_RAT_${c}_SMAX`)) {
-      chg(fin, params, `ATC_RAT_${c}_SMAX`, 50, 'slew limiter as a safety net against oscillation')
+      chg(fin, params, `ATC_RAT_${c}_SMAX`, 50, 'oscillation safety net')
     }
   }
-  fin.summary = 'Once the gains are good: turn on the slew limiter and set the stick feel.'
-  fin.why.push('ATC_INPUT_TC sets how crisp the sticks feel: 0.15 smooth, 0.1 sporty, 0.05 direct. Change it last.')
-  fin.verify = 'Dmod stays at 1.00 almost all the time.'
-  fin.fly = 'Fly normally and check the feel.'
+  fin.summary = 'Once gains are good: slew limiter + stick feel.'
+  fin.why.push('ATC_INPUT_TC: 0.15 smooth, 0.1 sporty, 0.05 direct.')
+  fin.verify = 'Dmod stays at 1.00.'
+  fin.fly = 'Fly normally, check the feel.'
   steps.push(fin)
 
   // -----------------------------------------------------------------------
