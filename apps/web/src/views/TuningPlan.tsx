@@ -242,11 +242,11 @@ function StepCard({
       className={`tuning-plan__step tuning-plan__step--${step.status}${isCurrent ? ' tuning-plan__step--current' : ''}`}
       data-testid={`tuning-plan-step-${step.id}`}
     >
-      <button className="tuning-plan__step-header" onClick={() => setExpanded(!expanded)} type="button">
+      <button className="tuning-plan__step-header" onClick={() => setExpanded(!expanded)} type="button" aria-expanded={expanded}>
         <span className="tuning-plan__step-num">{index + 1}</span>
         <span className="tuning-plan__step-title">{step.title}</span>
         <StatusBadge tone={statusTone(step.status)}>{statusLabel(step.status)}</StatusBadge>
-        {step.alongside ? <StatusBadge tone="neutral">alongside</StatusBadge> : null}
+        {step.alongside ? <StatusBadge tone="neutral">also</StatusBadge> : null}
         <span className="tuning-plan__step-chevron">{expanded ? '▾' : '▸'}</span>
       </button>
 

@@ -281,8 +281,9 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
           : `broadband, peak ${dNoise.noiseFreqHz.toFixed(0)} Hz`
         dn.why.push(`${name}: D noise ${dNoise.noisePercent.toFixed(2)}% (${where}). Target: under 0.3%.`)
 
-        // Suggest lowering FLTD
-        if (fltd > 0) {
+        // Suggest lowering FLTD — but respect the structural gyro-filter cap
+        const existing = dn.changes.find(c => c.param === `${prefix}FLTD`)
+        if (fltd > 0 && !existing) {
           const floor = Math.max(10, gyroFilter > 0 ? gyroFilter / 4 : 10)
           const newFltd = Math.max(Math.round(floor), Math.round(fltd * 0.7))
           if (newFltd < fltd) chg(dn, params, `${prefix}FLTD`, newFltd, `lower FLTD to reduce D noise`)
@@ -414,13 +415,22 @@ export function buildTuningPlan(log: ParsedDataflashLog): TuningPlanResult {
   // 8. Finishing: slew limiter and feel
   // -----------------------------------------------------------------------
   const fin = makeStep('finish', 'Slew limiter and feel', false)
-  fin.status = 'next'
   for (const c of ['RLL', 'PIT']) {
     if (!p(params, `ATC_RAT_${c}_SMAX`)) {
       chg(fin, params, `ATC_RAT_${c}_SMAX`, 50, 'oscillation safety net')
     }
   }
-  fin.summary = 'Once gains are good: slew limiter + stick feel.'
+  const allBlockingDone = steps.every(s => !s.blocking || s.status === 'done')
+  if (allBlockingDone && fin.changes.length > 0) {
+    fin.status = 'now'
+    fin.summary = 'Gains are tuned. Set the slew limiter and adjust stick feel.'
+  } else if (allBlockingDone && fin.changes.length === 0) {
+    fin.status = 'done'
+    fin.summary = 'Slew limiter set, gains tuned.'
+  } else {
+    fin.status = 'next'
+    fin.summary = 'Once gains are good: slew limiter + stick feel.'
+  }
   fin.why.push('ATC_INPUT_TC: 0.15 smooth, 0.1 sporty, 0.05 direct.')
   fin.verify = 'Dmod stays at 1.00.'
   fin.fly = 'Fly normally, check the feel.'
