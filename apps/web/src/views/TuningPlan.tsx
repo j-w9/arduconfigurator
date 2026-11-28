@@ -322,7 +322,7 @@ function downloadParamFile(lines: string[]): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'tuning-plan.param'
+  a.download = 'verify-tune.param'
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -441,7 +441,7 @@ export function TuningPlanView({ onStageParam, stagedParams, onboardLogs }: Tuni
   return (
     <section className="bf-gui-box tuning-plan" data-testid="tuning-plan">
       <div className="bf-gui-box__titlebar">
-        <strong>Tuning Plan</strong>
+        <strong>Verify Tune</strong>
         <StatusBadge tone="neutral">expert</StatusBadge>
       </div>
       <div className="bf-gui-box__body">
@@ -475,7 +475,7 @@ export function TuningPlanView({ onStageParam, stagedParams, onboardLogs }: Tuni
         </div>
 
         <p className="feel-note">
-          Upload a flight log. Each step says what to fix, what to fly, and what to verify before moving on.
+          Upload a flight log to check your tune. Each step says what to fix, what to fly, and what to verify.
         </p>
 
         {error ? (

@@ -200,9 +200,9 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     })
     cards.push({
       id: 'tuning-plan',
-      label: 'Tuning Plan',
+      label: 'Verify Tune',
       value: 'expert',
-      detail: 'Ordered tuning steps from a flight log: logging, vibration, notch, D-noise, gains, yaw — with PID analysis inline on each step.',
+      detail: 'Upload a flight log and verify your tune step by step: logging, vibration, notch, D-noise, gains, yaw — with PID analysis inline.',
       tone: 'neutral'
     })
   }
